@@ -7,25 +7,29 @@ import java.net.Socket;
 
 public class ClientMain {
 
-    public static void main(String[] args) {
-        String serverHost = "localhost"; // later we will show this in the GUI
-        int serverPort = 5555;
+	public static void main(String[] args) {
+	    String serverHost = "localhost";
+	    int serverPort = 5555;
 
-        try (Socket socket = new Socket(serverHost, serverPort)) {
-            System.out.println("Connected to server");
+	    try (Socket socket = new Socket(serverHost, serverPort)) {
+	        System.out.println("Connected to server");
 
-            PrintWriter output = new PrintWriter(socket.getOutputStream(), true);
-            BufferedReader input = new BufferedReader(
-                    new InputStreamReader(socket.getInputStream()));
+	        PrintWriter output = new PrintWriter(socket.getOutputStream(), true);
+	        BufferedReader input = new BufferedReader(
+	                new InputStreamReader(socket.getInputStream()));
 
-            // For now send a simple test message
-            output.println("Hello from client!");
+	        // send correct command
+	        output.println("GET_RESERVATIONS");
 
-            String response = input.readLine();
-            System.out.println("Server replied: " + response);
+	        // read all server output
+	        String response;
+	        while ((response = input.readLine()) != null) {
+	            System.out.println(response);
+	        }
 
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
+	    } catch (Exception e) {
+	        e.printStackTrace();
+	    }
+	}
+
 }
