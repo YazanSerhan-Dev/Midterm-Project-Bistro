@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.geometry.Insets?>
+
+<BorderPane xmlns="http://javafx.com/javafx/8"
+            xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="Client.ClientController">
+
+    <center>
+        <VBox spacing="10.0">
+            <padding>
+                <Insets top="10.0" right="10.0" bottom="10.0" left="10.0" />
+            </padding>
+            <children>
+
+                <!-- Title label -->
+                <Label text="Reservations from server:" />
+
+                <!-- Reservations list -->
+                <TextArea fx:id="reservationsArea"
+                          prefRowCount="10"
+                          editable="false" />
+
+                <!-- Form: reservation number + date + guests -->
+                <HBox spacing="10.0">
+                    <children>
+                        <Label text="Reservation #:"/>
+                        <TextField fx:id="reservationNumberField"
+                                   promptText="1" />
+
+                        <Label text="Date:"/>
+                        <TextField fx:id="dateField"
+                                   promptText="yyyy-mm-dd" />
+
+                        <Label text="Guests:"/>
+                        <TextField fx:id="guestsField"
+                                   promptText="number of guests" />
+                    </children>
+                </HBox>
+
+                <!-- Buttons -->
+                <HBox spacing="10.0">
+                    <children>
+                        <Button text="Get Reservations"
+                                onAction="#onGetReservations" />
+                        <Button text="Update Reservation"
+                                onAction="#onUpdateReservation" />
+                    </children>
+                </HBox>
+
+                <!-- Status label -->
+                <Label fx:id="statusLabel"
+                       text="Status: idle" />
+
+            </children>
+        </VBox>
+    </center>
+</BorderPane>
