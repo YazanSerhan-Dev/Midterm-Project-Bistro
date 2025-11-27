@@ -3,6 +3,7 @@ package Server;
 import java.sql.Date;
 
 public class Reservation {
+
     private int reservationNumber;
     private Date reservationDate;
     private int numberOfGuests;
@@ -20,13 +21,32 @@ public class Reservation {
         this.dateOfPlacing = dateOfPlacing;
     }
 
-    public int getReservationNumber() { return reservationNumber; }
-    public Date getReservationDate() { return reservationDate; }
-    public int getNumberOfGuests() { return numberOfGuests; }
-    public int getConfirmationCode() { return confirmationCode; }
-    public int getSubscriberId() { return subscriberId; }
-    public Date getDateOfPlacing() { return dateOfPlacing; }
+    // ----------- GETTERS -------------
+    public int getReservationNumber() {
+        return reservationNumber;
+    }
 
+    public Date getReservationDate() {
+        return reservationDate;
+    }
+
+    public int getNumberOfGuests() {
+        return numberOfGuests;
+    }
+
+    public int getConfirmationCode() {
+        return confirmationCode;
+    }
+
+    public int getSubscriberId() {
+        return subscriberId;
+    }
+
+    public Date getDateOfPlacing() {
+        return dateOfPlacing;
+    }
+
+    // ----------- TO STRING ------------
     @Override
     public String toString() {
         return "Reservation{" +
@@ -39,4 +59,5 @@ public class Reservation {
                 '}';
     }
 }
+
 

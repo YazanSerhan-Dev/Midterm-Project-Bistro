@@ -11,6 +11,8 @@ import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.sql.SQLException;
+import java.util.List;
 
 public class ServerController {
 
@@ -22,6 +24,7 @@ public class ServerController {
 
     private final int PORT = 5555;
     private volatile boolean running = false;
+
 
     @FXML
     private void initialize() {
@@ -60,6 +63,8 @@ public class ServerController {
         }
     }
 
+    // somewhere in your ServerFX / ServerController class:
+    private final ReservationDAO reservationDAO = new ReservationDAO();
     private void handleClient(Socket clientSocket) {
         new Thread(() -> {
             try (Socket socket = clientSocket;
@@ -72,13 +77,70 @@ public class ServerController {
                 String line = in.readLine();
                 appendLog("Received: " + line + "\n");
 
-                // TODO: here paste your existing logic:
-                // - if line.equals("GET_RESERVATIONS") -> use ReservationDAO to read DB,
-                //   build a string, and send it with out.println(...)
-                // - else if it startsWith("UPDATE_RESERVATION:") -> parse, update DB, out.println("UPDATE_OK")
+                if (line == null) {
+                    appendLog("Empty command from client\n");
+                    return;
+                }
 
-                out.println("OK");
-                appendLog("Sent reply: OK\n");
+                // -----------------------------------------
+                // 1) GET_RESERVATIONS  -> send list from DB
+                // -----------------------------------------
+                if ("GET_RESERVATIONS".equals(line)) {
+
+                    // get all reservations from DB  (change method name if needed)
+                    List<Reservation> reservations = reservationDAO.getAllReservations();
+
+                    StringBuilder sb = new StringBuilder();
+                    for (Reservation r : reservations) {
+                        sb.append(r.getReservationNumber())
+                          .append(" | date=")
+                          .append(r.getReservationDate())
+                          .append(" | guests=")
+                          .append(r.getNumberOfGuests())
+                          .append("\n");
+                    }
+
+                    String reply = (sb.length() == 0)
+                            ? "NO_RESERVATIONS"
+                            : sb.toString().trim();
+
+                    out.println(reply);
+                    appendLog("Sent " + reservations.size() + " reservations\n");
+                }
+
+                // ---------------------------------------------------------
+                // 2) UPDATE_RESERVATION:<num>:<yyyy-MM-dd>:<guests>
+                // ---------------------------------------------------------
+                else if (line.startsWith("UPDATE_RESERVATION:")) {
+
+                    String[] parts = line.split(":");
+                    if (parts.length == 4) {
+
+                        int orderNumber = Integer.parseInt(parts[1]);
+                        String newDate = parts[2];
+                        int guests = Integer.parseInt(parts[3]);
+
+                        try {
+                            // update DB
+                            reservationDAO.updateReservation(orderNumber, java.sql.Date.valueOf(newDate), guests);
+
+                            out.println("UPDATE_OK");
+                            appendLog("Updated reservation " + orderNumber);
+
+                        } catch (SQLException e) {
+                            out.println("UPDATE_ERROR");
+                            appendLog("Update failed: " + e.getMessage());
+                            e.printStackTrace();
+                        }
+                    }
+                }
+                // -----------------------------
+                // 3) Unknown command
+                // -----------------------------
+                else {
+                    out.println("ERROR_UNKNOWN_COMMAND");
+                    appendLog("Unknown command: " + line + "\n");
+                }
 
             } catch (Exception e) {
                 appendLog("Client error: " + e.getMessage() + "\n");
@@ -86,6 +148,7 @@ public class ServerController {
             }
         }).start();
     }
+
 
     private void appendLog(String text) {
         Platform.runLater(() -> logArea.appendText(text));
