@@ -8,7 +8,7 @@ import java.net.Socket;
 public class ClientMain {
 
     public static void main(String[] args) {
-        String serverHost = "localhost";
+        String serverHost = "192.168.33.3";
         int serverPort = 5555;
 
         try (Socket socket = new Socket(serverHost, serverPort)) {
