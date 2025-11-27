@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<BorderPane xmlns="http://javafx.com/javafx/8"
+            xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="Server.ServerController">
+
+    <center>
+        <TextArea fx:id="logArea"
+                  editable="false"
+                  prefRowCount="15"
+                  wrapText="true" />
+    </center>
+
+    <bottom>
+        <HBox spacing="10" alignment="CENTER_RIGHT" BorderPane.alignment="CENTER">
+            <padding>
+                <Insets top="10" right="10" bottom="10" left="10"/>
+            </padding>
+
+            <Button fx:id="startButton"
+                    text="Start Server"
+                    onAction="#onStartServer" />
+        </HBox>
+    </bottom>
+
+</BorderPane>
