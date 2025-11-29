@@ -15,6 +15,18 @@
             </padding>
             <children>
 
+                <!-- Server IP + Connect -->
+                <HBox spacing="10.0">
+                    <children>
+                        <Label text="Server IP:"/>
+                        <TextField fx:id="serverIpField"
+                                   promptText="e.g. 127.0.0.1"
+                                   prefWidth="150" />
+                        <Button text="Connect"
+                                onAction="#onConnect"/>
+                    </children>
+                </HBox>
+
                 <!-- Title label -->
                 <Label text="Reservations from server:" />
 
@@ -52,9 +64,10 @@
 
                 <!-- Status label -->
                 <Label fx:id="statusLabel"
-                       text="Status: idle" />
+                       text="Status: Not connected" />
 
             </children>
         </VBox>
     </center>
 </BorderPane>
+

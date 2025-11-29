@@ -6,41 +6,39 @@ import java.util.List;
 
 public class ReservationDAO {
 
-    // שליפת כל ההזמנות מה-DB
     public List<Reservation> getAllReservations() throws SQLException {
-        List<Reservation> list = new ArrayList<>();
+        String sql = "SELECT order_number, order_date, number_of_guests, " +
+                     "confirmation_code, subscriber_id, date_of_placing_order " +
+                     "FROM `order`";
 
-        String sql =
-                "SELECT order_number, order_date, number_of_guests, " +
-                "confirmation_code, subscriber_id, date_of_placing_order " +
-                "FROM `order`";   // שים לב ל־` בגלל שהמילה order היא מילה שמורה
+        List<Reservation> list = new ArrayList<>();
 
         try (Connection conn = DBConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {
 
             while (rs.next()) {
-                Reservation r = new Reservation(
-                        rs.getInt("order_number"),
-                        rs.getDate("order_date"),
-                        rs.getInt("number_of_guests"),
-                        rs.getInt("confirmation_code"),
-                        rs.getInt("subscriber_id"),
-                        rs.getDate("date_of_placing_order")
-                );
-                list.add(r);
+                int num   = rs.getInt("order_number");
+                Date date = rs.getDate("order_date");
+                int guests = rs.getInt("number_of_guests");
+                int conf   = rs.getInt("confirmation_code");
+                int subId  = rs.getInt("subscriber_id");
+                Date placed = rs.getDate("date_of_placing_order");
+
+                list.add(new Reservation(num, date, guests, conf, subId, placed));
             }
         }
         return list;
     }
 
-    // עדכון order_date ו-number_of_guests להזמנה קיימת
-    public void updateReservation(int reservationNumber, Date newDate, int newGuests) throws SQLException {
+    // עדכון order_date ו number_of_guests לפי order_number
+    public void updateReservation(int reservationNumber,
+                                  Date newDate,
+                                  int newGuests) throws SQLException {
 
-        String sql =
-                "UPDATE `order` " +
-                "SET order_date = ?, number_of_guests = ? " +
-                "WHERE order_number = ?";
+        String sql = "UPDATE `order` " +
+                     "SET order_date = ?, number_of_guests = ? " +
+                     "WHERE order_number = ?";
 
         try (Connection conn = DBConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -48,10 +46,10 @@ public class ReservationDAO {
             ps.setDate(1, newDate);
             ps.setInt(2, newGuests);
             ps.setInt(3, reservationNumber);
-
             ps.executeUpdate();
         }
     }
 }
+
 
 

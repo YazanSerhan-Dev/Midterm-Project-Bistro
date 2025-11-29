@@ -11,7 +11,7 @@ public class ServerFX extends Application {
     @Override
     public void start(Stage primaryStage) throws Exception {
         Parent root = FXMLLoader.load(getClass().getResource("ServerView.fxml"));
-        primaryStage.setTitle("Bistro Server");
+        primaryStage.setTitle("Bistro Server - listening for client connections");
         primaryStage.setScene(new Scene(root));
         primaryStage.show();
     }
@@ -20,6 +20,7 @@ public class ServerFX extends Application {
         launch(args);
     }
 }
+
 
 
 
