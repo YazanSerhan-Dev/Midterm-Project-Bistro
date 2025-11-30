@@ -15,13 +15,9 @@
             </padding>
             <children>
 
-                <!-- Server IP + Connect -->
+                <!-- Connect button (server IP is passed via command line) -->
                 <HBox spacing="10.0">
                     <children>
-                        <Label text="Server IP:"/>
-                        <TextField fx:id="serverIpField"
-                                   promptText="e.g. 127.0.0.1"
-                                   prefWidth="150" />
                         <Button text="Connect"
                                 onAction="#onConnect"/>
                     </children>
@@ -52,7 +48,7 @@
                     </children>
                 </HBox>
 
-                <!-- Buttons -->
+                <!-- Buttons for actions -->
                 <HBox spacing="10.0">
                     <children>
                         <Button text="Get Reservations"
@@ -70,4 +66,5 @@
         </VBox>
     </center>
 </BorderPane>
+
 

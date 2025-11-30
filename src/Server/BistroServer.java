@@ -5,6 +5,8 @@ import java.sql.Date;
 import java.sql.SQLException;
 import java.util.List;
 
+import DataBase.Reservation;
+import DataBase.ReservationDAO;
 import ocsf.server.AbstractServer;
 import ocsf.server.ConnectionToClient;
 

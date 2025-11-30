@@ -11,36 +11,26 @@ public class ClientController {
     // ===== OCSF client =====
     private BistroClient client;
 
-    private static final int SERVER_PORT = 5555;
-    // change this IP when running on 2 different PCs
+    private static final int SERVER_PORT = 5555;     // (kept for clarity, not strictly needed)
+    // change this IP when running on 2 different PCs (will be overridden from ClientFX)
     private String SERVER_HOST = "127.0.0.1";
-
-    // optional helper if you want to set IP from outside
-    public void setServerHost(String host) {
-        this.SERVER_HOST = host;
-    }
 
     // ----- connection management -----
     public void connectToServer() {
         try {
-            String ip = (serverIpField != null) ? serverIpField.getText() : null;
+            // Host and port are now provided via command-line arguments to the JAR
+            SERVER_HOST = ClientFX.getHost();
 
-            if (ip == null || ip.isBlank()) {
-                ip = "127.0.0.1"; // fallback default
-            }
+            client = new BistroClient(SERVER_HOST, ClientFX.getPort(), this);
+            statusLabel.setText("Connecting to " + SERVER_HOST + ":" + ClientFX.getPort() + "...");
 
-            SERVER_HOST = ip.trim();
-
-            client = new BistroClient(SERVER_HOST, SERVER_PORT, this);
             client.openConnection();
 
-            statusLabel.setText("Connecting to " + SERVER_HOST + "...");
         } catch (Exception e) {
             statusLabel.setText("Connection failed: " + e.getMessage());
             e.printStackTrace();
         }
     }
-
 
     public void onConnected() {
         javafx.application.Platform.runLater(
@@ -76,17 +66,12 @@ public class ClientController {
     @FXML private TextField dateField;
     @FXML private TextField guestsField;
     @FXML private Label statusLabel;
-    @FXML private TextField serverIpField;
 
     // called automatically when FXML is loaded
     @FXML
     private void initialize() {
-        if (serverIpField != null) {
-            serverIpField.setText("127.0.0.1"); // default when testing on same PC
-        }
         statusLabel.setText("Not connected");
     }
-
 
     @FXML
     private void onConnect(ActionEvent event) {
@@ -133,5 +118,6 @@ public class ClientController {
         }
     }
 }
+
 
 
