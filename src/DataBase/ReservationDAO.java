@@ -13,13 +13,17 @@ public class ReservationDAO {
 
         List<Reservation> list = new ArrayList<>();
 
-        try (Connection conn = DBConnection.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql);
+        // ----- get connection from pool -----
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pConn   = pool.getConnection();
+        Connection conn          = pConn.getConnection();
+
+        try (PreparedStatement ps = conn.prepareStatement(sql);
              ResultSet rs = ps.executeQuery()) {
 
             while (rs.next()) {
-                int num   = rs.getInt("order_number");
-                Date date = rs.getDate("order_date");
+                int num    = rs.getInt("order_number");
+                Date date  = rs.getDate("order_date");
                 int guests = rs.getInt("number_of_guests");
                 int conf   = rs.getInt("confirmation_code");
                 int subId  = rs.getInt("subscriber_id");
@@ -27,7 +31,11 @@ public class ReservationDAO {
 
                 list.add(new Reservation(num, date, guests, conf, subId, placed));
             }
+        } finally {
+            // ----- IMPORTANT: return to pool (do NOT close conn) -----
+            pool.releaseConnection(pConn);
         }
+
         return list;
     }
 
@@ -40,16 +48,23 @@ public class ReservationDAO {
                      "SET order_date = ?, number_of_guests = ? " +
                      "WHERE order_number = ?";
 
-        try (Connection conn = DBConnection.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
+        // ----- get connection from pool -----
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pConn   = pool.getConnection();
+        Connection conn          = pConn.getConnection();
 
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setDate(1, newDate);
             ps.setInt(2, newGuests);
             ps.setInt(3, reservationNumber);
             ps.executeUpdate();
+        } finally {
+            // ----- return to pool -----
+            pool.releaseConnection(pConn);
         }
     }
 }
+
 
 
 
