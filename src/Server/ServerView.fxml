@@ -55,17 +55,26 @@
                 <Insets top="10" right="15" bottom="10" left="15"/>
             </padding>
 
-            <Label text="Port: 5555"
-                   style="-fx-text-fill: #444444; -fx-font-size: 12px;"/>
+                        <Label text="Port: 5555"
+                   style="-fx-text-fill: #444444; -fx-font-size: 12px"/>
 
             <Pane HBox.hgrow="ALWAYS"/> <!-- pushes button to the right -->
+
+            <Button fx:id="exitButton"
+                    text="Stop Server"
+                    onAction="#onExitServer"
+                    disable="true"
+                    style="-fx-background-color: #d90429; -fx-text-fill: white;
+                           -fx-font-weight: bold; -fx-padding: 6 18 6 18;
+                           -fx-background-radius: 4;"/>
 
             <Button fx:id="startButton"
                     text="Start Server"
                     onAction="#onStartServer"
                     style="-fx-background-color: #2b2d42; -fx-text-fill: white;
                            -fx-font-weight: bold; -fx-padding: 6 18 6 18;
-                           -fx-background-radius: 4;"/>
+                           -fx-background-radius: 4;"/>           
+        
         </HBox>
     </bottom>
 
