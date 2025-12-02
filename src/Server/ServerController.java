@@ -36,12 +36,16 @@ public class ServerController {
     }
 
     public void appendLogFromServer(String msg) {
-        if (logArea != null) {
-            logArea.appendText(msg);
-        } else {
-            System.out.print(msg);
-        }
+        javafx.application.Platform.runLater(() -> {
+            if (logArea != null) {
+                logArea.appendText(msg + "\n");
+            } else {
+                System.out.println(msg);
+            }
+        });
     }
+
+
 }
 
 

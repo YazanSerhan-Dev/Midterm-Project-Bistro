@@ -18,10 +18,17 @@
                 <!-- Connect button (server IP is passed via command line) -->
                 <HBox spacing="10.0">
                     <children>
-                        <Button text="Connect"
+                        <Label text="Server IP:"/>
+                        <TextField fx:id="ipField" />
+                        <Button fx:id="connectButton"
+                                text="Connect"
                                 onAction="#onConnect"/>
+                        <Button fx:id="disconnectButton"
+                                text="Disconnect"
+                                onAction="#onDisconnect"/>
                     </children>
                 </HBox>
+
 
                 <!-- Title label -->
                 <Label text="Reservations from server:" />

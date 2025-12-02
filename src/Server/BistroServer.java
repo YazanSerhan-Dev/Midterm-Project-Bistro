@@ -64,6 +64,27 @@ public class BistroServer extends AbstractServer {
             } catch (IOException ignored) {}
         }
     }
+    
+    @Override
+    protected void clientDisconnected(ConnectionToClient client) {
+        super.clientDisconnected(client);
+        if (controller != null) {
+            controller.appendLogFromServer(
+                "Client disconnected: " + client.getInetAddress() + "\n"
+            );
+        }
+    }
+
+    @Override
+    protected void clientException(ConnectionToClient client, Throwable exception) {
+        super.clientException(client, exception);
+        if (controller != null) {
+            controller.appendLogFromServer(
+                "Client disconnected with error: " + client.getInetAddress()
+                + " (" + exception.getMessage() + ")\n"
+            );
+        }
+    }
 
     private void handleGetReservations(ConnectionToClient client)
             throws SQLException, IOException {

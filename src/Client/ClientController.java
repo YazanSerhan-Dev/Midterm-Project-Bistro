@@ -2,6 +2,7 @@ package Client;
 
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
+import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
@@ -11,15 +12,42 @@ public class ClientController {
     // ===== OCSF client =====
     private BistroClient client;
 
-    private static final int SERVER_PORT = 5555;     // (kept for clarity, not strictly needed)
-    // change this IP when running on 2 different PCs (will be overridden from ClientFX)
+    // kept for clarity – actual port is taken from ClientFX.getPort()
+    private static final int SERVER_PORT = 5555;
+
+    // current host we are using
     private String SERVER_HOST = "127.0.0.1";
+
+    // ===== FXML fields =====
+    @FXML private TextArea reservationsArea;
+    @FXML private TextField reservationNumberField;
+    @FXML private TextField dateField;
+    @FXML private TextField guestsField;
+    @FXML private TextField ipField;          // new: lets user change IP from the UI
+    @FXML private Label statusLabel;
+    @FXML private Button connectButton;
+    @FXML private Button disconnectButton;
 
     // ----- connection management -----
     public void connectToServer() {
         try {
-            // Host and port are now provided via command-line arguments to the JAR
-            SERVER_HOST = ClientFX.getHost();
+            // If we are already connected – do nothing
+            if (client != null && client.isConnected()) {
+                statusLabel.setText("Already connected to " + SERVER_HOST + ":" + ClientFX.getPort());
+                return;
+            }
+
+            // Decide which host to use: value from the text field, or the one from ClientFX
+            String hostFromArgs = ClientFX.getHost();
+            String hostFromUI = (ipField != null && ipField.getText() != null)
+                    ? ipField.getText().trim()
+                    : "";
+
+            if (!hostFromUI.isEmpty()) {
+                SERVER_HOST = hostFromUI;
+            } else {
+                SERVER_HOST = hostFromArgs;
+            }
 
             client = new BistroClient(SERVER_HOST, ClientFX.getPort(), this);
             statusLabel.setText("Connecting to " + SERVER_HOST + ":" + ClientFX.getPort() + "...");
@@ -29,25 +57,60 @@ public class ClientController {
         } catch (Exception e) {
             statusLabel.setText("Connection failed: " + e.getMessage());
             e.printStackTrace();
+            client = null;
+        }
+    }
+
+    public void disconnectFromServer() {
+        try {
+            if (client != null && client.isConnected()) {
+                client.closeConnection();   // triggers connectionClosed() in BistroClient
+                statusLabel.setText("Disconnected from server");
+            } else {
+                statusLabel.setText("Not connected");
+            }
+        } catch (Exception e) {
+            statusLabel.setText("Error while disconnecting: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 
     public void onConnected() {
-        javafx.application.Platform.runLater(
-                () -> statusLabel.setText("Connected to server")
-        );
+        javafx.application.Platform.runLater(() -> {
+            statusLabel.setText("Connected to " + SERVER_HOST + " via port " + ClientFX.getPort());
+            if (connectButton != null) {
+                connectButton.setDisable(true);
+            }
+            if (disconnectButton != null) {
+                disconnectButton.setDisable(false);
+            }
+        });
     }
 
     public void onConnectionError(Exception e) {
-        javafx.application.Platform.runLater(
-                () -> statusLabel.setText("Connection error: " + e.getMessage())
-        );
+        javafx.application.Platform.runLater(() -> {
+            statusLabel.setText("Connection error: " + e.getMessage());
+            if (disconnectButton != null) {
+                disconnectButton.setDisable(true);
+            }
+            if (connectButton != null) {
+                connectButton.setDisable(false);
+            }
+            client = null;
+        });
     }
 
     public void onDisconnected() {
-        javafx.application.Platform.runLater(
-                () -> statusLabel.setText("Disconnected from server")
-        );
+        javafx.application.Platform.runLater(() -> {
+            statusLabel.setText("Disconnected from server");
+            if (disconnectButton != null) {
+                disconnectButton.setDisable(true);
+            }
+            if (connectButton != null) {
+                connectButton.setDisable(false);
+            }
+            client = null;
+        });
     }
 
     // called from BistroClient when a message arrives
@@ -60,25 +123,33 @@ public class ClientController {
         });
     }
 
-    // ===== FXML fields =====
-    @FXML private TextArea reservationsArea;
-    @FXML private TextField reservationNumberField;
-    @FXML private TextField dateField;
-    @FXML private TextField guestsField;
-    @FXML private Label statusLabel;
-
     // called automatically when FXML is loaded
     @FXML
     private void initialize() {
-        statusLabel.setText("Not connected");
+        // initialize IP field with whatever ClientFX decided (either default or from args)
+        if (ipField != null) {
+            ipField.setText("127.0.0.1");
+        }
+        if (statusLabel != null) {
+            statusLabel.setText("Not connected");
+        }
+        if (disconnectButton != null) {
+            disconnectButton.setDisable(true);
+        }
     }
+
+    // ===== Button handlers =====
 
     @FXML
     private void onConnect(ActionEvent event) {
         connectToServer();
     }
 
-    // ===== Button handlers =====
+    @FXML
+    private void onDisconnect(ActionEvent event) {
+        disconnectFromServer();
+    }
+
     @FXML
     private void onGetReservations(ActionEvent event) {
         try {
@@ -118,6 +189,7 @@ public class ClientController {
         }
     }
 }
+
 
 
 
