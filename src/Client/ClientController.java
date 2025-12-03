@@ -7,52 +7,62 @@ import javafx.scene.control.Label;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 
+/**
+ * JavaFX controller for the Bistro client window.
+ * - Manages BistroClient (OCSF)
+ * - Handles all GUI actions (connect, disconnect, get, update)
+ * - Updates the UI on connection / disconnection / server messages
+ */
 public class ClientController {
 
-    // ===== OCSF client =====
+    // ===== OCSF client instance =====
     private BistroClient client;
 
-    // kept for clarity – actual port is taken from ClientFX.getPort()
-    private static final int SERVER_PORT = 5555;
-
-    // current host we are using
-    private String SERVER_HOST = "127.0.0.1";
+    // current host we are using (default; may be overridden by args or UI)
+    private String serverHost = "127.0.0.1";
 
     // ===== FXML fields =====
     @FXML private TextArea reservationsArea;
     @FXML private TextField reservationNumberField;
     @FXML private TextField dateField;
     @FXML private TextField guestsField;
-    @FXML private TextField ipField;          // new: lets user change IP from the UI
+    @FXML private TextField ipField;
     @FXML private Label statusLabel;
     @FXML private Button connectButton;
     @FXML private Button disconnectButton;
 
-    // ----- connection management -----
+    // ---------------------------------------------------------------------
+    //  Connection management (non-FXML public methods, used by buttons & FX)
+    // ---------------------------------------------------------------------
+
+    /** Try to connect to the server, using IP from UI or from program args. */
     public void connectToServer() {
         try {
-            // If we are already connected – do nothing
+            // Already connected?
             if (client != null && client.isConnected()) {
-                statusLabel.setText("Already connected to " + SERVER_HOST + ":" + ClientFX.getPort());
+                statusLabel.setText("Already connected to "
+                        + serverHost + ":" + ClientFX.getPort());
                 return;
             }
 
-            // Decide which host to use: value from the text field, or the one from ClientFX
+            // Decide which host to use: UI text field or value from ClientFX
             String hostFromArgs = ClientFX.getHost();
             String hostFromUI = (ipField != null && ipField.getText() != null)
                     ? ipField.getText().trim()
                     : "";
 
             if (!hostFromUI.isEmpty()) {
-                SERVER_HOST = hostFromUI;
+                serverHost = hostFromUI;
             } else {
-                SERVER_HOST = hostFromArgs;
+                serverHost = hostFromArgs;
             }
 
-            client = new BistroClient(SERVER_HOST, ClientFX.getPort(), this);
-            statusLabel.setText("Connecting to " + SERVER_HOST + ":" + ClientFX.getPort() + "...");
+            client = new BistroClient(serverHost, ClientFX.getPort(), this);
 
-            client.openConnection();
+            statusLabel.setText(
+                    "Connecting to " + serverHost + ":" + ClientFX.getPort() + "...");
+
+            client.openConnection();  // async connect – callbacks will fire
 
         } catch (Exception e) {
             statusLabel.setText("Connection failed: " + e.getMessage());
@@ -61,23 +71,30 @@ public class ClientController {
         }
     }
 
+    /** Disconnect from server if connected. Called from button & when window closes. */
     public void disconnectFromServer() {
         try {
             if (client != null && client.isConnected()) {
-                client.closeConnection();   // triggers connectionClosed() in BistroClient
+                client.closeConnection();   // triggers connectionClosed()
                 statusLabel.setText("Disconnected from server");
             } else {
                 statusLabel.setText("Not connected");
             }
         } catch (Exception e) {
-            statusLabel.setText("Error while disconnecting: " + e.getMessage());
+            statusLabel.setText("Error disconnecting: " + e.getMessage());
             e.printStackTrace();
         }
     }
 
+    // ---------------------------------------------------------------------
+    //  Callbacks from BistroClient (OCSF events)
+    // ---------------------------------------------------------------------
+
+    /** Called when connectionEstablished() fires in BistroClient. */
     public void onConnected() {
         javafx.application.Platform.runLater(() -> {
-            statusLabel.setText("Connected to " + SERVER_HOST + " via port " + ClientFX.getPort());
+            statusLabel.setText("Connected to " + serverHost
+                                + ":" + ClientFX.getPort());
             if (connectButton != null) {
                 connectButton.setDisable(true);
             }
@@ -87,6 +104,7 @@ public class ClientController {
         });
     }
 
+    /** Called when connectionException() fires in BistroClient. */
     public void onConnectionError(Exception e) {
         javafx.application.Platform.runLater(() -> {
             statusLabel.setText("Connection error: " + e.getMessage());
@@ -100,6 +118,7 @@ public class ClientController {
         });
     }
 
+    /** Called when connectionClosed() fires in BistroClient. */
     public void onDisconnected() {
         javafx.application.Platform.runLater(() -> {
             statusLabel.setText("Disconnected from server");
@@ -113,7 +132,7 @@ public class ClientController {
         });
     }
 
-    // called from BistroClient when a message arrives
+    /** Called from BistroClient whenever a message arrives from the server. */
     public void handleServerMessage(Object msg) {
         String response = String.valueOf(msg);
 
@@ -123,10 +142,14 @@ public class ClientController {
         });
     }
 
-    // called automatically when FXML is loaded
+    // ---------------------------------------------------------------------
+    //  FXML lifecycle
+    // ---------------------------------------------------------------------
+
+    /** Called automatically when FXML is loaded. */
     @FXML
     private void initialize() {
-        // initialize IP field with whatever ClientFX decided (either default or from args)
+        // Initialize IP field with default or later the user can change it
         if (ipField != null) {
             ipField.setText("127.0.0.1");
         }
@@ -138,7 +161,9 @@ public class ClientController {
         }
     }
 
-    // ===== Button handlers =====
+    // ---------------------------------------------------------------------
+    //  Button handlers (wired in ClientView.fxml)
+    // ---------------------------------------------------------------------
 
     @FXML
     private void onConnect(ActionEvent event) {
@@ -174,6 +199,14 @@ public class ClientController {
                 return;
             }
 
+            // Validate basic fields
+            if (reservationNumberField.getText().isEmpty()
+                    || dateField.getText().isEmpty()
+                    || guestsField.getText().isEmpty()) {
+                statusLabel.setText("Please fill number, date and guests");
+                return;
+            }
+
             int num    = Integer.parseInt(reservationNumberField.getText());
             String date = dateField.getText();
             int guests = Integer.parseInt(guestsField.getText());
@@ -189,6 +222,7 @@ public class ClientController {
         }
     }
 }
+
 
 
 

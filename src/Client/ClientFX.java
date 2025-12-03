@@ -6,12 +6,17 @@ import javafx.scene.Parent;
 import javafx.scene.Scene;
 import javafx.stage.Stage;
 
+/**
+ * JavaFX entry point for the Bistro client.
+ * - Reads host/port from command line args.
+ * - Loads the ClientView.fxml.
+ * - On window close, disconnects from the server so logs show the disconnect.
+ */
 public class ClientFX extends Application {
 
     private static String host = "localhost";
     private static int port = 5555;
 
-    // add this:
     private static ClientController controller;
 
     @Override
@@ -38,7 +43,7 @@ public class ClientFX extends Application {
         FXMLLoader loader = new FXMLLoader(getClass().getResource("ClientView.fxml"));
         Parent root = loader.load();
 
-        // save controller reference:
+        // Save controller reference so we can call disconnect on window close
         controller = loader.getController();
 
         Scene scene = new Scene(root);
@@ -47,7 +52,7 @@ public class ClientFX extends Application {
         primaryStage.show();
     }
 
-    // 🔥 this is called when the window is closed
+    // Called when the window is closed (Alt+F4, X button, etc.)
     @Override
     public void stop() throws Exception {
         if (controller != null) {
@@ -60,6 +65,7 @@ public class ClientFX extends Application {
         launch(args);
     }
 }
+
 
 
 
