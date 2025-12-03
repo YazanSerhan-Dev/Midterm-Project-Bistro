@@ -18,6 +18,8 @@ public class ClientFX extends Application {
     private static int port = 5555;
 
     private static ClientController controller;
+    
+    //Possible way to enter the ip via jars
 
     @Override
     public void init() throws Exception {
