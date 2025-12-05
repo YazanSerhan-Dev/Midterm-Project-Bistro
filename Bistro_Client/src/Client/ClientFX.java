@@ -39,6 +39,7 @@ public class ClientFX extends Application {
 
     public static String getHost() { return host; }
     public static int getPort() { return port; }
+    
 
     @Override
     public void start(Stage primaryStage) throws Exception {

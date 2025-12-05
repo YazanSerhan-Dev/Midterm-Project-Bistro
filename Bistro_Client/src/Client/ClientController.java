@@ -1,11 +1,14 @@
 package Client;
 
 import javafx.event.ActionEvent;
+
 import javafx.fxml.FXML;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
+
+import common.Message;
 
 /**
  * JavaFX controller for the Bistro client window.
@@ -75,7 +78,17 @@ public class ClientController {
     public void disconnectFromServer() {
         try {
             if (client != null && client.isConnected()) {
-                client.closeConnection();   // triggers connectionClosed()
+
+                // 1. נשלח לשרת הודעה שאנחנו רוצים להתנתק
+                try {
+                    client.sendToServer("CLIENT_QUIT");
+                } catch (Exception ignore) {
+                    // גם אם זה נכשל, נמשיך לסגור את החיבור
+                }
+
+                // 2. נסגור את החיבור בפועל (יגרום ל-connectionClosed בצד הלקוח)
+                client.closeConnection();
+
                 statusLabel.setText("Disconnected from server");
             } else {
                 statusLabel.setText("Not connected");
@@ -85,6 +98,7 @@ public class ClientController {
             e.printStackTrace();
         }
     }
+
 
     // ---------------------------------------------------------------------
     //  Callbacks from BistroClient (OCSF events)
@@ -134,13 +148,47 @@ public class ClientController {
 
     /** Called from BistroClient whenever a message arrives from the server. */
     public void handleServerMessage(Object msg) {
-        String response = String.valueOf(msg);
 
         javafx.application.Platform.runLater(() -> {
-            reservationsArea.setText(response);
-            statusLabel.setText("Message from server");
+            if (msg instanceof Message) {
+                Message m = (Message) msg;
+
+                switch (m.getType()) {
+                    case RESERVATIONS_TEXT:
+                        reservationsArea.setText(m.getText() != null ? m.getText() : "");
+                        statusLabel.setText("Reservations loaded");
+                        break;
+
+                    case UPDATE_RESULT:
+                        if (Boolean.TRUE.equals(m.getSuccess())) {
+                            statusLabel.setText("Update succeeded");
+                        } else {
+                            statusLabel.setText("Update failed: " +
+                                    (m.getText() != null ? m.getText() : ""));
+                        }
+                        break;
+
+                    case INFO:
+                        statusLabel.setText("Info: " + (m.getText() != null ? m.getText() : ""));
+                        break;
+
+                    case ERROR:
+                        statusLabel.setText("Error: " + (m.getText() != null ? m.getText() : ""));
+                        break;
+
+                    default:
+                        statusLabel.setText("Unknown message type: " + m.getType());
+                }
+
+            } else {
+                // fallback: if server sends plain String for some reason
+                String response = String.valueOf(msg);
+                reservationsArea.setText(response);
+                statusLabel.setText("Raw message from server");
+            }
         });
     }
+
 
     // ---------------------------------------------------------------------
     //  FXML lifecycle
@@ -183,10 +231,12 @@ public class ClientController {
                 return;
             }
 
-            client.sendToServer("GET_RESERVATIONS");
+            Message msg = new Message(Message.Type.GET_RESERVATIONS);
+            client.sendToServer(msg);
+            statusLabel.setText("Requesting reservations...");
 
         } catch (Exception e) {
-            statusLabel.setText("Error sending GET: " + e.getMessage());
+            statusLabel.setText("Error sending request: " + e.getMessage());
             e.printStackTrace();
         }
     }
@@ -199,20 +249,17 @@ public class ClientController {
                 return;
             }
 
-            // Validate basic fields
-            if (reservationNumberField.getText().isEmpty()
-                    || dateField.getText().isEmpty()
-                    || guestsField.getText().isEmpty()) {
-                statusLabel.setText("Please fill number, date and guests");
-                return;
-            }
+            int num = Integer.parseInt(reservationNumberField.getText().trim());
+            String dateStr = dateField.getText().trim();   // yyyy-MM-dd
+            int guests = Integer.parseInt(guestsField.getText().trim());
 
-            int num    = Integer.parseInt(reservationNumberField.getText());
-            String date = dateField.getText();
-            int guests = Integer.parseInt(guestsField.getText());
+            Message msg = new Message(Message.Type.UPDATE_RESERVATION);
+            msg.setReservationNumber(num);
+            msg.setReservationDate(dateStr);
+            msg.setNumberOfGuests(guests);
 
-            String cmd = "UPDATE_RESERVATION:" + num + ":" + date + ":" + guests;
-            client.sendToServer(cmd);
+            client.sendToServer(msg);
+            statusLabel.setText("Sending update request...");
 
         } catch (NumberFormatException e) {
             statusLabel.setText("Invalid number / guests");
@@ -221,6 +268,7 @@ public class ClientController {
             e.printStackTrace();
         }
     }
+
 }
 
 
