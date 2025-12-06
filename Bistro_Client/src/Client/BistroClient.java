@@ -2,12 +2,16 @@ package Client;
 
 import ocsf.client.AbstractClient;
 
+/**
+ * Simple OCSF client.
+ * Forwards events to ClientController.
+ */
 public class BistroClient extends AbstractClient {
 
-    private ClientController controller;
+    private final ClientController controller;
 
     public BistroClient(String host, int port, ClientController controller) {
-        super(host, port);        // call AbstractClient(host, port)
+        super(host, port);
         this.controller = controller;
     }
 
@@ -22,13 +26,13 @@ public class BistroClient extends AbstractClient {
     }
 
     @Override
-    protected void connectionException(Exception exception) {
-        controller.onConnectionError(exception);
+    protected void connectionClosed() {
+        controller.onDisconnected();
     }
 
     @Override
-    protected void connectionClosed() {
-        controller.onDisconnected();
+    protected void connectionException(Exception exception) {
+        controller.onConnectionError(exception);
     }
 }
 

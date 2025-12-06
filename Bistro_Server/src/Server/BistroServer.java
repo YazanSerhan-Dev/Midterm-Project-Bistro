@@ -1,10 +1,6 @@
 package Server;
 
-
-
 import java.io.IOException;
-
-
 import java.sql.Date;
 import java.sql.SQLException;
 import java.util.List;
@@ -13,132 +9,125 @@ import DataBase.Reservation;
 import DataBase.ReservationDAO;
 import ocsf.server.AbstractServer;
 import ocsf.server.ConnectionToClient;
-
 import common.Message;
 
 /**
  * OCSF server for the Bistro system.
- * - Listens for client connections
- * - Handles messages from clients
- * - Uses ReservationDAO (and the connection pool) to talk to the DB
- * - Reports log messages back to the ServerController (GUI)
+ * Listens for client connections and talks to the DB via ReservationDAO.
  */
 public class BistroServer extends AbstractServer {
 
-    // Reference to the JavaFX controller (for logging in the UI)
+    // Reference to JavaFX controller (for logging + table)
     private final ServerController controller;
 
-    // DAO layer for reservations (uses the connection pool internally)
+    // DAO layer (uses the connection pool inside)
     private final ReservationDAO reservationDAO = new ReservationDAO();
-
 
     public BistroServer(int port, ServerController controller) {
         super(port);
         this.controller = controller;
     }
 
-    private void log(String msg) {
+    private void log(String text) {
         if (controller != null) {
-            controller.appendLogFromServer(msg);
+            controller.appendLogFromServer(text);
         } else {
-            System.out.println(msg);
+            System.out.println(text);
         }
     }
 
-    /* OCSF hooks */
+    /* ========== OCSF lifecycle ========== */
 
     @Override
     protected void serverStarted() {
         log("Server started on port " + getPort());
-        controller.onServerStarted(getPort());
+        if (controller != null) {
+            controller.onServerStarted(getPort());
+        }
     }
 
     @Override
     protected void serverStopped() {
         log("Server stopped.");
-        controller.onServerStopped();
+        if (controller != null) {
+            controller.onServerStopped();
+        }
     }
 
     @Override
     protected void clientConnected(ConnectionToClient client) {
         super.clientConnected(client);
+
         String host = client.getInetAddress().getHostName();
-        String ip = client.getInetAddress().getHostAddress();
-        controller.onClientConnected(host, ip);
+        String ip   = client.getInetAddress().getHostAddress();
+
         log("Client connected: " + host + " (" + ip + ")");
+        if (controller != null) {
+            controller.onClientConnected(host, ip);
+        }
     }
 
     @Override
-    synchronized protected void clientDisconnected(ConnectionToClient client) {
+    protected synchronized void clientDisconnected(ConnectionToClient client) {
         super.clientDisconnected(client);
 
-        java.net.InetAddress addr = client.getInetAddress();
-        if (addr == null) {
-            // כבר סגור לגמרי, רק נרשום ללוג ולא נעשה כלום
-            log("clientDisconnected called but InetAddress is null (already closed)\n");
+        // Sometimes InetAddress is already null if the socket is fully closed
+        if (client.getInetAddress() == null) {
+            log("clientDisconnected called but InetAddress is null (already closed)");
             return;
         }
 
-        String host = addr.getHostName();
-        String ip   = addr.getHostAddress();
+        String host = client.getInetAddress().getHostName();
+        String ip   = client.getInetAddress().getHostAddress();
 
-        controller.onClientDisconnected(host, ip);
-        log("Client disconnected: " + host + " (" + ip + ")\n");
+        log("Client disconnected: " + host + " (" + ip + ")");
+        if (controller != null) {
+            controller.onClientDisconnected(host, ip);
+        }
     }
-
 
     @Override
     protected void clientException(ConnectionToClient client, Throwable exception) {
-        clientDisconnected(client);
         log("Client exception: " + exception.getMessage());
+        // OCSF will close the connection – update the table via clientDisconnected
+        clientDisconnected(client);
     }
 
-
-
-    // ==================== Handling client messages ====================
+    /* ========== Handle messages from client ========== */
 
     @Override
     protected void handleMessageFromClient(Object msg, ConnectionToClient client) {
-        log("Received from client: " + msg + "\n");
+        log("Received from client: " + msg);
 
         try {
-            if (msg instanceof Message) {
-                Message m = (Message) msg;
-
-                switch (m.getType()) {
-                    case GET_RESERVATIONS:
-                        handleGetReservations(client);
-                        break;
-
-                    case UPDATE_RESERVATION:
-                    	handleUpdateReservation(m, client);
-                        break;
-
-                    default:
-                        client.sendToClient(new Message(
-                                Message.Type.ERROR,
-                                "Unknown message type: " + m.getType()
-                        ));
-                }
-
-            } else if (msg instanceof String) {
-                // optional: support old string protocol if you want backward compatibility
-                String text = (String) msg;
-                log("Received legacy string message: " + text + "\n");
+            if (!(msg instanceof Message)) {
                 client.sendToClient(new Message(
                         Message.Type.ERROR,
-                        "Legacy string protocol not supported anymore"
+                        "Unsupported message object from client"
                 ));
+                return;
+            }
 
-            } else {
-                client.sendToClient(new Message(
-                        Message.Type.ERROR,
-                        "Unsupported message object: " + msg.getClass().getName()
-                ));
+            Message m = (Message) msg;
+
+            switch (m.getType()) {
+                case GET_RESERVATIONS:
+                    handleGetReservations(client);
+                    break;
+
+                case UPDATE_RESERVATION:
+                    handleUpdateReservation(m, client);
+                    break;
+
+                default:
+                    client.sendToClient(new Message(
+                            Message.Type.ERROR,
+                            "Unknown message type: " + m.getType()
+                    ));
             }
 
         } catch (Exception e) {
-            log("Error handling client message: " + e.getMessage() + "\n");
+            log("Error handling client message: " + e.getMessage());
             e.printStackTrace();
 
             try {
@@ -146,28 +135,26 @@ public class BistroServer extends AbstractServer {
                         Message.Type.ERROR,
                         "Server exception: " + e.getMessage()
                 ));
-            } catch (IOException ioEx) {
-                // even sending the error failed – just log it
-                log("Failed to send error message to client: " + ioEx.getMessage() + "\n");
-                ioEx.printStackTrace();
+            } catch (IOException ignored) {
+                log("Failed to send error message to client: " + ignored.getMessage());
             }
         }
-
     }
 
+    /* ========== Commands ========== */
 
+    // GET_RESERVATIONS from client
+    private void handleGetReservations(ConnectionToClient client)
+            throws IOException, SQLException {
 
-
-    /**
-     * Handle the "GET_RESERVATIONS" command.
-     */
-    private void handleGetReservations(ConnectionToClient client) throws IOException, SQLException {
-        List<Reservation> reservations = reservationDAO.getAllReservations(); // use your method
+        List<Reservation> reservations = reservationDAO.getAllReservations();
 
         if (reservations.isEmpty()) {
-            Message reply = new Message(Message.Type.RESERVATIONS_TEXT, "NO_RESERVATIONS");
-            client.sendToClient(reply);
-            log("No reservations found\n");
+            client.sendToClient(new Message(
+                    Message.Type.RESERVATIONS_TEXT,
+                    "NO_RESERVATIONS"
+            ));
+            log("No reservations found");
             return;
         }
 
@@ -181,24 +168,26 @@ public class BistroServer extends AbstractServer {
               .append("\n");
         }
 
-        Message reply = new Message(Message.Type.RESERVATIONS_TEXT, sb.toString());
-        client.sendToClient(reply);
-
-        log("Sent " + reservations.size() + " reservations\n");
+        client.sendToClient(new Message(
+                Message.Type.RESERVATIONS_TEXT,
+                sb.toString()
+        ));
+        log("Sent " + reservations.size() + " reservations to client");
     }
 
+    // UPDATE_RESERVATION from client
+    private void handleUpdateReservation(Message m, ConnectionToClient client)
+            throws IOException, SQLException {
 
-    /**
-     * Handle the "UPDATE_RESERVATION" command.
-     * Format: UPDATE_RESERVATION:<num>:<yyyy-MM-dd>:<guests>
-     */
-    private void handleUpdateReservation(Message m, ConnectionToClient client) throws IOException, SQLException {
-        Integer num = m.getReservationNumber();
-        String dateStr = m.getReservationDate();
-        Integer guests = m.getNumberOfGuests();
+        Integer num     = m.getReservationNumber();
+        String dateStr  = m.getReservationDate();
+        Integer guests  = m.getNumberOfGuests();
 
         if (num == null || dateStr == null || guests == null) {
-            Message error = new Message(Message.Type.UPDATE_RESULT, "Missing fields for update");
+            Message error = new Message(
+                    Message.Type.UPDATE_RESULT,
+                    "Missing fields for update"
+            );
             error.setSuccess(false);
             client.sendToClient(error);
             return;
@@ -206,17 +195,19 @@ public class BistroServer extends AbstractServer {
 
         Date newDate = Date.valueOf(dateStr); // yyyy-MM-dd
 
-        // your existing DAO method
         reservationDAO.updateReservation(num, newDate, guests);
 
-        Message ok = new Message(Message.Type.UPDATE_RESULT, "UPDATE_OK");
+        Message ok = new Message(
+                Message.Type.UPDATE_RESULT,
+                "UPDATE_OK"
+        );
         ok.setSuccess(true);
         client.sendToClient(ok);
 
         log("Updated reservation #" + num + " to date=" + newDate +
-            ", guests=" + guests + "\n");
+                ", guests=" + guests);
     }
-
 }
+
 
 

@@ -1,257 +1,113 @@
 package Client;
 
-import javafx.event.ActionEvent;
-
-import javafx.fxml.FXML;
-import javafx.scene.control.Button;
-import javafx.scene.control.Label;
-import javafx.scene.control.TextArea;
-import javafx.scene.control.TextField;
-
 import common.Message;
+import javafx.application.Platform;
+import javafx.fxml.FXML;
+import javafx.scene.control.*;
 
 /**
- * JavaFX controller for the Bistro client window.
- * - Manages BistroClient (OCSF)
- * - Handles all GUI actions (connect, disconnect, get, update)
- * - Updates the UI on connection / disconnection / server messages
+ * Very simple controller for the Bistro client.
  */
 public class ClientController {
 
-    // ===== OCSF client instance =====
+    // ====== FXML controls ======
+
+    @FXML private TextField txtServerIp;
+
+    @FXML private TextArea txtAreaReservations;
+
+    @FXML private TextField txtReservationNumber;
+    @FXML private TextField txtReservationDate;    // yyyy-MM-dd
+    @FXML private TextField txtNumberOfGuests;
+
+    @FXML private Label lblStatus;
+
+    @FXML private Button btnConnect;
+    @FXML private Button btnDisconnect;
+    @FXML private Button btnGetReservations;
+    @FXML private Button btnUpdateReservation;
+
+    // ====== client state ======
+
     private BistroClient client;
+    private static final int PORT = 5555;
 
-    // current host we are using (default; may be overridden by args or UI)
-    private String serverHost = "127.0.0.1";
-
-    // ===== FXML fields =====
-    @FXML private TextArea reservationsArea;
-    @FXML private TextField reservationNumberField;
-    @FXML private TextField dateField;
-    @FXML private TextField guestsField;
-    @FXML private TextField ipField;
-    @FXML private Label statusLabel;
-    @FXML private Button connectButton;
-    @FXML private Button disconnectButton;
-
-    // ---------------------------------------------------------------------
-    //  Connection management (non-FXML public methods, used by buttons & FX)
-    // ---------------------------------------------------------------------
-
-    /** Try to connect to the server, using IP from UI or from program args. */
-    public void connectToServer() {
-        try {
-            // Already connected?
-            if (client != null && client.isConnected()) {
-                statusLabel.setText("Already connected to "
-                        + serverHost + ":" + ClientFX.getPort());
-                return;
-            }
-
-            // Decide which host to use: UI text field or value from ClientFX
-            String hostFromArgs = ClientFX.getHost();
-            String hostFromUI = (ipField != null && ipField.getText() != null)
-                    ? ipField.getText().trim()
-                    : "";
-
-            if (!hostFromUI.isEmpty()) {
-                serverHost = hostFromUI;
-            } else {
-                serverHost = hostFromArgs;
-            }
-
-            client = new BistroClient(serverHost, ClientFX.getPort(), this);
-
-            statusLabel.setText(
-                    "Connecting to " + serverHost + ":" + ClientFX.getPort() + "...");
-
-            client.openConnection();  // async connect – callbacks will fire
-
-        } catch (Exception e) {
-            statusLabel.setText("Connection failed: " + e.getMessage());
-            e.printStackTrace();
-            client = null;
-        }
-    }
-
-    /** Disconnect from server if connected. Called from button & when window closes. */
-    public void disconnectFromServer() {
-        try {
-            if (client != null && client.isConnected()) {
-
-                // 1. נשלח לשרת הודעה שאנחנו רוצים להתנתק
-                try {
-                    client.sendToServer("CLIENT_QUIT");
-                } catch (Exception ignore) {
-                    // גם אם זה נכשל, נמשיך לסגור את החיבור
-                }
-
-                // 2. נסגור את החיבור בפועל (יגרום ל-connectionClosed בצד הלקוח)
-                client.closeConnection();
-
-                statusLabel.setText("Disconnected from server");
-            } else {
-                statusLabel.setText("Not connected");
-            }
-        } catch (Exception e) {
-            statusLabel.setText("Error disconnecting: " + e.getMessage());
-            e.printStackTrace();
-        }
-    }
-
-
-    // ---------------------------------------------------------------------
-    //  Callbacks from BistroClient (OCSF events)
-    // ---------------------------------------------------------------------
-
-    /** Called when connectionEstablished() fires in BistroClient. */
-    public void onConnected() {
-        javafx.application.Platform.runLater(() -> {
-            statusLabel.setText("Connected to " + serverHost
-                                + ":" + ClientFX.getPort());
-            if (connectButton != null) {
-                connectButton.setDisable(true);
-            }
-            if (disconnectButton != null) {
-                disconnectButton.setDisable(false);
-            }
-        });
-    }
-
-    /** Called when connectionException() fires in BistroClient. */
-    public void onConnectionError(Exception e) {
-        javafx.application.Platform.runLater(() -> {
-            statusLabel.setText("Connection error: " + e.getMessage());
-            if (disconnectButton != null) {
-                disconnectButton.setDisable(true);
-            }
-            if (connectButton != null) {
-                connectButton.setDisable(false);
-            }
-            client = null;
-        });
-    }
-
-    /** Called when connectionClosed() fires in BistroClient. */
-    public void onDisconnected() {
-        javafx.application.Platform.runLater(() -> {
-            statusLabel.setText("Disconnected from server");
-            if (disconnectButton != null) {
-                disconnectButton.setDisable(true);
-            }
-            if (connectButton != null) {
-                connectButton.setDisable(false);
-            }
-            client = null;
-        });
-    }
-
-    /** Called from BistroClient whenever a message arrives from the server. */
-    public void handleServerMessage(Object msg) {
-
-        javafx.application.Platform.runLater(() -> {
-            if (msg instanceof Message) {
-                Message m = (Message) msg;
-
-                switch (m.getType()) {
-                    case RESERVATIONS_TEXT:
-                        reservationsArea.setText(m.getText() != null ? m.getText() : "");
-                        statusLabel.setText("Reservations loaded");
-                        break;
-
-                    case UPDATE_RESULT:
-                        if (Boolean.TRUE.equals(m.getSuccess())) {
-                            statusLabel.setText("Update succeeded");
-                        } else {
-                            statusLabel.setText("Update failed: " +
-                                    (m.getText() != null ? m.getText() : ""));
-                        }
-                        break;
-
-                    case INFO:
-                        statusLabel.setText("Info: " + (m.getText() != null ? m.getText() : ""));
-                        break;
-
-                    case ERROR:
-                        statusLabel.setText("Error: " + (m.getText() != null ? m.getText() : ""));
-                        break;
-
-                    default:
-                        statusLabel.setText("Unknown message type: " + m.getType());
-                }
-
-            } else {
-                // fallback: if server sends plain String for some reason
-                String response = String.valueOf(msg);
-                reservationsArea.setText(response);
-                statusLabel.setText("Raw message from server");
-            }
-        });
-    }
-
-
-    // ---------------------------------------------------------------------
-    //  FXML lifecycle
-    // ---------------------------------------------------------------------
-
-    /** Called automatically when FXML is loaded. */
+    // called automatically after FXML loaded
     @FXML
     private void initialize() {
-        // Initialize IP field with default or later the user can change it
-        if (ipField != null) {
-            ipField.setText("127.0.0.1");
+        txtServerIp.setText("127.0.0.1");
+        setConnected(false);
+        lblStatus.setText("Not connected");
+    }
+
+    // enable/disable buttons according to connection state
+    private void setConnected(boolean connected) {
+        btnConnect.setDisable(connected);
+        btnDisconnect.setDisable(!connected);
+        btnGetReservations.setDisable(!connected);
+        btnUpdateReservation.setDisable(!connected);
+    }
+
+    // ====== Connect / Disconnect ======
+
+    @FXML
+    private void onConnect() {
+        if (client != null && client.isConnected()) {
+            return;
         }
-        if (statusLabel != null) {
-            statusLabel.setText("Not connected");
-        }
-        if (disconnectButton != null) {
-            disconnectButton.setDisable(true);
+
+        String host = txtServerIp.getText().trim();
+        if (host.isEmpty()) host = "127.0.0.1";
+
+        try {
+            client = new BistroClient(host, PORT, this);
+            client.openConnection();
+            lblStatus.setText("Connecting to IP : " + host + " Via Port:" + PORT);
+        } catch (Exception e) {
+            e.printStackTrace();
+            lblStatus.setText("Connection failed: " + e.getMessage());
         }
     }
 
-    // ---------------------------------------------------------------------
-    //  Button handlers (wired in ClientView.fxml)
-    // ---------------------------------------------------------------------
-
     @FXML
-    private void onConnect(ActionEvent event) {
-        connectToServer();
-    }
-
-    @FXML
-    private void onDisconnect(ActionEvent event) {
+    private void onDisconnect() {
         disconnectFromServer();
     }
 
-    @FXML
-    private void onGetReservations(ActionEvent event) {
-        try {
-            if (client == null || !client.isConnected()) {
-                statusLabel.setText("Not connected to server");
-                return;
+    public void disconnectFromServer() {
+        if (client != null && client.isConnected()) {
+            try {
+                client.closeConnection();
+            } catch (Exception e) {
+                e.printStackTrace();
             }
+        }
+    }
 
+    // ====== Buttons: Get / Update ======
+
+    @FXML
+    private void onGetReservations() {
+        if (!isConnected()) return;
+
+        try {
             Message msg = new Message(Message.Type.GET_RESERVATIONS);
             client.sendToServer(msg);
-            statusLabel.setText("Requesting reservations...");
-
+            lblStatus.setText("Requesting reservations...");
         } catch (Exception e) {
-            statusLabel.setText("Error sending request: " + e.getMessage());
             e.printStackTrace();
+            lblStatus.setText("Error sending request");
         }
     }
 
     @FXML
-    private void onUpdateReservation(ActionEvent event) {
-        try {
-            if (client == null || !client.isConnected()) {
-                statusLabel.setText("Not connected to server");
-                return;
-            }
+    private void onUpdateReservation() {
+        if (!isConnected()) return;
 
-            int num = Integer.parseInt(reservationNumberField.getText().trim());
-            String dateStr = dateField.getText().trim();   // yyyy-MM-dd
-            int guests = Integer.parseInt(guestsField.getText().trim());
+        try {
+            int num = Integer.parseInt(txtReservationNumber.getText().trim());
+            String dateStr = txtReservationDate.getText().trim();
+            int guests = Integer.parseInt(txtNumberOfGuests.getText().trim());
 
             Message msg = new Message(Message.Type.UPDATE_RESERVATION);
             msg.setReservationNumber(num);
@@ -259,17 +115,85 @@ public class ClientController {
             msg.setNumberOfGuests(guests);
 
             client.sendToServer(msg);
-            statusLabel.setText("Sending update request...");
+            lblStatus.setText("Sending update...");
 
         } catch (NumberFormatException e) {
-            statusLabel.setText("Invalid number / guests");
+            lblStatus.setText("Please enter valid numbers");
         } catch (Exception e) {
-            statusLabel.setText("Error sending update: " + e.getMessage());
             e.printStackTrace();
+            lblStatus.setText("Error sending update");
         }
     }
 
+    private boolean isConnected() {
+        if (client == null || !client.isConnected()) {
+            lblStatus.setText("Not connected");
+            return false;
+        }
+        return true;
+    }
+
+    // ====== Callbacks from BistroClient ======
+
+    public void onConnected() {
+        Platform.runLater(() -> {
+            setConnected(true);
+            lblStatus.setText("Connected");
+        });
+    }
+
+    public void onDisconnected() {
+        Platform.runLater(() -> {
+            setConnected(false);
+            lblStatus.setText("Disconnected");
+        });
+    }
+
+    public void onConnectionError(Exception e) {
+        Platform.runLater(() -> {
+            setConnected(false);
+            lblStatus.setText("Connection error : " + e.getMessage());
+        });
+    }
+
+    // ====== Messages from server ======
+
+    public void handleServerMessage(Object msg) {
+        Platform.runLater(() -> {
+            if (msg instanceof Message) {
+                Message m = (Message) msg;
+
+                switch (m.getType()) {
+                    case RESERVATIONS_TEXT:
+                        txtAreaReservations.setText(
+                                m.getText() != null ? m.getText() : ""
+                        );
+                        lblStatus.setText("Reservations received");
+                        break;
+
+                    case UPDATE_RESULT:
+                        lblStatus.setText(
+                                m.getText() != null ? m.getText() : "Update result"
+                        );
+                        break;
+
+                    case ERROR:
+                        lblStatus.setText("Error : " + m.getText());
+                        break;
+
+                    default:
+                        lblStatus.setText("Unknown message type");
+                }
+
+            } else {
+                // fallback if server sends plain String
+                txtAreaReservations.setText(String.valueOf(msg));
+                lblStatus.setText("Raw message from server");
+            }
+        });
+    }
 }
+
 
 
 

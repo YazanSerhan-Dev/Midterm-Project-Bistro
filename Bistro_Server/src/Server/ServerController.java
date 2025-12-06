@@ -22,6 +22,7 @@ public class ServerController {
     @FXML private TableColumn<ClientConnectionRow, String> statusColumn;
 
     @FXML private TextArea logArea;
+
     @FXML private Button startButton;
     @FXML private Button stopButton;
     @FXML private Button exitButton;
@@ -35,6 +36,7 @@ public class ServerController {
 
     @FXML
     private void initialize() {
+        // bind columns to properties in ClientConnectionRow
         hostColumn.setCellValueFactory(c -> c.getValue().hostNameProperty());
         ipColumn.setCellValueFactory(c -> c.getValue().ipAddressProperty());
         statusColumn.setCellValueFactory(c -> c.getValue().statusProperty());
@@ -43,6 +45,8 @@ public class ServerController {
 
         setServerStoppedUI();
     }
+
+    /* ========== Button handlers ========== */
 
     @FXML
     private void onStartServer() {
@@ -69,60 +73,25 @@ public class ServerController {
         }
 
         try {
-            // סוגר את כל החיבורים + מפסיק להאזין
             server.close();
+            setServerStoppedUI();
             appendLogFromServer("Server stopped.");
         } catch (IOException e) {
             appendLogFromServer("Failed to stop server: " + e.getMessage());
         }
-
-        setServerStoppedUI();
     }
- 
+
     @FXML
     private void onExit() {
         try {
             if (server != null) {
                 server.close();
             }
-        } catch (IOException e) {
-            // ignore
-        }
+        } catch (IOException ignored) { }
         Platform.exit();
     }
 
-    /* ===== UI helpers ===== */
-
-    private void setServerStartedUI(int port) {
-        Platform.runLater(() -> {
-            String ip = "unknown";
-            try {
-                ip = java.net.InetAddress.getLocalHost().getHostAddress();
-            } catch (Exception ignored) {}
-
-            serverStatusLabel.setText(
-                    "Server is listening for connections on " + ip + ":" + port + "..."
-            );
-
-            startButton.setDisable(true);
-            if (stopButton != null) stopButton.setDisable(false);
-        });
-    }
-
-    private void setServerStoppedUI() {
-        Platform.runLater(() -> {
-            serverStatusLabel.setText("Server is stopped");
-            serverStatusLabel.setStyle("-fx-text-fill: red;");
-
-            startButton.setDisable(false);
-            if (stopButton != null) stopButton.setDisable(true);
-
-            clientRows.clear();
-        });
-    }
-
-
-    /* ===== called from BistroServer ===== */
+    /* ========== Called from BistroServer (server thread) ========== */
 
     public void onServerStarted(int port) {
         setServerStartedUI(port);
@@ -130,16 +99,19 @@ public class ServerController {
 
     public void onServerStopped() {
         setServerStoppedUI();
+        clientRows.clear();
     }
 
     public void onClientConnected(String hostName, String ipAddress) {
-        Platform.runLater(() ->
-                clientRows.add(new ClientConnectionRow(hostName, ipAddress, "connect")));
+        Platform.runLater(() -> {
+            clientRows.add(new ClientConnectionRow(hostName, ipAddress, "connect"));
+            clientsTable.refresh();
+        });
     }
 
     public void onClientDisconnected(String hostName, String ipAddress) {
         Platform.runLater(() -> {
-            // מחפש מהסוף להתחלה -> השורה האחרונה של אותו Host/IP
+            // update the last row that matches host + ip
             for (int i = clientRows.size() - 1; i >= 0; i--) {
                 ClientConnectionRow row = clientRows.get(i);
                 if (row.getHostName().equals(hostName)
@@ -152,7 +124,6 @@ public class ServerController {
         });
     }
 
-
     public void appendLogFromServer(String msg) {
         Platform.runLater(() -> {
             if (logArea != null) {
@@ -162,7 +133,34 @@ public class ServerController {
             }
         });
     }
+
+    /* ========== UI helpers ========== */
+
+    private void setServerStartedUI(int port) {
+        Platform.runLater(() -> {
+            String ip = "unknown";
+            try {
+                ip = java.net.InetAddress.getLocalHost().getHostAddress();
+            } catch (Exception ignored) { }
+
+            serverStatusLabel.setText(
+                    "Server is listening for connections on " + ip + ":" + port + "..."
+            );
+
+            startButton.setDisable(true);
+            stopButton.setDisable(false);
+        });
+    }
+
+    private void setServerStoppedUI() {
+        Platform.runLater(() -> {
+            serverStatusLabel.setText("Server is stopped");
+            startButton.setDisable(false);
+            stopButton.setDisable(true);
+        });
+    }
 }
+
 
 
 
