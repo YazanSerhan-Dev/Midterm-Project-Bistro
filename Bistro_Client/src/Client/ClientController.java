@@ -6,14 +6,12 @@ import javafx.fxml.FXML;
 import javafx.scene.control.*;
 
 /**
- * Very simple controller for the Bistro client.
+ * JavaFX controller for the Bistro client window.
+ * Manages connection to the server and reservation actions.
  */
 public class ClientController {
 
-    // ====== FXML controls ======
-
     @FXML private TextField txtServerIp;
-
     @FXML private TextArea txtAreaReservations;
 
     @FXML private TextField txtReservationNumber;
@@ -27,12 +25,12 @@ public class ClientController {
     @FXML private Button btnGetReservations;
     @FXML private Button btnUpdateReservation;
 
-    // ====== client state ======
-
     private BistroClient client;
     private static final int PORT = 5555;
 
-    // called automatically after FXML loaded
+    /**
+     * Initializes the UI with default values and disconnected state.
+     */
     @FXML
     private void initialize() {
         txtServerIp.setText("127.0.0.1");
@@ -40,7 +38,9 @@ public class ClientController {
         lblStatus.setText("Not connected");
     }
 
-    // enable/disable buttons according to connection state
+    /**
+     * Enables or disables UI buttons according to connection state.
+     */
     private void setConnected(boolean connected) {
         btnConnect.setDisable(connected);
         btnDisconnect.setDisable(!connected);
@@ -48,8 +48,9 @@ public class ClientController {
         btnUpdateReservation.setDisable(!connected);
     }
 
-    // ====== Connect / Disconnect ======
-
+    /**
+     * Handles Connect button click: creates client and opens connection.
+     */
     @FXML
     private void onConnect() {
         if (client != null && client.isConnected()) {
@@ -69,11 +70,17 @@ public class ClientController {
         }
     }
 
+    /**
+     * Handles Disconnect button click: closes the connection if active.
+     */
     @FXML
     private void onDisconnect() {
         disconnectFromServer();
     }
 
+    /**
+     * Closes the client connection safely if it is currently connected.
+     */
     public void disconnectFromServer() {
         if (client != null && client.isConnected()) {
             try {
@@ -84,8 +91,9 @@ public class ClientController {
         }
     }
 
-    // ====== Buttons: Get / Update ======
-
+    /**
+     * Sends a request to the server to fetch all reservations.
+     */
     @FXML
     private void onGetReservations() {
         if (!isConnected()) return;
@@ -100,6 +108,9 @@ public class ClientController {
         }
     }
 
+    /**
+     * Sends an update request for a specific reservation (date & guests).
+     */
     @FXML
     private void onUpdateReservation() {
         if (!isConnected()) return;
@@ -125,6 +136,9 @@ public class ClientController {
         }
     }
 
+    /**
+     * Checks if the client is currently connected; updates status label if not.
+     */
     private boolean isConnected() {
         if (client == null || !client.isConnected()) {
             lblStatus.setText("Not connected");
@@ -133,8 +147,9 @@ public class ClientController {
         return true;
     }
 
-    // ====== Callbacks from BistroClient ======
-
+    /**
+     * Callback from BistroClient when a connection is successfully established.
+     */
     public void onConnected() {
         Platform.runLater(() -> {
             setConnected(true);
@@ -142,6 +157,9 @@ public class ClientController {
         });
     }
 
+    /**
+     * Callback from BistroClient when the connection is closed.
+     */
     public void onDisconnected() {
         Platform.runLater(() -> {
             setConnected(false);
@@ -149,6 +167,9 @@ public class ClientController {
         });
     }
 
+    /**
+     * Callback from BistroClient when a connection error occurs.
+     */
     public void onConnectionError(Exception e) {
         Platform.runLater(() -> {
             setConnected(false);
@@ -156,8 +177,9 @@ public class ClientController {
         });
     }
 
-    // ====== Messages from server ======
-
+    /**
+     * Handles messages received from the server and updates the UI accordingly.
+     */
     public void handleServerMessage(Object msg) {
         Platform.runLater(() -> {
             if (msg instanceof Message) {
@@ -177,22 +199,18 @@ public class ClientController {
                         );
                         break;
 
-                    case ERROR:
-                        lblStatus.setText("Error : " + m.getText());
-                        break;
-
                     default:
                         lblStatus.setText("Unknown message type");
                 }
 
             } else {
-                // fallback if server sends plain String
                 txtAreaReservations.setText(String.valueOf(msg));
                 lblStatus.setText("Raw message from server");
             }
         });
     }
 }
+
 
 
 

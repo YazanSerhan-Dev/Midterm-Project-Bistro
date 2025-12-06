@@ -1,114 +1,80 @@
 package DataBase;
 
-import java.sql.Connection;
-import java.sql.Date;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
+import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * DAO for the Reservation table.
+ * Uses MySQLConnectionPool + PooledConnection instead of opening new JDBC connections each time.
+ */
 public class ReservationDAO {
 
     /**
-     * מחזיר את כל ההזמנות מטבלת `order`.
+     * Loads all reservations from the `order` table using a pooled connection.
      */
     public List<Reservation> getAllReservations() throws SQLException {
-        String sql =
-                "SELECT order_number, " +
-                "       order_date, " +
-                "       number_of_guests, " +
-                "       confirmation_code, " +
-                "       subscriber_id, " +
-                "       date_of_placing_order " +
-                "FROM `order`";
+        String sql = "SELECT order_number, order_date, number_of_guests, " +
+                     "confirmation_code, subscriber_id, date_of_placing_order " +
+                     "FROM `order`";
 
         List<Reservation> list = new ArrayList<>();
 
+        // get pooled connection (not DriverManager.getConnection)
         MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
-        Connection conn = null;
-        PreparedStatement ps = null;
-        ResultSet rs = null;
+        PooledConnection pConn   = pool.getConnection();
+        Connection conn          = pConn.getConnection();
 
-        try {
-            // ---- קבלת חיבור מה-pool ----
-            conn = pool.getConnection();
-            ps = conn.prepareStatement(sql);
-            rs = ps.executeQuery();
+        try (PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
 
             while (rs.next()) {
-                int orderNumber        = rs.getInt("order_number");
-                Date orderDate         = rs.getDate("order_date");
-                int numberOfGuests     = rs.getInt("number_of_guests");
-                int confirmationCode   = rs.getInt("confirmation_code");
-                int subscriberId       = rs.getInt("subscriber_id");
-                Date dateOfPlacingOrder= rs.getDate("date_of_placing_order");
+                int num     = rs.getInt("order_number");
+                Date date   = rs.getDate("order_date");
+                int guests  = rs.getInt("number_of_guests");
+                int conf    = rs.getInt("confirmation_code");
+                int subId   = rs.getInt("subscriber_id");
+                Date placed = rs.getDate("date_of_placing_order");
 
-                Reservation r = new Reservation(
-                        orderNumber,
-                        orderDate,
-                        numberOfGuests,
-                        confirmationCode,
-                        subscriberId,
-                        dateOfPlacingOrder
-                );
-
-                list.add(r);
+                list.add(new Reservation(num, date, guests, conf, subId, placed));
             }
-
         } finally {
-            // ---- לסגור אובייקטים של JDBC ----
-            if (rs != null) {
-                try { rs.close(); } catch (SQLException ignored) {}
-            }
-            if (ps != null) {
-                try { ps.close(); } catch (SQLException ignored) {}
-            }
-            // ---- להחזיר את החיבור ל-pool (לא conn.close!) ----
-            if (conn != null) {
-                pool.releaseConnection(conn);
-            }
+            // IMPORTANT: return to pool (do NOT close conn directly)
+            pool.releaseConnection(pConn);
         }
 
         return list;
     }
 
     /**
-     * עדכון תאריך ומספר אורחים להזמנה קיימת.
+     * Updates order_date and number_of_guests for a given reservation (by order_number).
      */
     public void updateReservation(int reservationNumber,
                                   Date newDate,
                                   int newGuests) throws SQLException {
 
-        String sql =
-                "UPDATE `order` " +
-                "SET order_date = ?, number_of_guests = ? " +
-                "WHERE order_number = ?";
+        String sql = "UPDATE `order` " +
+                     "SET order_date = ?, number_of_guests = ? " +
+                     "WHERE order_number = ?";
 
+        // get pooled connection
         MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
-        Connection conn = null;
-        PreparedStatement ps = null;
+        PooledConnection pConn   = pool.getConnection();
+        Connection conn          = pConn.getConnection();
 
-        try {
-            conn = pool.getConnection();
-            ps = conn.prepareStatement(sql);
-
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setDate(1, newDate);
             ps.setInt(2, newGuests);
             ps.setInt(3, reservationNumber);
-
             ps.executeUpdate();
-
         } finally {
-            if (ps != null) {
-                try { ps.close(); } catch (SQLException ignored) {}
-            }
-            if (conn != null) {
-                pool.releaseConnection(conn);
-            }
+            // return to pool instead of closing the physical connection
+            pool.releaseConnection(pConn);
         }
     }
 }
+
+
 
 
 

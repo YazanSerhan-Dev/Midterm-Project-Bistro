@@ -11,6 +11,7 @@ public class Reservation {
     private int subscriberId;
     private Date dateOfPlacing;
 
+    //Constructor
     public Reservation(int reservationNumber,
                        Date reservationDate,
                        int numberOfGuests,
@@ -24,7 +25,8 @@ public class Reservation {
         this.subscriberId = subscriberId;
         this.dateOfPlacing = dateOfPlacing;
     }
-
+    
+    //getters
     public int getReservationNumber() { return reservationNumber; }
     public Date getReservationDate() { return reservationDate; }
     public int getNumberOfGuests() { return numberOfGuests; }

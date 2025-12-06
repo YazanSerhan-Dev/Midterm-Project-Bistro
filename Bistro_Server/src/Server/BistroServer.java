@@ -13,21 +13,27 @@ import common.Message;
 
 /**
  * OCSF server for the Bistro system.
- * Listens for client connections and talks to the DB via ReservationDAO.
+ * Listens for client connections and communicates with the DB via ReservationDAO.
  */
 public class BistroServer extends AbstractServer {
 
-    // Reference to JavaFX controller (for logging + table)
+    /** Reference to the JavaFX server controller (for logging and UI updates). */
     private final ServerController controller;
 
-    // DAO layer (uses the connection pool inside)
+    /** DAO layer for reservation operations (internally uses the connection pool). */
     private final ReservationDAO reservationDAO = new ReservationDAO();
 
+    /**
+     * Creates a new Bistro server on the given port bound to a UI controller.
+     */
     public BistroServer(int port, ServerController controller) {
         super(port);
         this.controller = controller;
     }
 
+    /**
+     * Logs messages either to the controller log area or to the console.
+     */
     private void log(String text) {
         if (controller != null) {
             controller.appendLogFromServer(text);
@@ -38,6 +44,10 @@ public class BistroServer extends AbstractServer {
 
     /* ========== OCSF lifecycle ========== */
 
+    /**
+     * Called when the server starts listening on the port.
+     * Notifies the controller to update server status in the UI.
+     */
     @Override
     protected void serverStarted() {
         log("Server started on port " + getPort());
@@ -46,6 +56,10 @@ public class BistroServer extends AbstractServer {
         }
     }
 
+    /**
+     * Called when the server stops listening.
+     * Notifies the controller to update server status and clear client table if needed.
+     */
     @Override
     protected void serverStopped() {
         log("Server stopped.");
@@ -54,6 +68,10 @@ public class BistroServer extends AbstractServer {
         }
     }
 
+    /**
+     * Called when a new client connects.
+     * Logs and adds the client to the server connections table.
+     */
     @Override
     protected void clientConnected(ConnectionToClient client) {
         super.clientConnected(client);
@@ -67,28 +85,32 @@ public class BistroServer extends AbstractServer {
         }
     }
 
+    /**
+     * Called when OCSF detects that a client disconnected cleanly.
+     * We only use it to update the UI (status becomes Disconnected).
+     */
     @Override
     protected synchronized void clientDisconnected(ConnectionToClient client) {
         log("clientDisconnected event from OCSF");
 
-        // לא מעניין אותנו InetAddress, רק לעדכן את ה-UI
         if (controller != null) {
             controller.onClientDisconnected(null, null);
         }
 
-        // ואז לתת ל-AbstractServer לעשות ניקוי
         super.clientDisconnected(client);
     }
 
+    /**
+     * Called when a client connection ends due to an exception (e.g. closing window).
+     * Treated as a disconnect and reflected in the UI.
+     */
     @Override
     protected void clientException(ConnectionToClient client, Throwable exception) {
-    	log("Client disconnected (exception): " +
-    		    (exception != null && exception.getMessage() != null
-    		            ? exception.getMessage()
-    		            : "connection closed"));
+        log("Client disconnected (exception): " +
+                (exception != null && exception.getMessage() != null
+                        ? exception.getMessage()
+                        : "connection closed"));
 
-
-        // גם Exception אומר שהחיבור מת – לעדכן UI
         if (controller != null) {
             controller.onClientDisconnected(null, null);
         }
@@ -96,9 +118,12 @@ public class BistroServer extends AbstractServer {
         super.clientException(client, exception);
     }
 
-
     /* ========== Handle messages from client ========== */
 
+    /**
+     * Main dispatcher for messages coming from clients.
+     * Validates message type and routes to the correct handler.
+     */
     @Override
     protected void handleMessageFromClient(Object msg, ConnectionToClient client) {
         log("Received from client: " + msg);
@@ -147,7 +172,10 @@ public class BistroServer extends AbstractServer {
 
     /* ========== Commands ========== */
 
-    // GET_RESERVATIONS from client
+    /**
+     * Handles GET_RESERVATIONS:
+     * loads all reservations from the DB and sends them as text to the client.
+     */
     private void handleGetReservations(ConnectionToClient client)
             throws IOException, SQLException {
 
@@ -179,7 +207,10 @@ public class BistroServer extends AbstractServer {
         log("Sent " + reservations.size() + " reservations to client");
     }
 
-    // UPDATE_RESERVATION from client
+    /**
+     * Handles UPDATE_RESERVATION:
+     * validates message fields, updates DB, and sends result back to the client.
+     */
     private void handleUpdateReservation(Message m, ConnectionToClient client)
             throws IOException, SQLException {
 
@@ -212,6 +243,7 @@ public class BistroServer extends AbstractServer {
                 ", guests=" + guests);
     }
 }
+
 
 
 

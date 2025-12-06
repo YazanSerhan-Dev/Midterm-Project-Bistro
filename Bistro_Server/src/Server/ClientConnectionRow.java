@@ -4,14 +4,23 @@ import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
 
 /**
- * Row בתבלת החיבורים של השרת.
+ * Represents a single row in the server's client-connections table.
+ * Holds host name, IP address and current connection status.
  */
 public class ClientConnectionRow {
 
+    /** Client machine host name (for display in the table). */
     private final StringProperty hostName = new SimpleStringProperty();
+
+    /** Client IP address. */
     private final StringProperty ipAddress = new SimpleStringProperty();
+
+    /** Connection status (e.g. "connected", "Disconnected"). */
     private final StringProperty status = new SimpleStringProperty();
 
+    /**
+     * Creates a row with the given host, IP and status.
+     */
     public ClientConnectionRow(String hostName, String ipAddress, String status) {
         this.hostName.set(hostName);
         this.ipAddress.set(ipAddress);
@@ -30,4 +39,5 @@ public class ClientConnectionRow {
     public void setStatus(String value) { status.set(value); }
     public StringProperty statusProperty() { return status; }
 }
+
 

@@ -12,6 +12,10 @@ import javafx.scene.control.TableColumn;
 import javafx.scene.control.TableView;
 import javafx.scene.control.TextArea;
 
+/**
+ * JavaFX controller for the server window.
+ * Manages server lifecycle, client connections table, and log area.
+ */
 public class ServerController {
 
     @FXML private Label serverStatusLabel;
@@ -27,16 +31,20 @@ public class ServerController {
     @FXML private Button stopButton;
     @FXML private Button exitButton;
 
+    /** The OCSF server instance managed by this controller. */
     private BistroServer server;
 
+    /** Observable list backing the clients table. */
     private final ObservableList<ClientConnectionRow> clientRows =
             FXCollections.observableArrayList();
 
     private static final int DEFAULT_PORT = 5555;
 
+    /**
+     * Initializes table bindings and sets initial UI state (server stopped).
+     */
     @FXML
     private void initialize() {
-        // bind columns to properties in ClientConnectionRow
         hostColumn.setCellValueFactory(c -> c.getValue().hostNameProperty());
         ipColumn.setCellValueFactory(c -> c.getValue().ipAddressProperty());
         statusColumn.setCellValueFactory(c -> c.getValue().statusProperty());
@@ -48,6 +56,9 @@ public class ServerController {
 
     /* ========== Button handlers ========== */
 
+    /**
+     * Starts the server on the default port and updates the UI.
+     */
     @FXML
     private void onStartServer() {
         if (server != null && server.isListening()) {
@@ -65,6 +76,9 @@ public class ServerController {
         }
     }
 
+    /**
+     * Stops the server if it is running and updates the UI.
+     */
     @FXML
     private void onStopServer() {
         if (server == null || !server.isListening()) {
@@ -81,6 +95,9 @@ public class ServerController {
         }
     }
 
+    /**
+     * Exits the application, closing the server if needed.
+     */
     @FXML
     private void onExit() {
         try {
@@ -93,34 +110,40 @@ public class ServerController {
 
     /* ========== Called from BistroServer (server thread) ========== */
 
+    /**
+     * Updates the UI when the server has started (callback from BistroServer).
+     */
     public void onServerStarted(int port) {
         setServerStartedUI(port);
     }
 
+    /**
+     * Updates the UI and clears the connections table when the server stops.
+     */
     public void onServerStopped() {
         setServerStoppedUI();
-        // נקה את הטבלה תמיד דרך ה-FX thread
         Platform.runLater(() -> clientRows.clear());
     }
 
-    // נקרא מה-BistroServer כל פעם שקליינט מתחבר
+    /**
+     * Adds a new row when a client connects.
+     */
     public void onClientConnected(String hostName, String ipAddress) {
         Platform.runLater(() -> {
-            // כל חיבור חדש = שורה חדשה עם connected
             clientRows.add(new ClientConnectionRow(hostName, ipAddress, "connected"));
             clientsTable.refresh();
         });
     }
 
-    // נקרא מה-BistroServer כל פעם שקליינט מתנתק / נזרקת Exception
+    /**
+     * Marks the last active client row as disconnected when a client disconnects.
+     */
     public void onClientDisconnected(String hostName, String ipAddress) {
         Platform.runLater(() -> {
             if (clientRows.isEmpty()) {
                 return;
             }
 
-            // רעיון פשוט:
-            // כל ניתוק מסמן את *השורה האחרונה שעדיין לא מסומנת כ-Disconnected*
             for (int i = clientRows.size() - 1; i >= 0; i--) {
                 ClientConnectionRow row = clientRows.get(i);
                 if (!"Disconnected".equalsIgnoreCase(row.getStatus())) {
@@ -133,8 +156,9 @@ public class ServerController {
         });
     }
 
-
-
+    /**
+     * Appends a log line to the server log area (thread-safe).
+     */
     public void appendLogFromServer(String msg) {
         Platform.runLater(() -> {
             if (logArea != null) {
@@ -147,6 +171,9 @@ public class ServerController {
 
     /* ========== UI helpers ========== */
 
+    /**
+     * Sets labels and buttons for the "server started" state.
+     */
     private void setServerStartedUI(int port) {
         Platform.runLater(() -> {
             String ip = "unknown";
@@ -163,6 +190,9 @@ public class ServerController {
         });
     }
 
+    /**
+     * Sets labels and buttons for the "server stopped" state.
+     */
     private void setServerStoppedUI() {
         Platform.runLater(() -> {
             serverStatusLabel.setText("Server is stopped");
@@ -171,6 +201,7 @@ public class ServerController {
         });
     }
 }
+
 
 
 

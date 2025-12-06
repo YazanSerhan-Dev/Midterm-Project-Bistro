@@ -4,72 +4,57 @@ import java.sql.Connection;
 import java.sql.SQLException;
 
 /**
- * עטיפה לחיבור JDBC אמיתי + שמירת זמן שימוש אחרון.
- * ה-connection pool משתמש בזה כדי לדעת אם החיבור "ישן מדי" (expired).
+ * Wraps a real JDBC Connection and stores when it was last used.
+ * The connection pool uses this information to close idle connections.
  */
 public class PooledConnection {
 
-    // החיבור האמיתי ל-MySQL
+    // The real JDBC connection to MySQL
     private final Connection conn;
 
-    // הזמן האחרון (millis) שבו נעשה שימוש בחיבור
+    // Last time (in millis) this connection was used
     private long lastUsed;
 
     public PooledConnection(Connection conn) {
         this.conn = conn;
-        this.lastUsed = System.currentTimeMillis();
+        touch(); // Mark as just used
     }
 
     /**
-     * מחזיר את החיבור האמיתי.
+     * Returns the underlying JDBC Connection.
+     * Also updates the last-used timestamp.
      */
     public Connection getConnection() {
+        touch();
         return conn;
     }
 
     /**
-     * לסמן שנעשה שימוש בחיבור עכשיו.
-     * כדאי לקרוא לזה כשמקבלים את החיבור מה-pool
-     * וגם כשמחזירים אותו אחרי שימוש.
+     * Update last-used timestamp to "now".
      */
-    public void markUsed() {
+    public void touch() {
         lastUsed = System.currentTimeMillis();
     }
 
     /**
-     * האם החיבור "פג תוקף" מבחינת זמן (idle זמן רב מדי).
-     *
-     * @param maxIdleMillis כמה מילי-שניות מותר שלא יהיה שימוש
-     * @return true אם עבר יותר מ-maxIdleMillis מאז השימוש האחרון
+     * Get the last-used timestamp (in millis).
      */
-    public boolean isExpired(long maxIdleMillis) {
-        long now = System.currentTimeMillis();
-        return (now - lastUsed) > maxIdleMillis;
+    public long getLastUsed() {
+        return lastUsed;
     }
 
     /**
-     * בדיקה אם החיבור כבר נסגר פיזית.
-     */
-    public boolean isClosed() {
-        try {
-            return conn.isClosed();
-        } catch (SQLException e) {
-            // במקרה של שגיאה נתייחס אליו כסגור
-            return true;
-        }
-    }
-
-    /**
-     * סגירה פיזית של החיבור למסד.
-     * רק ה-connection pool אמור לקרוא לזה.
+     * Physically close the DB connection.
+     * Only the connection pool should call this.
      */
     public void closePhysicalConnection() {
         try {
             conn.close();
         } catch (SQLException e) {
-            e.printStackTrace(); // אפשר להחליף בלוג רציני יותר
+            e.printStackTrace(); // or log it
         }
     }
 }
+
 
 

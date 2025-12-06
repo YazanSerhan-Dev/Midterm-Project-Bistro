@@ -11,8 +11,8 @@ public class Message implements Serializable {
         RESERVATIONS_TEXT,    // server → client
         UPDATE_RESERVATION,   // client → server
         UPDATE_RESULT,        // server → client
-        INFO,                 // optional
-        ERROR                 // optional
+        INFO,                 
+        ERROR                 
     }
 
     private Type type;
@@ -22,7 +22,7 @@ public class Message implements Serializable {
 
     // fields for UPDATE_RESERVATION
     private Integer reservationNumber;
-    private String reservationDate;   // simplest: yyyy-MM-dd as String
+    private String reservationDate;   
     private Integer numberOfGuests;
 
     // optional: success flag for UPDATE_RESULT
