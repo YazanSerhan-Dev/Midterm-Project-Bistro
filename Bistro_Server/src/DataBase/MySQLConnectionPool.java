@@ -3,124 +3,159 @@ package DataBase;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
-import java.util.Iterator;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Singleton MySQL connection pool.
- * Reuses connections and closes idle ones.
+ * Singleton connection pool ל-MySQL.
+ *
+ * לפי ההנחיות:
+ * - לא סוגרים חיבורים אוטומטית אחרי 30 דקות.
+ * - אם חיבור היה לא פעיל יותר מ-30 דקות, מסמנים אותו כ-expired.
+ * - רק כאשר מתקבלת בקשה חדשה לחיבור, בודקים אם החיבור expired:
+ *   אם כן – סוגרים אותו ופותחים חיבור חדש טרי.
  */
 public class MySQLConnectionPool {
 
-    // ---------- DB CONFIG: change to your DB if needed ----------
-    private static final String URL = "jdbc:mysql://localhost:3306/bistrodb";
-    private static final String USER = "root";
-    private static final String PASSWORD = "Yazan12@"; 
+    // *** תעדכן כאן את ה-URL / USER / PASSWORD לפי המסד שלך ***
+    private static final String URL      = "jdbc:mysql://localhost:3306/bistrodb"; // לדוגמה
+    private static final String USER     = "root";
+    private static final String PASSWORD = "Yazan12@";
 
-    // ---------- POOL CONFIG ----------
-    private static final int  MAX_POOL_SIZE      = 10;       // max cached connections
-    private static final long MAX_IDLE_MILLIS    = 30_000L;  // 30s idle timeout
-    private static final long CLEANUP_PERIOD_SEC = 10L;      // run cleanup every 10s
+    // כמה זמן חיבור יכול להיות ללא שימוש לפני שנחשיב אותו "ישן"
+    private static final long MAX_IDLE_MILLIS =
+            TimeUnit.MINUTES.toMillis(30);   // 30 דקות
 
-    // ---------- SINGLETON INSTANCE ----------
+    // גודל התחלתי של הבריכה וכמות מקסימלית (לא חובה לגעת)
+    private static final int INITIAL_SIZE = 3;
+    private static final int MAX_SIZE     = 10;
+
     private static MySQLConnectionPool instance;
 
-    public static synchronized MySQLConnectionPool getInstance() {
+    // חיבורים פנויים שאפשר לקחת מהם
+    private final BlockingQueue<PooledConnection> availableConnections;
+
+    // כל החיבורים שנוצרו אי פעם (כדי שנוכל למצוא ולסגור אותם ב-shutdown)
+    private final Set<PooledConnection> allConnections;
+
+    private MySQLConnectionPool() throws SQLException {
+        this.availableConnections = new LinkedBlockingQueue<>();
+        this.allConnections       = new HashSet<>();
+
+        // יצירת כמה חיבורים התחלתיים
+        for (int i = 0; i < INITIAL_SIZE; i++) {
+            PooledConnection pConn = createNewPooledConnection();
+            availableConnections.offer(pConn);
+            allConnections.add(pConn);
+        }
+    }
+
+    /**
+     * Singleton – קבלת מופע יחיד של ה-pool.
+     */
+    public static synchronized MySQLConnectionPool getInstance() throws SQLException {
         if (instance == null) {
             instance = new MySQLConnectionPool();
         }
         return instance;
     }
 
-    // ---------- INTERNAL STATE ----------
-    private final BlockingQueue<PooledConnection> pool;
-    private final ScheduledExecutorService cleaner;
-
-    // Private constructor -> only getInstance() can create
-    private MySQLConnectionPool() {
-        pool = new LinkedBlockingQueue<>(MAX_POOL_SIZE);
-
-        cleaner = Executors.newSingleThreadScheduledExecutor();
-        cleaner.scheduleAtFixedRate(
-                this::cleanupIdleConnections,
-                CLEANUP_PERIOD_SEC,
-                CLEANUP_PERIOD_SEC,
-                TimeUnit.SECONDS
-        );
+    /**
+     * יצירת חיבור חדש פיזית למסד והעטיפה שלו ב-PooledConnection.
+     */
+    private PooledConnection createNewPooledConnection() throws SQLException {
+        Connection conn = DriverManager.getConnection(URL, USER, PASSWORD);
+        return new PooledConnection(conn);
     }
 
     /**
-     * Get a connection wrapper from the pool.
-     * If the pool is empty, create a new physical connection.
+     * קבלת חיבור לשימוש.
+     *
+     * הלוגיקה:
+     * 1. מנסים לקחת חיבור מ-availableConnections.
+     * 2. אם אין חיבור פנוי ויש מקום – יוצרים חדש.
+     * 3. אם יש חיבור אבל הוא expired או סגור → סוגרים אותו ופותחים חדש.
+     * 4. מסמנים markUsed ומחזירים את ה-Connection האמיתי.
      */
-    public PooledConnection getConnection() {
-        // Try to reuse from queue
-        PooledConnection pConn = pool.poll();
+    public synchronized Connection getConnection() throws SQLException {
+        PooledConnection pConn = availableConnections.poll();
 
         if (pConn == null) {
-            // Queue empty -> create new physical connection
-            try {
-                Connection conn = DriverManager.getConnection(URL, USER, PASSWORD);
-                pConn = new PooledConnection(conn);
-            } catch (SQLException e) {
-                throw new RuntimeException("Failed to create DB connection", e);
+            // אין חיבור פנוי – אם לא עברנו את ה-max, ניצור חדש
+            if (allConnections.size() < MAX_SIZE) {
+                pConn = createNewPooledConnection();
+                allConnections.add(pConn);
+            } else {
+                // אם עברנו max, נחכה עד שמישהו יחזיר חיבור
+                try {
+                    pConn = availableConnections.take();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new SQLException("Interrupted while waiting for DB connection", e);
+                }
             }
         } else {
-            // Reusing existing connection
-            pConn.touch();
+            // יש חיבור – נבדוק אם הוא ישן מדי או סגור
+            if (pConn.isExpired(MAX_IDLE_MILLIS) || pConn.isClosed()) {
+                pConn.closePhysicalConnection();
+                pConn = createNewPooledConnection();
+                allConnections.add(pConn);
+            }
         }
 
-        return pConn;
+        // מסמנים שנעשה בו שימוש "עכשיו"
+        pConn.markUsed();
+
+        // מחזירים את החיבור האמיתי ל-DAO
+        return pConn.getConnection();
     }
 
     /**
-     * Return a connection wrapper to the pool after using it.
-     * If the pool is already full, close the connection instead.
+     * שחרור חיבור חזרה לבריכה.
+     * חשוב: לא לקרוא conn.close() מבחוץ – אלא releaseConnection.
      */
-    public void releaseConnection(PooledConnection pConn) {
-        if (pConn == null) {
+    public synchronized void releaseConnection(Connection conn) {
+        if (conn == null) {
             return;
         }
 
-        pConn.touch(); // mark as used
-
-        boolean offered = pool.offer(pConn);
-        if (!offered) {
-            // Pool is full -> close it instead of blocking
-            pConn.closePhysicalConnection();
-        }
-    }
-
-    /**
-     * Periodically closes connections that were idle for too long.
-     */
-    private void cleanupIdleConnections() {
-        long now = System.currentTimeMillis();
-
-        Iterator<PooledConnection> it = pool.iterator();
-        while (it.hasNext()) {
-            PooledConnection pConn = it.next();
-            if (now - pConn.getLastUsed() > MAX_IDLE_MILLIS) {
-                it.remove();
-                pConn.closePhysicalConnection();
+        // מוצאים את ה-PooledConnection שמתאים ל-Connection הזה
+        PooledConnection target = null;
+        for (PooledConnection pConn : allConnections) {
+            if (pConn.getConnection() == conn) { // השוואת רפרנס
+                target = pConn;
+                break;
             }
         }
+
+        if (target == null) {
+            // לא מכירים את החיבור הזה – נסגור אותו פיזית ליתר ביטחון
+            try {
+                conn.close();
+            } catch (SQLException ignored) {
+            }
+            return;
+        }
+
+        // מסמנים שימוש אחרון ומחזירים לרשימת הזמינים
+        target.markUsed();
+        availableConnections.offer(target);
     }
 
     /**
-     * Optional: call this when shutting down the server.
+     * סגירה מסודרת של כל החיבורים, למשל בכיבוי שרת.
      */
-    public void shutdown() {
-        cleaner.shutdown();
-        for (PooledConnection pConn : pool) {
+    public synchronized void shutdown() {
+        for (PooledConnection pConn : allConnections) {
             pConn.closePhysicalConnection();
         }
-        pool.clear();
+        allConnections.clear();
+        availableConnections.clear();
     }
 }
+
 
 

@@ -82,7 +82,11 @@ public class BistroServer extends AbstractServer {
 
     @Override
     protected void clientException(ConnectionToClient client, Throwable exception) {
-        log("Client exception: " + (exception != null ? exception.getMessage() : "null"));
+    	log("Client disconnected (exception): " +
+    		    (exception != null && exception.getMessage() != null
+    		            ? exception.getMessage()
+    		            : "connection closed"));
+
 
         // גם Exception אומר שהחיבור מת – לעדכן UI
         if (controller != null) {

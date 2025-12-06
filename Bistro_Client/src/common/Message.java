@@ -89,5 +89,16 @@ public class Message implements Serializable {
     public void setSuccess(Boolean success) {
         this.success = success;
     }
+    
+    @Override
+    public String toString() {
+        return "Message{" +
+                "type=" + type +
+                ", reservationId=" + reservationNumber +
+                ", newDate=" + reservationDate +
+                ", guests=" + numberOfGuests +
+                '}';
+    }
+
 }
 
