@@ -99,30 +99,41 @@ public class ServerController {
 
     public void onServerStopped() {
         setServerStoppedUI();
-        clientRows.clear();
+        // נקה את הטבלה תמיד דרך ה-FX thread
+        Platform.runLater(() -> clientRows.clear());
     }
 
+    // נקרא מה-BistroServer כל פעם שקליינט מתחבר
     public void onClientConnected(String hostName, String ipAddress) {
         Platform.runLater(() -> {
-            clientRows.add(new ClientConnectionRow(hostName, ipAddress, "connect"));
+            // כל חיבור חדש = שורה חדשה עם connected
+            clientRows.add(new ClientConnectionRow(hostName, ipAddress, "connected"));
             clientsTable.refresh();
         });
     }
 
+    // נקרא מה-BistroServer כל פעם שקליינט מתנתק / נזרקת Exception
     public void onClientDisconnected(String hostName, String ipAddress) {
         Platform.runLater(() -> {
-            // update the last row that matches host + ip
+            if (clientRows.isEmpty()) {
+                return;
+            }
+
+            // רעיון פשוט:
+            // כל ניתוק מסמן את *השורה האחרונה שעדיין לא מסומנת כ-Disconnected*
             for (int i = clientRows.size() - 1; i >= 0; i--) {
                 ClientConnectionRow row = clientRows.get(i);
-                if (row.getHostName().equals(hostName)
-                        && row.getIpAddress().equals(ipAddress)) {
+                if (!"Disconnected".equalsIgnoreCase(row.getStatus())) {
                     row.setStatus("Disconnected");
                     break;
                 }
             }
+
             clientsTable.refresh();
         });
     }
+
+
 
     public void appendLogFromServer(String msg) {
         Platform.runLater(() -> {

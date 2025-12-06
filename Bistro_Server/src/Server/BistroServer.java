@@ -69,29 +69,29 @@ public class BistroServer extends AbstractServer {
 
     @Override
     protected synchronized void clientDisconnected(ConnectionToClient client) {
-        super.clientDisconnected(client);
+        log("clientDisconnected event from OCSF");
 
-        // Sometimes InetAddress is already null if the socket is fully closed
-        if (client.getInetAddress() == null) {
-            log("clientDisconnected called but InetAddress is null (already closed)");
-            return;
-        }
-
-        String host = client.getInetAddress().getHostName();
-        String ip   = client.getInetAddress().getHostAddress();
-
-        log("Client disconnected: " + host + " (" + ip + ")");
+        // לא מעניין אותנו InetAddress, רק לעדכן את ה-UI
         if (controller != null) {
-            controller.onClientDisconnected(host, ip);
+            controller.onClientDisconnected(null, null);
         }
+
+        // ואז לתת ל-AbstractServer לעשות ניקוי
+        super.clientDisconnected(client);
     }
 
     @Override
     protected void clientException(ConnectionToClient client, Throwable exception) {
-        log("Client exception: " + exception.getMessage());
-        // OCSF will close the connection – update the table via clientDisconnected
-        clientDisconnected(client);
+        log("Client exception: " + (exception != null ? exception.getMessage() : "null"));
+
+        // גם Exception אומר שהחיבור מת – לעדכן UI
+        if (controller != null) {
+            controller.onClientDisconnected(null, null);
+        }
+
+        super.clientException(client, exception);
     }
+
 
     /* ========== Handle messages from client ========== */
 
