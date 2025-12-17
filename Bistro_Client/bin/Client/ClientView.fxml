@@ -1,97 +1,196 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
+<?import javafx.geometry.Insets?>
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
-<?import javafx.geometry.Insets?>
-<?import javafx.scene.layout.Priority?>
 
 <BorderPane xmlns="http://javafx.com/javafx/21"
             xmlns:fx="http://javafx.com/fxml/1"
             fx:controller="Client.ClientController"
-            prefWidth="700"
-            prefHeight="420">
+            prefWidth="980" prefHeight="620">
 
-    <!-- padding around everything -->
     <padding>
         <Insets top="10" right="10" bottom="10" left="10"/>
     </padding>
 
-    <!-- ===== TOP: Server IP + Connect / Disconnect ===== -->
+    <!-- ===== TOP BAR ===== -->
     <top>
-        <HBox spacing="10">
+        <HBox spacing="10" style="-fx-alignment: CENTER_LEFT;">
             <children>
-                <Label text="Server IP:"/>
-                <TextField fx:id="txtServerIp"
-                           prefWidth="180"/>
-
-                <Button fx:id="btnConnect"
-                        text="Connect"
-                        onAction="#onConnect"/>
-
-                <Button fx:id="btnDisconnect"
-                        text="Disconnect"
-                        onAction="#onDisconnect"/>
+                <Label text="Bistro System" style="-fx-font-size: 18px; -fx-font-weight: bold;"/>
+                <Region HBox.hgrow="ALWAYS"/>
+                <Label fx:id="lblUserInfo" text="Welcome, Guest" />
+                <Button text="Logout" onAction="#onLogout"/>
             </children>
         </HBox>
     </top>
 
-    <!-- ===== CENTER: Reservations text area ===== -->
-    <center>
-        <VBox spacing="5">
+    <!-- ===== LEFT SIDEBAR ===== -->
+    <left>
+        <VBox spacing="10" prefWidth="220" style="-fx-background-color: #f4f4f4; -fx-background-radius: 10;">
+            <padding>
+                <Insets top="12" right="12" bottom="12" left="12"/>
+            </padding>
+
             <children>
-                <Label text="Reservations from server:"/>
-                <TextArea fx:id="txtAreaReservations"
-                          wrapText="true"
-                          prefRowCount="12"
-                          editable="false"
-          				focusTraversable="false"
-                          VBox.vgrow="ALWAYS"/>
+                <Label text="Menu" style="-fx-font-weight: bold; -fx-font-size: 14px;"/>
+
+                <Button text="Dashboard" maxWidth="Infinity" onAction="#onNavDashboard"/>
+                <Button text="My Reservations" maxWidth="Infinity" onAction="#onNavReservations"/>
+                <Button text="New Reservation" maxWidth="Infinity" onAction="#onNewReservation"/>
+
+                <Separator/>
+
+                <Button fx:id="btnMyProfile" text="My Profile" maxWidth="Infinity" onAction="#onNavProfile"/>
+                <Button fx:id="btnHistory" text="History" maxWidth="Infinity" onAction="#onNavHistory"/>
+
+                <Separator/>
+
+                <Button text="Pay Bill" maxWidth="Infinity" onAction="#onPayBill"/>
+
+                <Separator/>
+
+                <Label text="Lost confirmation code?" style="-fx-font-weight: bold;"/>
+                <TextField fx:id="txtRecoverPhoneOrEmail" promptText="Phone or Email"/>
+                <Button text="Find my code" maxWidth="Infinity" onAction="#onRecoverCode"/>
+                <Label fx:id="lblRecoverResult" text="" wrapText="true"/>
+
             </children>
         </VBox>
+    </left>
+
+    <!-- ===== CENTER: STACK OF PANES ===== -->
+    <center>
+        <StackPane fx:id="contentStack">
+
+            <!-- DASHBOARD PANE -->
+            <VBox fx:id="paneDashboard" spacing="12">
+                <children>
+
+                    <!-- Summary cards -->
+                    <HBox spacing="12">
+                        <children>
+                            <VBox spacing="6" style="-fx-border-color: #dddddd; -fx-border-radius: 10; -fx-background-radius: 10; -fx-padding: 12;">
+                                <children>
+                                    <Label text="Active Reservations" style="-fx-font-weight: bold;"/>
+                                    <Label fx:id="lblActiveReservations" text="0" style="-fx-font-size: 20px;"/>
+                                </children>
+                            </VBox>
+
+                            <VBox spacing="6" style="-fx-border-color: #dddddd; -fx-border-radius: 10; -fx-background-radius: 10; -fx-padding: 12;">
+                                <children>
+                                    <Label text="Balance Due" style="-fx-font-weight: bold;"/>
+                                    <Label fx:id="lblBalanceDue" text="₪0.00" style="-fx-font-size: 20px;"/>
+                                </children>
+                            </VBox>
+
+                            <VBox spacing="6" style="-fx-border-color: #dddddd; -fx-border-radius: 10; -fx-background-radius: 10; -fx-padding: 12;">
+                                <children>
+                                    <Label text="Subscription" style="-fx-font-weight: bold;"/>
+                                    <Label fx:id="lblSubscriptionStatus" text="Not Subscribed" style="-fx-font-size: 20px;"/>
+                                </children>
+                            </VBox>
+                        </children>
+                    </HBox>
+
+                    <Label text="My Reservations" style="-fx-font-weight: bold; -fx-font-size: 14px;"/>
+
+                    <TableView fx:id="tblReservations" VBox.vgrow="ALWAYS">
+                        <columns>
+                            <TableColumn fx:id="colResCode" text="Code" prefWidth="110"/>
+                            <TableColumn fx:id="colResDate" text="Date" prefWidth="120"/>
+                            <TableColumn fx:id="colResTime" text="Time" prefWidth="90"/>
+                            <TableColumn fx:id="colResGuests" text="Guests" prefWidth="80"/>
+                            <TableColumn fx:id="colResStatus" text="Status" prefWidth="140"/>
+                            <TableColumn fx:id="colResPrice" text="Price" prefWidth="100"/>
+                        </columns>
+                    </TableView>
+
+                    <HBox spacing="10">
+                        <children>
+                            <Button text="Refresh" onAction="#onRefreshReservations"/>
+                            <Button fx:id="btnCancelReservation" text="Cancel Selected" onAction="#onCancelReservation"/>
+                            <Region HBox.hgrow="ALWAYS"/>
+                            <Button text="View Details" onAction="#onViewReservationDetails"/>
+                        </children>
+                    </HBox>
+
+                </children>
+            </VBox>
+
+            <!-- PROFILE PANE -->
+            <VBox fx:id="paneProfile" spacing="10" visible="false" managed="false">
+                <children>
+                    <Label text="My Profile (Subscriber)" style="-fx-font-weight: bold; -fx-font-size: 14px;"/>
+
+                    <GridPane hgap="10" vgap="10">
+                        <children>
+                            <Label text="Member #:" GridPane.rowIndex="0" GridPane.columnIndex="0"/>
+                            <TextField fx:id="txtMemberNumber" editable="false" GridPane.rowIndex="0" GridPane.columnIndex="1"/>
+
+                            <Label text="Full Name:" GridPane.rowIndex="1" GridPane.columnIndex="0"/>
+                            <TextField fx:id="txtFullName" editable="false" GridPane.rowIndex="1" GridPane.columnIndex="1"/>
+
+                            <Label text="Phone:" GridPane.rowIndex="2" GridPane.columnIndex="0"/>
+                            <TextField fx:id="txtPhone" GridPane.rowIndex="2" GridPane.columnIndex="1"/>
+
+                            <Label text="Email:" GridPane.rowIndex="3" GridPane.columnIndex="0"/>
+                            <TextField fx:id="txtEmail" GridPane.rowIndex="3" GridPane.columnIndex="1"/>
+                        </children>
+                    </GridPane>
+
+                    <HBox spacing="10">
+                        <children>
+                            <Button text="Save" onAction="#onSaveProfile"/>
+                            <Button text="Back to Dashboard" onAction="#onNavDashboard"/>
+                        </children>
+                    </HBox>
+                </children>
+            </VBox>
+
+            <!-- HISTORY PANE -->
+            <VBox fx:id="paneHistory" spacing="10" visible="false" managed="false">
+                <children>
+                    <Label text="History (Subscriber)" style="-fx-font-weight: bold; -fx-font-size: 14px;"/>
+
+                    <TableView fx:id="tblHistory" VBox.vgrow="ALWAYS">
+                        <columns>
+                            <TableColumn fx:id="colHistDate" text="Date" prefWidth="140"/>
+                            <TableColumn fx:id="colHistTime" text="Time" prefWidth="100"/>
+                            <TableColumn fx:id="colHistType" text="Type" prefWidth="140"/>
+                            <TableColumn fx:id="colHistDetails" text="Details" prefWidth="360"/>
+                            <TableColumn fx:id="colHistAmount" text="Amount" prefWidth="120"/>
+                        </columns>
+                    </TableView>
+
+                    <HBox spacing="10">
+                        <children>
+                            <Button text="Back to Dashboard" onAction="#onNavDashboard"/>
+                        </children>
+                    </HBox>
+                </children>
+            </VBox>
+
+        </StackPane>
     </center>
 
-    <!-- ===== BOTTOM: Reservation fields + buttons + status ===== -->
+    <!-- ===== BOTTOM STATUS + CONNECTION (optional but useful) ===== -->
     <bottom>
-        <VBox spacing="8">
+        <HBox spacing="10" style="-fx-alignment: CENTER_LEFT;">
             <children>
+                <Label fx:id="lblStatus" text="Not connected" />
+                <Region HBox.hgrow="ALWAYS"/>
 
-                <!-- Row: Reservation #, Date, Guests -->
-                <HBox spacing="10">
-                    <children>
-                        <Label text="Reservation ID:"/>
-                        <TextField fx:id="txtReservationNumber" prefWidth="70"/>
-
-                        <Label text="Date (yyyy-mm-dd):"/>
-                        <TextField fx:id="txtReservationDate" prefWidth="110"/>
-
-                        <Label text="Guests:"/>
-                        <TextField fx:id="txtNumberOfGuests" prefWidth="70"/>
-                    </children>
-                </HBox>
-
-                <!-- Row: Buttons -->
-                <HBox spacing="10">
-                    <children>
-                        <Button fx:id="btnGetReservations"
-                                text="Get Reservations"
-                                onAction="#onGetReservations"/>
-
-                        <Button fx:id="btnUpdateReservation"
-                                text="Update Reservation"
-                                onAction="#onUpdateReservation"/>
-                    </children>
-                </HBox>
-
-                <!-- Status label -->
-                <Label fx:id="lblStatus"
-                       text="Status"
-                       maxWidth="Infinity"/>
-
+                <Label text="Server IP:"/>
+                <TextField fx:id="txtServerIp" prefWidth="140"/>
+                <Button fx:id="btnConnect" text="Connect" onAction="#onConnect"/>
+                <Button fx:id="btnDisconnect" text="Disconnect" onAction="#onDisconnect"/>
             </children>
-        </VBox>
+        </HBox>
     </bottom>
 
 </BorderPane>
+
 
 
 
