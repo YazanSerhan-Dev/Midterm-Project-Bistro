@@ -27,19 +27,19 @@ public class SceneManager {
     }
 
     public static void showCustomerMain() {
-        setRoot("ClientView.fxml", "Bistro Client - Customer/Subscriber");
+        setRoot("/clientGUI/ClientView.fxml", "Bistro Client - Customer/Subscriber");
     }
 
     public static void showTerminal() {
-        setRoot("TerminalView.fxml", "Bistro Client - Terminal");
+        setRoot("/clientGUI/TerminalView.fxml", "Bistro Client - Terminal");
     }
 
     public static void showPayBill() {
-        setRoot("PayBillView.fxml", "Bistro Client - Pay Bill");
+        setRoot("/clientGUI/PayBillView.fxml", "Bistro Client - Pay Bill");
     }
 
     public static void showLogin() {
-        setRoot("LoginView.fxml", "Bistro Client - Login");
+        setRoot("/clientGUI/LoginView.fxml", "Bistro Client - Login");
     }
 }
 
