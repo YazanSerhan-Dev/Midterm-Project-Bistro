@@ -1,4 +1,4 @@
-package Client;
+package clientGUI;
 
 import javafx.application.Application;
 import javafx.fxml.FXMLLoader;
@@ -6,6 +6,9 @@ import javafx.scene.Scene;
 import javafx.stage.Stage;
 
 import java.util.List;
+
+import Client.ClientController;
+import Client.SceneManager;
 
 public class ClientFX extends Application {
 
