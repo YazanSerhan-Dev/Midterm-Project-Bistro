@@ -1,0 +1,11 @@
+hours_id,day_of_week,open_time,close_time,is_special,special_date
+1,Sunday,09:00:00,22:00:00,NO,
+2,Monday,09:00:00,22:00:00,NO,
+3,Tuesday,09:00:00,22:00:00,NO,
+4,Wednesday,09:00:00,22:00:00,NO,
+5,Thursday,09:00:00,22:00:00,NO,
+6,Friday,09:00:00,22:00:00,NO,
+7,Saturday,09:00:00,22:00:00,NO,
+8,Sunday,09:00:00,22:00:00,NO,
+9,Monday,09:00:00,22:00:00,NO,
+10,Tuesday,09:00:00,22:00:00,NO,
