@@ -1,0 +1,11 @@
+bill_id,visit_id,total_amount,is_subscriber_discount,is_paid
+1,1,110,NO,YES
+2,2,120,YES,YES
+3,3,130,NO,YES
+4,4,140,YES,YES
+5,5,150,NO,YES
+6,6,160,YES,YES
+7,7,170,NO,YES
+8,8,180,YES,YES
+9,9,190,NO,YES
+10,10,200,YES,YES
