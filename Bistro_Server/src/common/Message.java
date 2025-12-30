@@ -2,6 +2,14 @@ package common;
 
 import java.io.Serializable;
 
+/**
+ * @deprecated
+ * Legacy message class from prototype.
+ * DO NOT USE for new logic.
+ * Replaced by KryoMessage + DTOs.
+ */
+
+
 public class Message implements Serializable {
 
     private static final long serialVersionUID = 1L;
