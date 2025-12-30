@@ -1,10 +1,16 @@
 package Client;
 
+import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
 import javafx.scene.layout.VBox;
+import common.Envelope;
+import common.OpCode;
+import common.KryoMessage;
+import common.KryoUtil;
+
 
 public class ClientController {
 
@@ -200,8 +206,7 @@ public class ClientController {
 
     @FXML
     private void onRefreshReservations() {
-        // Later: request from server
-        lblStatus.setText("Refreshing reservations (demo)...");
+        send(OpCode.REQUEST_RESERVATIONS_LIST, null);
     }
 
     @FXML
@@ -227,12 +232,10 @@ public class ClientController {
         ReservationRow r = tblReservations.getSelectionModel().getSelectedItem();
         if (r == null) return;
 
-        // Later: send cancel request to server
-        r.setStatus("Cancelled");
-        tblReservations.refresh();
-
-        lblStatus.setText("Reservation cancelled (demo).");
+        // send the reservation code
+        send(OpCode.REQUEST_CANCEL_RESERVATION, r.getCode());
     }
+
 
     @FXML
     private void onRecoverCode() {
@@ -242,9 +245,8 @@ public class ClientController {
             return;
         }
 
-        // Later: server will send SMS+Email (simulation ok)
-        lblRecoverResult.setText("Your latest confirmation code is: A1B2C3 (demo)");
-        lblStatus.setText("Code recovery requested (demo).");
+        send(OpCode.REQUEST_RECOVER_CONFIRMATION_CODE, key);
+        lblRecoverResult.setText("Request sent...");
     }
 
     @FXML
@@ -288,8 +290,44 @@ public class ClientController {
     // OCSF CallBacks
     
     public void handleServerMessage(Object msg) {
-        lblStatus.setText("Server: " + String.valueOf(msg));
+        Platform.runLater(() -> {
+            Envelope env = unwrapToEnvelope(msg);
+            if (env == null) {
+                lblStatus.setText("Server: " + String.valueOf(msg));
+                return;
+            }
+
+            if (!env.isOk()) {
+                lblStatus.setText("ERROR: " + env.getMessage());
+                return;
+            }
+
+            handleEnvelope(env);
+        });
     }
+
+
+    /**
+     * Supports both:
+     * 1) server sends Envelope directly
+     * 2) server sends KryoMessage (byte[]) and we decode using KryoUtil
+     */
+    private Envelope unwrapToEnvelope(Object msg) {
+        try {
+            if (msg instanceof Envelope e) {
+                return e;
+            }
+            if (msg instanceof KryoMessage km) {
+                Object obj = KryoUtil.fromBytes(km.getPayload());
+                if (obj instanceof Envelope e) return e;
+            }
+        } catch (Exception ex) {
+            // keep UI alive even if decode fails
+            lblStatus.setText("Decode error: " + ex.getMessage());
+        }
+        return null;
+    }
+
     public void onConnected() {
         lblStatus.setText("Connected to server.");
     }
@@ -298,6 +336,72 @@ public class ClientController {
     }
     public void onConnectionError(Exception e) {
         lblStatus.setText("Connection error: " + e.getMessage());
+    }
+
+    private void send(OpCode op, Object payload) {
+        if (client == null || !client.isConnected()) {
+            lblStatus.setText("Not connected. (Connect first)");
+            return;
+        }
+
+        try {
+            Envelope env = Envelope.request(op, payload);
+            // Always send KryoMessage over the network
+            client.sendToServer(KryoMessage.of(op.name(), env));
+            lblStatus.setText("Sent: " + op);
+        } catch (Exception e) {
+            lblStatus.setText("Send failed: " + e.getMessage());
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void handleEnvelope(Envelope env) {
+        switch (env.getOp()) {
+            case RESPONSE_RESERVATIONS_LIST -> {
+                // payload should be List<ReservationDTO>
+                var list = (java.util.List<common.dto.ReservationDTO>) env.getPayload();
+
+                reservations.clear();
+                if (list != null) {
+                    for (var dto : list) {
+                        reservations.add(new ReservationRow(
+                                dto.getCode(),
+                                dto.getDate(),
+                                dto.getTime(),
+                                dto.getGuests(),
+                                dto.getStatus(),
+                                "₪" + (int) dto.getPrice()
+                        ));
+                    }
+                }
+                tblReservations.refresh();
+                lblStatus.setText("Loaded reservations: " + (list == null ? 0 : list.size()));
+            }
+
+            case RESPONSE_HISTORY_GET -> {
+                var list = (java.util.List<common.dto.HistoryDTO>) env.getPayload();
+
+                history.clear();
+                if (list != null) {
+                    for (var dto : list) {
+                        history.add(new HistoryRow(
+                                dto.getDate(),
+                                dto.getTime(),
+                                dto.getType(),
+                                dto.getDetails(),
+                                "₪" + (int) dto.getAmount()
+                        ));
+                    }
+                }
+                tblHistory.refresh();
+                lblStatus.setText("Loaded history: " + (list == null ? 0 : list.size()));
+            }
+
+            case INFO -> lblStatus.setText(env.getMessage() != null ? env.getMessage() : "INFO");
+            case ERROR -> lblStatus.setText("ERROR: " + env.getMessage());
+
+            default -> lblStatus.setText("Unhandled response: " + env.getOp());
+        }
     }
 
 }

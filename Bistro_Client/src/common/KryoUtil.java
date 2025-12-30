@@ -13,17 +13,10 @@ public final class KryoUtil {
     private static final ThreadLocal<Kryo> KRYO = ThreadLocal.withInitial(() -> {
         Kryo kryo = new Kryo();
 
-        // ✅ Register all classes you will send (MUST match on client & server)
-        // Example DTOs (you'll add your own):
-        // kryo.register(common.dto.GetReservationsRequest.class);
-        // kryo.register(common.dto.ReservationDTO.class);
-        // kryo.register(java.util.ArrayList.class);
+        // ✅ During development: easiest + prevents "Class is not registered" errors.
+        // Later (before submission), we can turn this back to true and register everything in same order on server+client.
+        kryo.setRegistrationRequired(false);
 
-        // If you don't want to register everything manually (not recommended for grading),
-        // you can do:
-        // kryo.setRegistrationRequired(false);
-
-        kryo.setRegistrationRequired(true); // better for safety + grading
         return kryo;
     });
 
