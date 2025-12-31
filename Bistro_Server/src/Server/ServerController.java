@@ -40,9 +40,6 @@ public class ServerController {
 
     private static final int DEFAULT_PORT = 5555;
 
-    /**
-     * Initializes table bindings and sets initial UI state (server stopped).
-     */
     @FXML
     private void initialize() {
         hostColumn.setCellValueFactory(c -> c.getValue().hostNameProperty());
@@ -50,15 +47,11 @@ public class ServerController {
         statusColumn.setCellValueFactory(c -> c.getValue().statusProperty());
 
         clientsTable.setItems(clientRows);
-
         setServerStoppedUI();
     }
 
     /* ========== Button handlers ========== */
 
-    /**
-     * Starts the server on the default port and updates the UI.
-     */
     @FXML
     private void onStartServer() {
         if (server != null && server.isListening()) {
@@ -76,9 +69,6 @@ public class ServerController {
         }
     }
 
-    /**
-     * Stops the server if it is running and updates the UI.
-     */
     @FXML
     private void onStopServer() {
         if (server == null || !server.isListening()) {
@@ -95,9 +85,6 @@ public class ServerController {
         }
     }
 
-    /**
-     * Exits the application, closing the server if needed.
-     */
     @FXML
     private void onExit() {
         try {
@@ -110,24 +97,15 @@ public class ServerController {
 
     /* ========== Called from BistroServer (server thread) ========== */
 
-    /**
-     * Updates the UI when the server has started (callback from BistroServer).
-     */
     public void onServerStarted(int port) {
         setServerStartedUI(port);
     }
 
-    /**
-     * Updates the UI and clears the connections table when the server stops.
-     */
     public void onServerStopped() {
         setServerStoppedUI();
-        Platform.runLater(() -> clientRows.clear());
+        Platform.runLater(clientRows::clear);
     }
 
-    /**
-     * Adds a new row when a client connects.
-     */
     public void onClientConnected(String hostName, String ipAddress) {
         Platform.runLater(() -> {
             clientRows.add(new ClientConnectionRow(hostName, ipAddress, "connected"));
@@ -135,30 +113,28 @@ public class ServerController {
         });
     }
 
-    /**
-     * Marks the last active client row as disconnected when a client disconnects.
-     */
     public void onClientDisconnected(String hostName, String ipAddress) {
         Platform.runLater(() -> {
-            if (clientRows.isEmpty()) {
-                return;
-            }
-
             for (int i = clientRows.size() - 1; i >= 0; i--) {
                 ClientConnectionRow row = clientRows.get(i);
-                if (!"Disconnected".equalsIgnoreCase(row.getStatus())) {
-                    row.setStatus("Disconnected");
-                    break;
+
+                boolean sameClient =
+                        hostName.equals(row.getHostName()) &&
+                        ipAddress.equals(row.getIpAddress());
+
+                if (sameClient && "connected".equalsIgnoreCase(row.getStatus())) {
+                    row.setStatus("disconnected");
+                    clientsTable.refresh();
+                    return;
                 }
             }
 
+            // fallback: if not found, still refresh
             clientsTable.refresh();
         });
     }
 
-    /**
-     * Appends a log line to the server log area (thread-safe).
-     */
+
     public void appendLogFromServer(String msg) {
         Platform.runLater(() -> {
             if (logArea != null) {
@@ -171,9 +147,6 @@ public class ServerController {
 
     /* ========== UI helpers ========== */
 
-    /**
-     * Sets labels and buttons for the "server started" state.
-     */
     private void setServerStartedUI(int port) {
         Platform.runLater(() -> {
             String ip = "unknown";
@@ -190,9 +163,6 @@ public class ServerController {
         });
     }
 
-    /**
-     * Sets labels and buttons for the "server stopped" state.
-     */
     private void setServerStoppedUI() {
         Platform.runLater(() -> {
             serverStatusLabel.setText("Server is stopped");

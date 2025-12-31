@@ -1,248 +1,240 @@
 package Server;
 
 import java.io.IOException;
-import java.sql.Date;
-import java.sql.SQLException;
+import java.sql.Timestamp;
+import java.util.ArrayList;
 import java.util.List;
 
-import DataBase.Reservation;
-import DataBase.ReservationDAO;
 import ocsf.server.AbstractServer;
 import ocsf.server.ConnectionToClient;
-import common.Message;
 
-/**
- * OCSF server for the Bistro system.
- * Listens for client connections and communicates with the DB via ReservationDAO.
- */
+import common.Envelope;
+import common.KryoMessage;
+import common.KryoUtil;
+import common.OpCode;
+
+import DataBase.Reservation;
+import DataBase.dao.ReservationDAO;
+
 public class BistroServer extends AbstractServer {
 
-    /** Reference to the JavaFX server controller (for logging and UI updates). */
     private final ServerController controller;
-
-    /** DAO layer for reservation operations (internally uses the connection pool). */
     private final ReservationDAO reservationDAO = new ReservationDAO();
 
-    /**
-     * Creates a new Bistro server on the given port bound to a UI controller.
-     */
     public BistroServer(int port, ServerController controller) {
         super(port);
         this.controller = controller;
     }
 
-    /**
-     * Logs messages either to the controller log area or to the console.
-     */
     private void log(String text) {
-        if (controller != null) {
-            controller.appendLogFromServer(text);
-        } else {
-            System.out.println(text);
-        }
+        if (controller != null) controller.appendLogFromServer(text);
+        else System.out.println(text);
     }
 
-    /* ========== OCSF lifecycle ========== */
+    private String host(ConnectionToClient c) {
+        return (c.getInetAddress() != null) ? c.getInetAddress().getHostName() : "unknown";
+    }
 
-    /**
-     * Called when the server starts listening on the port.
-     * Notifies the controller to update server status in the UI.
-     */
+    private String ip(ConnectionToClient c) {
+        return (c.getInetAddress() != null) ? c.getInetAddress().getHostAddress() : "unknown";
+    }
+
     @Override
     protected void serverStarted() {
         log("Server started on port " + getPort());
-        if (controller != null) {
-            controller.onServerStarted(getPort());
-        }
+        if (controller != null) controller.onServerStarted(getPort());
     }
 
-    /**
-     * Called when the server stops listening.
-     * Notifies the controller to update server status and clear client table if needed.
-     */
     @Override
     protected void serverStopped() {
         log("Server stopped.");
-        if (controller != null) {
-            controller.onServerStopped();
-        }
+        if (controller != null) controller.onServerStopped();
     }
 
-    /**
-     * Called when a new client connects.
-     * Logs and adds the client to the server connections table.
-     */
     @Override
     protected void clientConnected(ConnectionToClient client) {
         super.clientConnected(client);
 
-        String host = client.getInetAddress().getHostName();
-        String ip   = client.getInetAddress().getHostAddress();
+        String host = host(client);
+        String ip = ip(client);
 
         log("Client connected: " + host + " (" + ip + ")");
-        if (controller != null) {
-            controller.onClientConnected(host, ip);
-        }
+
+        // create + remember a "row key" for this exact client connection
+        client.setInfo("host", host);
+        client.setInfo("ip", ip);
+
+        if (controller != null) controller.onClientConnected(host, ip);
     }
 
-    /**
-     * Called when OCSF detects that a client disconnected cleanly.
-     * We only use it to update the UI (status becomes Disconnected).
-     */
     @Override
-    protected synchronized void clientDisconnected(ConnectionToClient client) {
-        log("clientDisconnected event from OCSF");
-
-        if (controller != null) {
-            controller.onClientDisconnected(null, null);
-        }
-
+    protected void clientDisconnected(ConnectionToClient client) {
         super.clientDisconnected(client);
+
+        String host = (String) client.getInfo("host");
+        String ip = (String) client.getInfo("ip");
+
+        if (host == null) host = host(client);
+        if (ip == null) ip = ip(client);
+
+        log("Client disconnected: " + host + " (" + ip + ")");
+
+        if (controller != null) controller.onClientDisconnected(host, ip);
     }
 
-    /**
-     * Called when a client connection ends due to an exception (e.g. closing window).
-     * Treated as a disconnect and reflected in the UI.
-     */
     @Override
     protected void clientException(ConnectionToClient client, Throwable exception) {
-        log("Client disconnected (exception): " +
-                (exception != null && exception.getMessage() != null
-                        ? exception.getMessage()
-                        : "connection closed"));
-
-        if (controller != null) {
-            controller.onClientDisconnected(null, null);
-        }
-
         super.clientException(client, exception);
+
+        String host = (String) client.getInfo("host");
+        String ip = (String) client.getInfo("ip");
+
+        if (host == null) host = host(client);
+        if (ip == null) ip = ip(client);
+
+        log("Client exception: " + host + " (" + ip + "): " + exception.getMessage());
+
+        // IMPORTANT: exceptions often happen instead of clean disconnect
+        if (controller != null) controller.onClientDisconnected(host, ip);
     }
 
-    /* ========== Handle messages from client ========== */
 
-    /**
-     * Main dispatcher for messages coming from clients.
-     * Validates message type and routes to the correct handler.
-     */
     @Override
     protected void handleMessageFromClient(Object msg, ConnectionToClient client) {
-        log("Received from client: " + msg);
-
         try {
-            if (!(msg instanceof Message)) {
-                client.sendToClient(new Message(
-                        Message.Type.ERROR,
-                        "Unsupported message object from client"
-                ));
+            Envelope req = unwrapToEnvelope(msg);
+            if (req == null) {
+                sendError(client, OpCode.ERROR, "Bad message format (expected Envelope via KryoMessage).");
                 return;
             }
 
-            Message m = (Message) msg;
+            switch (req.getOp()) {
 
-            switch (m.getType()) {
-                case GET_RESERVATIONS:
-                    handleGetReservations(client);
-                    break;
+                case REQUEST_RESERVATIONS_LIST -> handleReservationsList(req, client);
 
-                case UPDATE_RESERVATION:
-                    handleUpdateReservation(m, client);
-                    break;
+                // TODO later:
+                case REQUEST_CANCEL_RESERVATION -> sendOk(client, OpCode.RESPONSE_CANCEL_RESERVATION, "NOT_IMPLEMENTED_YET");
+                case REQUEST_RECOVER_CONFIRMATION_CODE -> sendOk(client, OpCode.RESPONSE_RECOVER_CONFIRMATION_CODE, "NOT_IMPLEMENTED_YET");
+                case REQUEST_PROFILE_GET -> sendOk(client, OpCode.RESPONSE_PROFILE_GET, null);
+                case REQUEST_PROFILE_UPDATE_CONTACT -> sendOk(client, OpCode.RESPONSE_PROFILE_UPDATE_CONTACT, "NOT_IMPLEMENTED_YET");
+                case REQUEST_HISTORY_GET -> sendOk(client, OpCode.RESPONSE_HISTORY_GET, List.of());
 
-                default:
-                    client.sendToClient(new Message(
-                            Message.Type.ERROR,
-                            "Unknown message type: " + m.getType()
-                    ));
+                case REQUEST_BILL_GET_BY_CODE -> sendOk(client, OpCode.RESPONSE_BILL_GET_BY_CODE, null);
+                case REQUEST_PAY_BILL -> sendOk(client, OpCode.RESPONSE_PAY_BILL, "NOT_IMPLEMENTED_YET");
+
+                case REQUEST_TERMINAL_VALIDATE_CODE -> sendOk(client, OpCode.RESPONSE_TERMINAL_VALIDATE_CODE, "NOT_IMPLEMENTED_YET");
+                case REQUEST_TERMINAL_CHECK_IN -> sendOk(client, OpCode.RESPONSE_TERMINAL_CHECK_IN, "NOT_IMPLEMENTED_YET");
+                case REQUEST_TERMINAL_CHECK_OUT -> sendOk(client, OpCode.RESPONSE_TERMINAL_CHECK_OUT, "NOT_IMPLEMENTED_YET");
+                case REQUEST_TERMINAL_NO_SHOW -> sendOk(client, OpCode.RESPONSE_TERMINAL_NO_SHOW, "NOT_IMPLEMENTED_YET");
+
+                default -> sendError(client, OpCode.ERROR, "Unknown op: " + req.getOp());
             }
 
         } catch (Exception e) {
-            log("Error handling client message: " + e.getMessage());
-            e.printStackTrace();
-
+            log("Error handling message: " + e.getMessage());
             try {
-                client.sendToClient(new Message(
-                        Message.Type.ERROR,
-                        "Server exception: " + e.getMessage()
-                ));
-            } catch (IOException ignored) {
-                log("Failed to send error message to client: " + ignored.getMessage());
+                sendError(client, OpCode.ERROR, "Server exception: " + e.getMessage());
+            } catch (Exception ignored) {}
+        }
+    }
+
+    private Envelope unwrapToEnvelope(Object msg) {
+        try {
+            if (msg instanceof Envelope e) return e;
+
+            if (msg instanceof KryoMessage km) {
+                Object obj = KryoUtil.fromBytes(km.getPayload());
+                if (obj instanceof Envelope e) return e;
             }
+        } catch (Exception ex) {
+            log("Decode error: " + ex.getMessage());
+        }
+        return null;
+    }
+
+    /* ==================== Envelope replies ==================== */
+
+    private void sendOk(ConnectionToClient client, OpCode op, Object payload) throws IOException {
+        Envelope resp = Envelope.ok(op, payload);
+        sendEnvelope(client, resp);
+    }
+
+    private void sendError(ConnectionToClient client, OpCode op, String message) throws IOException {
+        Envelope resp = Envelope.error(message);
+        resp.setOp(op);
+        sendEnvelope(client, resp);
+    }
+
+    private void sendEnvelope(ConnectionToClient client, Envelope env) throws IOException {
+        byte[] bytes = KryoUtil.toBytes(env);
+        client.sendToClient(new KryoMessage("ENVELOPE", bytes));
+    }
+
+    /* ==================== Handlers ==================== */
+
+    private void handleReservationsList(Envelope req, ConnectionToClient client) throws Exception {
+        List<Reservation> rows = reservationDAO.getAllReservations(); // must match your DAO method name
+
+        List<Object> dtoList = new ArrayList<>();
+        for (Reservation r : rows) {
+            Object dto = toReservationDTO(r);
+            if (dto != null) dtoList.add(dto);
+        }
+
+        sendOk(client, OpCode.RESPONSE_RESERVATIONS_LIST, dtoList);
+        log("Sent RESPONSE_RESERVATIONS_LIST size=" + dtoList.size());
+    }
+
+    /**
+     * Maps DB Reservation -> common.dto.ReservationDTO
+     * using reflection so server won’t break if DTO changes a bit.
+     */
+    private Object toReservationDTO(Reservation r) {
+        try {
+            Class<?> dtoCls = Class.forName("common.dto.ReservationDTO");
+            Object dto = dtoCls.getDeclaredConstructor().newInstance();
+
+            // DB values
+            int reservationId = r.getReservationId();
+            String confirmationCode = r.getConfirmationCode();
+            Timestamp resTs = r.getReservationTime();
+            Timestamp expTs = r.getExpiryTime();
+            int customers = r.getNumOfCustomers();
+            String status = r.getStatus();
+
+            String resTimeStr = (resTs == null) ? "-" : resTs.toLocalDateTime().toString().replace('T', ' ');
+            String expTimeStr = (expTs == null) ? "-" : expTs.toLocalDateTime().toString().replace('T', ' ');
+
+            // Try multiple setter names (so DTO can be slightly different)
+            invoke(dto, "setReservationId", int.class, reservationId);
+            invoke(dto, "setReservationId", Integer.class, reservationId);
+
+            invoke(dto, "setConfirmationCode", String.class, confirmationCode);
+            invoke(dto, "setCode", String.class, confirmationCode); // fallback if you named it "code"
+
+            invoke(dto, "setReservationTime", String.class, resTimeStr);
+            invoke(dto, "setExpiryTime", String.class, expTimeStr);
+
+            invoke(dto, "setNumOfCustomers", int.class, customers);
+            invoke(dto, "setNumOfCustomers", Integer.class, customers);
+
+            invoke(dto, "setStatus", String.class, status);
+
+            return dto;
+
+        } catch (Exception ex) {
+            log("toReservationDTO error: " + ex.getMessage());
+            return null;
         }
     }
 
-    /* ========== Commands ========== */
-
-    /**
-     * Handles GET_RESERVATIONS:
-     * loads all reservations from the DB and sends them as text to the client.
-     */
-    private void handleGetReservations(ConnectionToClient client)
-            throws IOException, SQLException {
-
-        List<Reservation> reservations = reservationDAO.getAllReservations();
-
-        if (reservations.isEmpty()) {
-            client.sendToClient(new Message(
-                    Message.Type.RESERVATIONS_TEXT,
-                    "NO_RESERVATIONS"
-            ));
-            log("No reservations found");
-            return;
-        }
-
-        StringBuilder sb = new StringBuilder();
-        for (Reservation r : reservations) {
-            sb.append(r.getReservationNumber())
-              .append(" | date=")
-              .append(r.getReservationDate())
-              .append(" | guests=")
-              .append(r.getNumberOfGuests())
-              .append("\n");
-        }
-
-        client.sendToClient(new Message(
-                Message.Type.RESERVATIONS_TEXT,
-                sb.toString()
-        ));
-        log("Sent " + reservations.size() + " reservations to client");
-    }
-
-    /**
-     * Handles UPDATE_RESERVATION:
-     * validates message fields, updates DB, and sends result back to the client.
-     */
-    private void handleUpdateReservation(Message m, ConnectionToClient client)
-            throws IOException, SQLException {
-
-        Integer num     = m.getReservationNumber();
-        String dateStr  = m.getReservationDate();
-        Integer guests  = m.getNumberOfGuests();
-
-        if (num == null || dateStr == null || guests == null) {
-            Message error = new Message(
-                    Message.Type.UPDATE_RESULT,
-                    "Missing fields for update"
-            );
-            error.setSuccess(false);
-            client.sendToClient(error);
-            return;
-        }
-
-        Date newDate = Date.valueOf(dateStr); // yyyy-MM-dd
-
-        reservationDAO.updateReservation(num, newDate, guests);
-
-        Message ok = new Message(
-                Message.Type.UPDATE_RESULT,
-                "UPDATE_OK"
-        );
-        ok.setSuccess(true);
-        client.sendToClient(ok);
-
-        log("Updated reservation #" + num + " to date=" + newDate +
-                ", guests=" + guests);
+    private void invoke(Object obj, String method, Class<?> param, Object value) {
+        try {
+            obj.getClass().getMethod(method, param).invoke(obj, value);
+        } catch (Exception ignored) {}
     }
 }
+
 
 
 

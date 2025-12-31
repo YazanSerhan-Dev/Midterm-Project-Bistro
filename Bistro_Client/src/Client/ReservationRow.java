@@ -3,36 +3,47 @@ package Client;
 import javafx.beans.property.*;
 
 public class ReservationRow {
-    private final StringProperty code = new SimpleStringProperty();
-    private final StringProperty date = new SimpleStringProperty();
-    private final StringProperty time = new SimpleStringProperty();
-    private final IntegerProperty guests = new SimpleIntegerProperty();
-    private final StringProperty status = new SimpleStringProperty();
-    private final StringProperty price = new SimpleStringProperty();
 
-    public ReservationRow(String code, String date, String time, int guests, String status, String price) {
-        this.code.set(code);
-        this.date.set(date);
-        this.time.set(time);
-        this.guests.set(guests);
+    private final IntegerProperty reservationId = new SimpleIntegerProperty();
+    private final StringProperty confirmationCode = new SimpleStringProperty();
+    private final StringProperty reservationTime = new SimpleStringProperty();
+    private final StringProperty expiryTime = new SimpleStringProperty();
+    private final IntegerProperty numOfCustomers = new SimpleIntegerProperty();
+    private final StringProperty status = new SimpleStringProperty();
+
+    public ReservationRow(int reservationId,
+                          String confirmationCode,
+                          String reservationTime,
+                          String expiryTime,
+                          int numOfCustomers,
+                          String status) {
+        this.reservationId.set(reservationId);
+        this.confirmationCode.set(confirmationCode);
+        this.reservationTime.set(reservationTime);
+        this.expiryTime.set(expiryTime);
+        this.numOfCustomers.set(numOfCustomers);
         this.status.set(status);
-        this.price.set(price);
     }
 
-    public String getCode() { return code.get(); }
-    public String getDate() { return date.get(); }
-    public String getTime() { return time.get(); }
-    public int getGuests() { return guests.get(); }
+    public int getReservationId() { return reservationId.get(); }
+    public IntegerProperty reservationIdProperty() { return reservationId; }
+
+    public String getConfirmationCode() { return confirmationCode.get(); }
+    public StringProperty confirmationCodeProperty() { return confirmationCode; }
+
+    public String getReservationTime() { return reservationTime.get(); }
+    public StringProperty reservationTimeProperty() { return reservationTime; }
+
+    public String getExpiryTime() { return expiryTime.get(); }
+    public StringProperty expiryTimeProperty() { return expiryTime; }
+
+    public int getNumOfCustomers() { return numOfCustomers.get(); }
+    public IntegerProperty numOfCustomersProperty() { return numOfCustomers; }
+
     public String getStatus() { return status.get(); }
-    public String getPrice() { return price.get(); }
+    public StringProperty statusProperty() { return status; }
 
     public void setStatus(String s) { status.set(s); }
-
-    public StringProperty codeProperty() { return code; }
-    public StringProperty dateProperty() { return date; }
-    public StringProperty timeProperty() { return time; }
-    public IntegerProperty guestsProperty() { return guests; }
-    public StringProperty statusProperty() { return status; }
-    public StringProperty priceProperty() { return price; }
 }
+
 

@@ -1,44 +1,44 @@
 package common.dto;
 
-import java.io.Serializable;
+public class ReservationDTO {
 
-public class ReservationDTO implements Serializable {
-    private static final long serialVersionUID = 1L;
-
-    private String code;
-    private String date;   // "YYYY-MM-DD"
-    private String time;   // "HH:mm"
-    private int guests;
+    private int reservationId;
+    private String confirmationCode;
+    private String reservationTime;
+    private String expiryTime;
+    private int numOfCustomers;
     private String status;
-    private double price;
 
     public ReservationDTO() {}
 
-    public ReservationDTO(String code, String date, String time, int guests, String status, double price) {
-        this.code = code;
-        this.date = date;
-        this.time = time;
-        this.guests = guests;
+    public ReservationDTO(int reservationId, String confirmationCode,
+                          String reservationTime, String expiryTime,
+                          int numOfCustomers, String status) {
+        this.reservationId = reservationId;
+        this.confirmationCode = confirmationCode;
+        this.reservationTime = reservationTime;
+        this.expiryTime = expiryTime;
+        this.numOfCustomers = numOfCustomers;
         this.status = status;
-        this.price = price;
     }
 
-    public String getCode() { return code; }
-    public void setCode(String code) { this.code = code; }
+    public int getReservationId() { return reservationId; }
+    public void setReservationId(int reservationId) { this.reservationId = reservationId; }
 
-    public String getDate() { return date; }
-    public void setDate(String date) { this.date = date; }
+    public String getConfirmationCode() { return confirmationCode; }
+    public void setConfirmationCode(String confirmationCode) { this.confirmationCode = confirmationCode; }
 
-    public String getTime() { return time; }
-    public void setTime(String time) { this.time = time; }
+    public String getReservationTime() { return reservationTime; }
+    public void setReservationTime(String reservationTime) { this.reservationTime = reservationTime; }
 
-    public int getGuests() { return guests; }
-    public void setGuests(int guests) { this.guests = guests; }
+    public String getExpiryTime() { return expiryTime; }
+    public void setExpiryTime(String expiryTime) { this.expiryTime = expiryTime; }
+
+    public int getNumOfCustomers() { return numOfCustomers; }
+    public void setNumOfCustomers(int numOfCustomers) { this.numOfCustomers = numOfCustomers; }
 
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
-
-    public double getPrice() { return price; }
-    public void setPrice(double price) { this.price = price; }
 }
+
 

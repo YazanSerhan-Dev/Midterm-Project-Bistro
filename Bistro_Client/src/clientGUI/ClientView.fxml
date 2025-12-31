@@ -101,16 +101,18 @@
                     <Label text="My Reservations" style="-fx-font-weight: bold; -fx-font-size: 14px;"/>
 
                     <!-- RESERVATIONS TABLE -->
-                    <TableView fx:id="tblReservations" VBox.vgrow="ALWAYS">
-                        <columns>
-                            <TableColumn fx:id="colResCode" text="Code" prefWidth="110"/>
-                            <TableColumn fx:id="colResDate" text="Date" prefWidth="120"/>
-                            <TableColumn fx:id="colResTime" text="Time" prefWidth="90"/>
-                            <TableColumn fx:id="colResGuests" text="Guests" prefWidth="80"/>
-                            <TableColumn fx:id="colResStatus" text="Status" prefWidth="140"/>
-                            <TableColumn fx:id="colResPrice" text="Price" prefWidth="100"/>
-                        </columns>
-                    </TableView>
+					<TableView fx:id="tblReservations" prefHeight="400.0" prefWidth="700.0">
+    <columns>
+        <TableColumn fx:id="colReservationId" text="Reservation ID" prefWidth="120.0"/>
+        <TableColumn fx:id="colConfirmationCode" text="Confirmation Code" prefWidth="150.0"/>
+        <TableColumn fx:id="colReservationTime" text="Reservation Time" prefWidth="170.0"/>
+        <TableColumn fx:id="colExpiryTime" text="Expiry Time" prefWidth="170.0"/>
+        <TableColumn fx:id="colCustomers" text="Customers" prefWidth="120.0"/>
+        <TableColumn fx:id="colStatus" text="Status" prefWidth="140.0"/>
+    </columns>
+</TableView>
+
+
 
                     <HBox spacing="10">
                         <children>

@@ -1,5 +1,6 @@
 package Client;
 
+import javafx.application.Platform;
 import ocsf.client.AbstractClient;
 
 /**
@@ -17,36 +18,24 @@ public class BistroClient extends AbstractClient {
         this.controller = controller;
     }
 
-    /**
-     * Called when a message arrives from the server; forwards it to the controller.
-     */
-    @Override
-    protected void handleMessageFromServer(Object msg) {
-        controller.handleServerMessage(msg);
-    }
-
-    /**
-     * Called when the TCP connection is successfully established.
-     */
     @Override
     protected void connectionEstablished() {
-        controller.onConnected();
+        Platform.runLater(() -> controller.onConnected());
     }
 
-    /**
-     * Called when the TCP connection is closed (by client or server).
-     */
     @Override
     protected void connectionClosed() {
-        controller.onDisconnected();
+        Platform.runLater(() -> controller.onDisconnected());
     }
 
-    /**
-     * Called when a connection-related exception occurs.
-     */
     @Override
     protected void connectionException(Exception exception) {
-        controller.onConnectionError(exception);
+        Platform.runLater(() -> controller.onConnectionError(exception));
+    }
+
+    @Override
+    protected void handleMessageFromServer(Object msg) {
+        Platform.runLater(() -> controller.handleServerMessage(msg));
     }
 }
 
