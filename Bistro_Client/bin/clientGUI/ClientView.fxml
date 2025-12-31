@@ -125,6 +125,48 @@
                 </children>
             </VBox>
 
+
+            <!-- NEW RESERVATION -->
+            <VBox fx:id="paneNewReservation" spacing="12" visible="false" managed="false">
+                <children>
+                    <Label text="New Reservation" style="-fx-font-weight: bold; -fx-font-size: 16px;"/>
+
+                    <HBox spacing="10" alignment="CENTER_LEFT">
+                        <children>
+                            <Label text="Customers:"/>
+                            <TextField fx:id="txtNumCustomers" promptText="e.g. 2" prefWidth="120"/>
+                        </children>
+                    </HBox>
+
+                    <HBox spacing="10" alignment="CENTER_LEFT">
+                        <children>
+                            <Label text="Date:"/>
+                            <DatePicker fx:id="dpReservationDate"/>
+                        </children>
+                    </HBox>
+
+                    <HBox spacing="10" alignment="CENTER_LEFT">
+                        <children>
+                            <Label text="Time:"/>
+                            <ComboBox fx:id="cbReservationTime" prefWidth="140"/>
+                            <Label text="(30-min slots)" style="-fx-text-fill: #666666;"/>
+                        </children>
+                    </HBox>
+
+                    <HBox spacing="10">
+                        <children>
+                            <Button text="Create Reservation" onAction="#onCreateReservation"/>
+                            <Button text="Clear" onAction="#onClearReservationForm"/>
+                        </children>
+                    </HBox>
+
+                    <Label fx:id="lblReservationFormMsg" text="" wrapText="true" style="-fx-text-fill: darkred;"/>
+
+                    <Label text="Rules: choose a 30-minute slot • min 1 hour from now • up to 1 month ahead"
+                           wrapText="true" style="-fx-text-fill: #666666;"/>
+                </children>
+            </VBox>
+
             <!-- PROFILE (Subscriber only) -->
             <VBox fx:id="paneProfile" spacing="10" visible="false" managed="false">
                 <children>
@@ -191,6 +233,7 @@
     </bottom>
 
 </BorderPane>
+
 
 
 

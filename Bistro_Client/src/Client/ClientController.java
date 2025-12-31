@@ -5,6 +5,7 @@ import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
+import javafx.scene.layout.AnchorPane;
 import javafx.scene.layout.VBox;
 import javafx.event.ActionEvent;
 
@@ -12,6 +13,13 @@ import common.Envelope;
 import common.KryoMessage;
 import common.KryoUtil;
 import common.OpCode;
+import common.dto.MakeReservationResponseDTO;
+import common.dto.MakeReservationRequestDTO;
+
+import java.sql.Timestamp;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 
 import java.lang.reflect.Method;
 import java.util.List;
@@ -34,6 +42,13 @@ public class ClientController {
 
     @FXML private TextField txtRecoverPhoneOrEmail;
     @FXML private Label lblRecoverResult;
+    
+    @FXML private VBox paneNewReservation;
+    @FXML private TextField txtNumCustomers;
+    @FXML private DatePicker dpReservationDate;
+    @FXML private ComboBox<String> cbReservationTime;
+    @FXML private Label lblReservationFormMsg;
+
 
     // ===== Reservations table (UPDATED IDS expected in your FXML) =====
     @FXML private TableView<ReservationRow> tblReservations;
@@ -83,6 +98,25 @@ public class ClientController {
         tblReservations.getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) ->
                 btnCancelReservation.setDisable(newV == null)
         );
+        
+     // init New Reservation controls (if pane exists in this screen)
+        if (cbReservationTime != null) {
+            cbReservationTime.getItems().setAll(
+                    "10:00","10:30","11:00","11:30","12:00","12:30",
+                    "13:00","13:30","14:00","14:30","15:00","15:30",
+                    "16:00","16:30","17:00","17:30","18:00","18:30",
+                    "19:00","19:30","20:00","20:30","21:00","21:30"
+            );
+            cbReservationTime.getSelectionModel().select("18:00");
+        }
+
+        if (dpReservationDate != null) {
+            dpReservationDate.setValue(LocalDate.now());
+        }
+
+        if (lblReservationFormMsg != null) {
+            lblReservationFormMsg.setText("");
+        }
 
         showPane(paneDashboard);
     }
@@ -101,9 +135,16 @@ public class ClientController {
         paneProfile.setVisible(false);   paneProfile.setManaged(false);
         paneHistory.setVisible(false);   paneHistory.setManaged(false);
 
+        // ✅ ADD THIS
+        if (paneNewReservation != null) { 
+            paneNewReservation.setVisible(false); 
+            paneNewReservation.setManaged(false); 
+        }
+
         pane.setVisible(true);
         pane.setManaged(true);
     }
+
 
     // ===== Networking =====
 
@@ -152,9 +193,11 @@ public class ClientController {
             }
 
             switch (env.getOp()) {
-                case RESPONSE_RESERVATIONS_LIST -> handleReservationsResponse(env.getPayload());
-                default -> lblStatus.setText("Server replied: " + env.getOp());
-            }
+            case RESPONSE_RESERVATIONS_LIST -> handleReservationsResponse(env.getPayload());
+            case RESPONSE_MAKE_RESERVATION -> handleMakeReservationResponse(env.getPayload());
+            default -> lblStatus.setText("Server replied: " + env.getOp());
+        }
+
         });
     }
 
@@ -171,6 +214,24 @@ public class ClientController {
         }
         return null;
     }
+    
+    private void handleMakeReservationResponse(Object payload) {
+        if (!(payload instanceof MakeReservationResponseDTO res)) {
+            lblStatus.setText("Bad payload for make reservation.");
+            return;
+        }
+
+        if (res.isOk()) {
+            lblStatus.setText("✅ " + res.getMessage() +
+                    " | Code: " + res.getConfirmationCode());
+
+            // refresh the table after successful reservation
+            onRefreshReservations();
+        } else {
+            lblStatus.setText("❌ " + res.getMessage());
+        }
+    }
+
 
     @SuppressWarnings("unchecked")
     private void handleReservationsResponse(Object payload) {
@@ -284,10 +345,12 @@ public class ClientController {
 
     @FXML
     private void onNewReservation(ActionEvent e) {
-        lblStatus.setText("New reservation clicked (todo).");
-        // later: open reservation form pane/dialog
+        showPane(paneNewReservation);
+        lblStatus.setText("Fill the form and click Create Reservation.");
+        if (lblReservationFormMsg != null) lblReservationFormMsg.setText("");
     }
-    
+
+  
     @FXML
     private void onRecoverCode(ActionEvent e) {
         lblRecoverResult.setText("Recovery (todo).");
@@ -309,6 +372,61 @@ public class ClientController {
     private void onSaveProfile(ActionEvent e) {
         lblStatus.setText("Profile saved (todo).");
         // later: send REQUEST_PROFILE_UPDATE_CONTACT with phone/email
+    }
+    @FXML
+    private void onCreateReservation(ActionEvent e) {
+        try {
+            if (lblReservationFormMsg != null) lblReservationFormMsg.setText("");
+
+            // must be connected
+            if (client == null || !client.isConnected()) {
+                if (lblReservationFormMsg != null) lblReservationFormMsg.setText("Not connected to server.");
+                return;
+            }
+
+            int num = Integer.parseInt(txtNumCustomers.getText().trim());
+            LocalDate date = dpReservationDate.getValue();
+            String timeStr = cbReservationTime.getValue();
+
+            if (date == null || timeStr == null) {
+                if (lblReservationFormMsg != null) lblReservationFormMsg.setText("Please choose date and time.");
+                return;
+            }
+
+            LocalTime time = LocalTime.parse(timeStr);
+            Timestamp ts = Timestamp.valueOf(LocalDateTime.of(date, time));
+
+            // choose username (TEMP fallback until you hook login)
+            String username = (txtMemberNumber != null && !txtMemberNumber.getText().isBlank())
+                    ? txtMemberNumber.getText().trim()
+                    : "demo_subscriber";
+
+            MakeReservationRequestDTO dto = new MakeReservationRequestDTO(
+                    username,
+                    null, null,
+                    num,
+                    ts
+            );
+
+            Envelope env = Envelope.request(OpCode.REQUEST_MAKE_RESERVATION, dto);
+            client.sendToServer(new KryoMessage("ENVELOPE", KryoUtil.toBytes(env)));
+
+            if (lblReservationFormMsg != null) lblReservationFormMsg.setText("Sending...");
+
+        } catch (NumberFormatException ex) {
+            if (lblReservationFormMsg != null) lblReservationFormMsg.setText("Customers must be a number.");
+        } catch (Exception ex) {
+            if (lblReservationFormMsg != null) lblReservationFormMsg.setText("Failed: " + ex.getMessage());
+            ex.printStackTrace();
+        }
+    }
+
+    @FXML
+    private void onClearReservationForm(ActionEvent e) {
+        if (txtNumCustomers != null) txtNumCustomers.clear();
+        if (dpReservationDate != null) dpReservationDate.setValue(LocalDate.now());
+        if (cbReservationTime != null) cbReservationTime.getSelectionModel().select("18:00");
+        if (lblReservationFormMsg != null) lblReservationFormMsg.setText("");
     }
 
 }

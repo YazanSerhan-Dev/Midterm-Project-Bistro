@@ -12,6 +12,8 @@ import common.Envelope;
 import common.KryoMessage;
 import common.KryoUtil;
 import common.OpCode;
+import common.dto.MakeReservationRequestDTO;
+import common.dto.MakeReservationResponseDTO;
 
 import DataBase.Reservation;
 import DataBase.dao.ReservationDAO;
@@ -126,6 +128,8 @@ public class BistroServer extends AbstractServer {
                 case REQUEST_TERMINAL_CHECK_IN -> sendOk(client, OpCode.RESPONSE_TERMINAL_CHECK_IN, "NOT_IMPLEMENTED_YET");
                 case REQUEST_TERMINAL_CHECK_OUT -> sendOk(client, OpCode.RESPONSE_TERMINAL_CHECK_OUT, "NOT_IMPLEMENTED_YET");
                 case REQUEST_TERMINAL_NO_SHOW -> sendOk(client, OpCode.RESPONSE_TERMINAL_NO_SHOW, "NOT_IMPLEMENTED_YET");
+                
+                case REQUEST_MAKE_RESERVATION -> handleMakeReservation(req, client);
 
                 default -> sendError(client, OpCode.ERROR, "Unknown op: " + req.getOp());
             }
@@ -233,6 +237,69 @@ public class BistroServer extends AbstractServer {
             obj.getClass().getMethod(method, param).invoke(obj, value);
         } catch (Exception ignored) {}
     }
+    private void handleMakeReservation(Envelope req, ConnectionToClient client) throws Exception {
+
+        // Read payload safely even if Envelope uses different getter name
+        Object payloadObj = readEnvelopePayload(req);
+        if (!(payloadObj instanceof MakeReservationRequestDTO dto)) {
+            sendError(client, OpCode.RESPONSE_MAKE_RESERVATION, "Bad payload: expected MakeReservationRequestDTO");
+            return;
+        }
+
+        // Basic validation
+        if (dto.getNumOfCustomers() <= 0 || dto.getReservationTime() == null) {
+            sendOk(client, OpCode.RESPONSE_MAKE_RESERVATION,
+                    new MakeReservationResponseDTO(false, -1, null, "Invalid input."));
+            return;
+        }
+
+        if (!dto.isSubscriber()) {
+            if (dto.getGuestPhone() == null || dto.getGuestPhone().isBlank()
+                    || dto.getGuestEmail() == null || dto.getGuestEmail().isBlank()) {
+                sendOk(client, OpCode.RESPONSE_MAKE_RESERVATION,
+                        new MakeReservationResponseDTO(false, -1, null, "Guest phone + email are required."));
+                return;
+            }
+        }
+
+        // Prevent past times (simple rule for now)
+        Timestamp nowPlus5 = new Timestamp(System.currentTimeMillis() + 5L * 60L * 1000L);
+        if (dto.getReservationTime().before(nowPlus5)) {
+            sendOk(client, OpCode.RESPONSE_MAKE_RESERVATION,
+                    new MakeReservationResponseDTO(false, -1, null, "Choose a future time (5+ minutes ahead)."));
+            return;
+        }
+
+        // Create reservation in DB
+        ReservationDAO.CreateReservationResult r = reservationDAO.createReservationWithActivity(dto);
+
+        sendOk(client, OpCode.RESPONSE_MAKE_RESERVATION,
+                new MakeReservationResponseDTO(true, r.reservationId, r.confirmationCode,
+                        "Reservation created successfully!"));
+    }
+    
+    private Object readEnvelopePayload(Envelope env) {
+        // Try common getter names without assuming Envelope API
+        Object val = tryInvoke(env, "getPayload");
+        if (val != null) return val;
+
+        val = tryInvoke(env, "getData");
+        if (val != null) return val;
+
+        val = tryInvoke(env, "getBody");
+        return val;
+    }
+
+    private Object tryInvoke(Object target, String methodName) {
+        try {
+            var m = target.getClass().getMethod(methodName);
+            return m.invoke(target);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+
 }
 
 
