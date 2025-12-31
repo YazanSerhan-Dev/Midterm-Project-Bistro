@@ -1,2 +1,9 @@
-/bin/
-/bin1/
+# Eclipse / Java
+bin/
+.settings/
+.metadata/
+*.class
+
+# macOS
+.DS_Store
+
