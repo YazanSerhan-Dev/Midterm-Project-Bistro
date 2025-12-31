@@ -1,9 +1,10 @@
-# Eclipse / Java
+# Eclipse / IDE
+.classpath
+.project
+
+# Compiled output
 bin/
-.settings/
-.metadata/
 *.class
 
 # macOS
 .DS_Store
-
