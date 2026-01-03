@@ -5,6 +5,8 @@ public class ClientSession {
     private static BistroClient client;
     private static String host = "localhost";
     private static int port = 5555;
+    private static String role = "CUSTOMER";
+    private static String username = "";
 
     public static void configure(String host, int port) {
         ClientSession.host = host;
@@ -14,6 +16,14 @@ public class ClientSession {
     public static BistroClient getClient() {
         return client;
     }
+    
+    public static void setRole(String r) { role = r; }
+    public static String getRole() { return role; }
+
+    public static void setUsername(String u) { username = u; }
+    public static String getUsername() { return username; }
+
+
 
     // Connect once (or reuse if already connected)
     public static void connect(ClientUI ui) throws Exception {

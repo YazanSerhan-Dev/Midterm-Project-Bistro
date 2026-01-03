@@ -15,30 +15,65 @@ public class LoginController implements ClientUI {
 
     @FXML
     public void initialize() {
-        // Auto connect as soon as login view loads
+        lblConn.setText("Connecting...");
+        lblMsg.setText("");
+
         try {
-            lblConn.setText("Connecting...");
-            ClientSession.connect(this);
+            ClientSession.connect(this); // same shared connection for the whole app
         } catch (Exception e) {
             lblConn.setText("Connection failed: " + e.getMessage());
         }
     }
 
+    // ===== Buttons =====
+
     @FXML
-    public void onLogin(ActionEvent e) {
+    public void onLoginSubscriber(ActionEvent e) {
+        lblMsg.setText("");
+
         String user = tfUsername.getText();
         String pass = pfPassword.getText();
 
         if (user == null || user.isBlank() || pass == null || pass.isBlank()) {
-            lblMsg.setText("Please enter username + password");
+            lblMsg.setText("Please enter username and password.");
             return;
         }
 
-        // TODO: send login request to server (depends on your OpCode/DTO)
-        // Example idea:
-        // ClientSession.getClient().sendToServer(new Envelope(OpCode.LOGIN, new LoginDTO(user, pass)));
+        // TODO: send real login request to server
+        // for now route directly:
+        ClientSession.setRole("SUBSCRIBER");
+        ClientSession.setUsername(user);
 
-        // For now just move to main screen to prove flow works:
+        SceneManager.showCustomerMain();
+    }
+
+    @FXML
+    public void onLoginAgent(ActionEvent e) {
+        lblMsg.setText("");
+
+        String user = tfUsername.getText();
+        String pass = pfPassword.getText();
+
+        if (user == null || user.isBlank() || pass == null || pass.isBlank()) {
+            lblMsg.setText("Please enter username and password.");
+            return;
+        }
+
+        // TODO: send real agent login request to server
+        ClientSession.setRole("AGENT");
+        ClientSession.setUsername(user);
+
+        SceneManager.showTerminal();
+    }
+
+    @FXML
+    public void onContinueCustomer(ActionEvent e) {
+        lblMsg.setText("");
+
+        // no login needed
+        ClientSession.setRole("CUSTOMER");
+        ClientSession.setUsername("customer");
+
         SceneManager.showCustomerMain();
     }
 
@@ -60,8 +95,8 @@ public class LoginController implements ClientUI {
 
     @Override
     public void handleServerMessage(Object msg) {
-        // Later: handle LOGIN response here
-        // lblMsg.setText("Login response...");
+        // Later: handle LOGIN responses here
     }
 }
+
 

@@ -79,6 +79,8 @@ public class ClientController implements ClientUI {
 
     @FXML
     private void initialize() {
+    	isSubscriber = "SUBSCRIBER".equals(ClientSession.getRole());
+    	
         lblStatus.setText("Ready.");
         lblUserInfo.setText(isSubscriber ? "Welcome, User (Subscriber)" : "Welcome, User (Customer)");
 
@@ -86,8 +88,11 @@ public class ClientController implements ClientUI {
         // sync it with the already-connected shared client (if exists)
         this.client = ClientSession.getClient();
 
-        btnMyProfile.setDisable(!isSubscriber);
-        btnHistory.setDisable(!isSubscriber);
+        btnMyProfile.setVisible(isSubscriber);
+        btnMyProfile.setManaged(isSubscriber);
+
+        btnHistory.setVisible(isSubscriber);
+        btnHistory.setManaged(isSubscriber);
 
         // No demo money now
         lblActiveReservations.setText("0");
@@ -348,7 +353,7 @@ public class ClientController implements ClientUI {
 
     @FXML
     private void onLogout(ActionEvent e) {
-        lblStatus.setText("Logout clicked (demo).");
+    	SceneManager.showLogin();
         disconnectFromServer(); // if you added it
         // later: SceneManager.showLogin();
     }
