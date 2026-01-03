@@ -36,7 +36,9 @@ public class BistroClient extends AbstractClient {
     @Override
     protected void handleMessageFromServer(Object msg) {
         Platform.runLater(() -> controller.handleServerMessage(msg));
+        
     }
+    
 }
 
 
