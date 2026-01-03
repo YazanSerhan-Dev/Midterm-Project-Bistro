@@ -1,4 +1,5 @@
-/common/
-/dto/
 /Client/
+/agent/
 /clientGUI/
+/common/
+/manager/

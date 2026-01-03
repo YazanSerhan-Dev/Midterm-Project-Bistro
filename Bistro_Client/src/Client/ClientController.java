@@ -129,6 +129,7 @@ public class ClientController {
 
     public void onConnected() {
         Platform.runLater(() -> lblStatus.setText("Connected to server."));
+   
     }
 
     public void onDisconnected() {
@@ -153,6 +154,7 @@ public class ClientController {
 
             switch (env.getOp()) {
                 case RESPONSE_RESERVATIONS_LIST -> handleReservationsResponse(env.getPayload());
+                
                 default -> lblStatus.setText("Server replied: " + env.getOp());
             }
         });
@@ -310,6 +312,16 @@ public class ClientController {
         lblStatus.setText("Profile saved (todo).");
         // later: send REQUEST_PROFILE_UPDATE_CONTACT with phone/email
     }
+    ////to refactor
+    public BistroClient getClient() {
+        return client;
+    }
+ 
+    // temp to delete after login is available
+    public void setClient(BistroClient client) {
+        this.client = client;
+    }
+
 
 }
 

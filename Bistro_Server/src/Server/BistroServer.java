@@ -12,7 +12,7 @@ import common.Envelope;
 import common.KryoMessage;
 import common.KryoUtil;
 import common.OpCode;
-
+import common.dto.AgentSeatWaitingListDTO;
 import DataBase.Reservation;
 import DataBase.dao.ReservationDAO;
 
@@ -111,6 +111,10 @@ public class BistroServer extends AbstractServer {
             switch (req.getOp()) {
 
                 case REQUEST_RESERVATIONS_LIST -> handleReservationsList(req, client);
+             // ===== AGENT =====
+                case REQUEST_AGENT_SEAT_WAITING_LIST ->handleAgentSeatWaitingList(req, client);
+
+
 
                 // TODO later:
                 case REQUEST_CANCEL_RESERVATION -> sendOk(client, OpCode.RESPONSE_CANCEL_RESERVATION, "NOT_IMPLEMENTED_YET");
@@ -126,6 +130,7 @@ public class BistroServer extends AbstractServer {
                 case REQUEST_TERMINAL_CHECK_IN -> sendOk(client, OpCode.RESPONSE_TERMINAL_CHECK_IN, "NOT_IMPLEMENTED_YET");
                 case REQUEST_TERMINAL_CHECK_OUT -> sendOk(client, OpCode.RESPONSE_TERMINAL_CHECK_OUT, "NOT_IMPLEMENTED_YET");
                 case REQUEST_TERMINAL_NO_SHOW -> sendOk(client, OpCode.RESPONSE_TERMINAL_NO_SHOW, "NOT_IMPLEMENTED_YET");
+                
 
                 default -> sendError(client, OpCode.ERROR, "Unknown op: " + req.getOp());
             }
@@ -233,6 +238,21 @@ public class BistroServer extends AbstractServer {
             obj.getClass().getMethod(method, param).invoke(obj, value);
         } catch (Exception ignored) {}
     }
+    
+    private void handleAgentSeatWaitingList(Envelope req, ConnectionToClient client)
+            throws IOException {
+
+        AgentSeatWaitingListDTO dto =
+                (AgentSeatWaitingListDTO) req.getPayload();
+
+        log("Agent seats waiting-list entry with code: " + dto.getConfirmationCode());
+
+        sendOk(client,
+               OpCode.RESPONSE_AGENT_SEAT_WAITING_LIST,
+               dto.getConfirmationCode());
+    }
+
+
 }
 
 
