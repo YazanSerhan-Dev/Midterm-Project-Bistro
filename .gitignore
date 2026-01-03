@@ -1,2 +1,10 @@
-/bin/
-/bin1/
+# Eclipse / IDE
+.classpath
+.project
+
+# Compiled output
+bin/
+*.class
+
+# macOS
+.DS_Store
