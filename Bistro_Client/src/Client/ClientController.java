@@ -354,8 +354,6 @@ public class ClientController implements ClientUI {
     @FXML
     private void onLogout(ActionEvent e) {
     	SceneManager.showLogin();
-        disconnectFromServer(); // if you added it
-        // later: SceneManager.showLogin();
     }
 
     @FXML

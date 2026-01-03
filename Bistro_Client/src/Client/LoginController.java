@@ -1,10 +1,17 @@
 package Client;
 
+import common.Envelope;
+import common.KryoMessage;
+import common.KryoUtil;
+import common.OpCode;
 import javafx.event.ActionEvent;
 import javafx.fxml.FXML;
 import javafx.scene.control.Label;
 import javafx.scene.control.PasswordField;
 import javafx.scene.control.TextField;
+import javafx.application.Platform;
+import common.dto.LoginResponseDTO;
+
 
 public class LoginController implements ClientUI {
 
@@ -39,13 +46,25 @@ public class LoginController implements ClientUI {
             return;
         }
 
-        // TODO: send real login request to server
-        // for now route directly:
-        ClientSession.setRole("SUBSCRIBER");
-        ClientSession.setUsername(user);
+        try {
+            BistroClient c = ClientSession.getClient();
+            if (c == null || !c.isConnected()) {
+                lblMsg.setText("Not connected to server.");
+                return;
+            }
 
-        SceneManager.showCustomerMain();
+            common.dto.LoginRequestDTO dto = new common.dto.LoginRequestDTO(user.trim(), pass);
+            Envelope env = Envelope.request(OpCode.REQUEST_LOGIN_SUBSCRIBER, dto);
+
+            c.sendToServer(new KryoMessage("ENVELOPE", KryoUtil.toBytes(env)));
+
+            lblMsg.setText("Signing in as subscriber...");
+        } catch (Exception ex) {
+            lblMsg.setText("Send failed: " + ex.getMessage());
+            ex.printStackTrace();
+        }
     }
+
 
     @FXML
     public void onLoginAgent(ActionEvent e) {
@@ -59,12 +78,25 @@ public class LoginController implements ClientUI {
             return;
         }
 
-        // TODO: send real agent login request to server
-        ClientSession.setRole("AGENT");
-        ClientSession.setUsername(user);
+        try {
+            BistroClient c = ClientSession.getClient();
+            if (c == null || !c.isConnected()) {
+                lblMsg.setText("Not connected to server.");
+                return;
+            }
 
-        SceneManager.showTerminal();
+            common.dto.LoginRequestDTO dto = new common.dto.LoginRequestDTO(user.trim(), pass);
+            Envelope env = Envelope.request(OpCode.REQUEST_LOGIN_STAFF, dto);
+
+            c.sendToServer(new KryoMessage("ENVELOPE", KryoUtil.toBytes(env)));
+
+            lblMsg.setText("Signing in as staff...");
+        } catch (Exception ex) {
+            lblMsg.setText("Send failed: " + ex.getMessage());
+            ex.printStackTrace();
+        }
     }
+
 
     @FXML
     public void onContinueCustomer(ActionEvent e) {
@@ -92,11 +124,69 @@ public class LoginController implements ClientUI {
     public void onConnectionError(Exception e) {
         lblConn.setText("Connection error: " + e.getMessage());
     }
+    
+    // ====== Networking ======
+    private Envelope unwrapToEnvelope(Object msg) {
+        try {
+            if (msg instanceof Envelope e) return e;
+
+            if (msg instanceof KryoMessage km) {
+                Object obj = KryoUtil.fromBytes(km.getPayload());
+                if (obj instanceof Envelope e) return e;
+            }
+        } catch (Exception ex) {
+            lblMsg.setText("Decode error: " + ex.getMessage());
+        }
+        return null;
+    }
 
     @Override
     public void handleServerMessage(Object msg) {
-        // Later: handle LOGIN responses here
+        Platform.runLater(() -> {
+            Envelope env = unwrapToEnvelope(msg);
+            if (env == null) {
+                lblMsg.setText("Decode failed.");
+                return;
+            }
+
+            switch (env.getOp()) {
+
+                case RESPONSE_LOGIN_SUBSCRIBER -> {
+                    LoginResponseDTO res = (LoginResponseDTO) env.getPayload();
+
+                    if (res.isOk()) {
+                        ClientSession.setRole("SUBSCRIBER");
+                        ClientSession.setUsername(res.getUsername());
+
+                        lblMsg.setText("");
+                        SceneManager.showCustomerMain();
+                    } else {
+                        lblMsg.setText(res.getMessage());
+                    }
+                }
+
+                case RESPONSE_LOGIN_STAFF -> {
+                    LoginResponseDTO res = (LoginResponseDTO) env.getPayload();
+
+                    if (res.isOk()) {
+                        // role from DB: "AGENT" or "MANAGER"
+                        ClientSession.setRole(res.getRole());
+                        ClientSession.setUsername(res.getUsername());
+
+                        lblMsg.setText("");
+                        SceneManager.showTerminal();
+                    } else {
+                        lblMsg.setText(res.getMessage());
+                    }
+                }
+
+                default -> {
+                    // ignore other messages while on login screen
+                }
+            }
+        });
     }
+
 }
 
 

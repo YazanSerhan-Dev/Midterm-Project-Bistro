@@ -2,7 +2,9 @@ package DataBase.dao;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.Date;
+
 import DataBase.MySQLConnectionPool;
 import DataBase.PooledConnection;
 
@@ -15,8 +17,9 @@ public class SubscriberDAO {
 
         String sql = """
             INSERT INTO subscribers
-            (username, password, name, phone, email, member_code, barcode_data, birth_date)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (username, password, name, phone, email, member_code, barcode_data, birth_date)
+            VALUES
+                (?, ?, ?, ?, ?, ?, ?, ?)
         """;
 
         MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
@@ -33,6 +36,26 @@ public class SubscriberDAO {
             ps.setString(7, barcode);
             ps.setDate(8, birthDate);
             ps.executeUpdate();
+        } finally {
+            pool.releaseConnection(pc);
+        }
+    }
+
+    // ✅ NEW: login check for subscriber
+    public static boolean checkLogin(String username, String password) throws Exception {
+        String sql = "SELECT 1 FROM subscribers WHERE username=? AND password=? LIMIT 1";
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, username);
+            ps.setString(2, password);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
         } finally {
             pool.releaseConnection(pc);
         }

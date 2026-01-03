@@ -12,6 +12,7 @@ import common.Envelope;
 import common.KryoMessage;
 import common.KryoUtil;
 import common.OpCode;
+import common.dto.LoginResponseDTO;
 import common.dto.MakeReservationRequestDTO;
 import common.dto.MakeReservationResponseDTO;
 
@@ -129,6 +130,10 @@ public class BistroServer extends AbstractServer {
                 case REQUEST_TERMINAL_CHECK_OUT -> sendOk(client, OpCode.RESPONSE_TERMINAL_CHECK_OUT, "NOT_IMPLEMENTED_YET");
                 case REQUEST_TERMINAL_NO_SHOW -> sendOk(client, OpCode.RESPONSE_TERMINAL_NO_SHOW, "NOT_IMPLEMENTED_YET");
                 
+                case REQUEST_LOGIN_SUBSCRIBER -> handleLoginSubscriber(req, client);
+                case REQUEST_LOGIN_STAFF      -> handleLoginStaff(req, client);
+
+                
                 case REQUEST_MAKE_RESERVATION -> handleMakeReservation(req, client);
 
                 default -> sendError(client, OpCode.ERROR, "Unknown op: " + req.getOp());
@@ -176,6 +181,53 @@ public class BistroServer extends AbstractServer {
 
     /* ==================== Handlers ==================== */
 
+    private void handleLoginSubscriber(Envelope env, ConnectionToClient client) {
+        try {
+            var req = (common.dto.LoginRequestDTO) env.getPayload();
+
+            boolean ok = DataBase.dao.SubscriberDAO.checkLogin(req.getUsername(), req.getPassword());
+
+            LoginResponseDTO res = ok
+                    ? new common.dto.LoginResponseDTO(true, "Login success", req.getUsername(), null, "SUBSCRIBER")
+                    : new common.dto.LoginResponseDTO(false, "Invalid username or password", null, null, null);
+
+            Envelope reply = Envelope.ok(OpCode.RESPONSE_LOGIN_SUBSCRIBER, res);
+            client.sendToClient(new KryoMessage("ENVELOPE", KryoUtil.toBytes(reply)));
+
+        } catch (Exception e) {
+            try {
+                LoginResponseDTO res =
+                        new common.dto.LoginResponseDTO(false, "Server error: " + e.getMessage(), null, null, null);
+                Envelope reply = Envelope.ok(OpCode.RESPONSE_LOGIN_SUBSCRIBER, res);
+                client.sendToClient(new KryoMessage("ENVELOPE", KryoUtil.toBytes(reply)));
+            } catch (Exception ignored) {}
+        }
+    }
+
+    private void handleLoginStaff(Envelope env, ConnectionToClient client) {
+        try {
+            var req = (common.dto.LoginRequestDTO) env.getPayload();
+
+            String role = DataBase.dao.StaffDAO.checkLoginAndGetRole(req.getUsername(), req.getPassword());
+
+            LoginResponseDTO res = (role != null)
+                    ? new common.dto.LoginResponseDTO(true, "Login success", req.getUsername(), null, role)
+                    : new common.dto.LoginResponseDTO(false, "Invalid username or password", null, null, null);
+
+            Envelope reply = Envelope.ok(OpCode.RESPONSE_LOGIN_STAFF, res);
+            client.sendToClient(new KryoMessage("ENVELOPE", KryoUtil.toBytes(reply)));
+
+        } catch (Exception e) {
+            try {
+                LoginResponseDTO res =
+                        new common.dto.LoginResponseDTO(false, "Server error: " + e.getMessage(), null, null, null);
+                Envelope reply = Envelope.ok(OpCode.RESPONSE_LOGIN_STAFF, res);
+                client.sendToClient(new KryoMessage("ENVELOPE", KryoUtil.toBytes(reply)));
+            } catch (Exception ignored) {}
+        }
+    }
+
+    
     private void handleReservationsList(Envelope req, ConnectionToClient client) throws Exception {
         List<Reservation> rows = reservationDAO.getAllReservations(); // must match your DAO method name
 
