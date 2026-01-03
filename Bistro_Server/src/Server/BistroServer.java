@@ -289,6 +289,7 @@ public class BistroServer extends AbstractServer {
             obj.getClass().getMethod(method, param).invoke(obj, value);
         } catch (Exception ignored) {}
     }
+    
     private void handleMakeReservation(Envelope req, ConnectionToClient client) throws Exception {
 
         // Read payload safely even if Envelope uses different getter name
@@ -305,11 +306,11 @@ public class BistroServer extends AbstractServer {
             return;
         }
 
+        // Customer: require email (phone optional)
         if (!dto.isSubscriber()) {
-            if (dto.getGuestPhone() == null || dto.getGuestPhone().isBlank()
-                    || dto.getGuestEmail() == null || dto.getGuestEmail().isBlank()) {
+            if (dto.getGuestEmail() == null || dto.getGuestEmail().isBlank()) {
                 sendOk(client, OpCode.RESPONSE_MAKE_RESERVATION,
-                        new MakeReservationResponseDTO(false, -1, null, "Guest phone + email are required."));
+                        new MakeReservationResponseDTO(false, -1, null, "Guest email is required."));
                 return;
             }
         }
@@ -325,10 +326,31 @@ public class BistroServer extends AbstractServer {
         // Create reservation in DB
         ReservationDAO.CreateReservationResult r = reservationDAO.createReservationWithActivity(dto);
 
+        // ✅ EMAIL (stub for now)
+        try {
+            String toEmail;
+            if (dto.isSubscriber()) {
+                toEmail = DataBase.dao.SubscriberDAO.getEmailByUsername(dto.getSubscriberUsername());
+            } else {
+                toEmail = dto.getGuestEmail();
+            }
+
+            if (toEmail != null && !toEmail.isBlank()) {
+                Server.EmailService.sendReservationConfirmation(toEmail, r.confirmationCode);
+            } else {
+                System.out.println("[EMAIL] No email found, skipping sending.");
+            }
+        } catch (Exception mailEx) {
+            // Don't fail reservation if email fails
+            System.out.println("[EMAIL] Failed to send email: " + mailEx.getMessage());
+        }
+
+        // Send response to client
         sendOk(client, OpCode.RESPONSE_MAKE_RESERVATION,
                 new MakeReservationResponseDTO(true, r.reservationId, r.confirmationCode,
                         "Reservation created successfully!"));
     }
+
     
     private Object readEnvelopePayload(Envelope env) {
         // Try common getter names without assuming Envelope API

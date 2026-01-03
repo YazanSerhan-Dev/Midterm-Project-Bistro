@@ -60,4 +60,23 @@ public class SubscriberDAO {
             pool.releaseConnection(pc);
         }
     }
+    
+    public static String getEmailByUsername(String username) throws Exception {
+        String sql = "SELECT email FROM subscribers WHERE username=? LIMIT 1";
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, username);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) return null;
+                return rs.getString("email");
+            }
+        } finally {
+            pool.releaseConnection(pc);
+        }
+    }
+
 }

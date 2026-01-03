@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<AnchorPane xmlns="http://javafx.com/javafx"
+            xmlns:fx="http://javafx.com/fxml"
+            fx:controller="Client.LoginController"
+            prefWidth="520" prefHeight="360">
+
+    <VBox spacing="12" layoutX="40" layoutY="30" prefWidth="440">
+
+        <Label text="Bistro Login"
+               style="-fx-font-size: 22; -fx-font-weight: bold;" />
+
+        <Label fx:id="lblConn" text="Connecting..."
+               style="-fx-opacity: 0.9;" />
+
+        <Separator />
+
+        <Label text="Username" />
+        <TextField fx:id="tfUsername" promptText="Enter username" />
+
+        <Label text="Password" />
+        <PasswordField fx:id="pfPassword" promptText="Enter password" />
+
+        <HBox spacing="10">
+            <Button text="Sign in as Subscriber" onAction="#onLoginSubscriber" prefWidth="210"/>
+            <Button text="Sign in as Agent/Manager" onAction="#onLoginAgent" prefWidth="210"/>
+        </HBox>
+
+        <Separator />
+
+        <Button text="Continue as Customer (no login)"
+                onAction="#onContinueCustomer"
+                prefWidth="440" />
+
+        <Label fx:id="lblMsg" text="" wrapText="true" style="-fx-text-fill: #ff6b6b;" />
+
+    </VBox>
+</AnchorPane>
