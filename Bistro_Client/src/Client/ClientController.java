@@ -24,7 +24,7 @@ import java.time.LocalTime;
 import java.lang.reflect.Method;
 import java.util.List;
 
-public class ClientController {
+public class ClientController implements ClientUI {
 
     @FXML private Label lblStatus;
     @FXML private Label lblUserInfo;
@@ -42,13 +42,12 @@ public class ClientController {
 
     @FXML private TextField txtRecoverPhoneOrEmail;
     @FXML private Label lblRecoverResult;
-    
+
     @FXML private VBox paneNewReservation;
     @FXML private TextField txtNumCustomers;
     @FXML private DatePicker dpReservationDate;
     @FXML private ComboBox<String> cbReservationTime;
     @FXML private Label lblReservationFormMsg;
-
 
     // ===== Reservations table (UPDATED IDS expected in your FXML) =====
     @FXML private TableView<ReservationRow> tblReservations;
@@ -74,12 +73,18 @@ public class ClientController {
     private final ObservableList<HistoryRow> history = FXCollections.observableArrayList();
 
     private boolean isSubscriber = true;
+
+    // IMPORTANT: this field now mirrors the SINGLE shared client from ClientSession
     private BistroClient client;
 
     @FXML
     private void initialize() {
         lblStatus.setText("Ready.");
         lblUserInfo.setText(isSubscriber ? "Welcome, User (Subscriber)" : "Welcome, User (Customer)");
+
+        // ✅ FIX: when controller is created after switching scenes,
+        // sync it with the already-connected shared client (if exists)
+        this.client = ClientSession.getClient();
 
         btnMyProfile.setDisable(!isSubscriber);
         btnHistory.setDisable(!isSubscriber);
@@ -98,8 +103,8 @@ public class ClientController {
         tblReservations.getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) ->
                 btnCancelReservation.setDisable(newV == null)
         );
-        
-     // init New Reservation controls (if pane exists in this screen)
+
+        // init New Reservation controls (if pane exists in this screen)
         if (cbReservationTime != null) {
             cbReservationTime.getItems().setAll(
                     "10:00","10:30","11:00","11:30","12:00","12:30",
@@ -135,38 +140,43 @@ public class ClientController {
         paneProfile.setVisible(false);   paneProfile.setManaged(false);
         paneHistory.setVisible(false);   paneHistory.setManaged(false);
 
-        // ✅ ADD THIS
-        if (paneNewReservation != null) { 
-            paneNewReservation.setVisible(false); 
-            paneNewReservation.setManaged(false); 
+        if (paneNewReservation != null) {
+            paneNewReservation.setVisible(false);
+            paneNewReservation.setManaged(false);
         }
 
         pane.setVisible(true);
         pane.setManaged(true);
     }
 
-
     // ===== Networking =====
 
     public void connectToServer(String host, int port) {
         try {
-            client = new BistroClient(host, port, this);
-            client.openConnection();
+            ClientSession.configure(host, port);
+            ClientSession.connect(this);
+
+            // ✅ FIX: always mirror the shared client after connect
+            this.client = ClientSession.getClient();
+
             lblStatus.setText("Connecting to " + host + ":" + port + " ...");
         } catch (Exception e) {
             lblStatus.setText("Connection failed: " + e.getMessage());
         }
     }
-    
+
     public void disconnectFromServer() {
         try {
-            if (client != null && client.isConnected()) {
-                client.closeConnection();
+            // ✅ FIX: use the shared connection (not only the controller field)
+            BistroClient c = ClientSession.getClient();
+            this.client = c;
+
+            if (c != null && c.isConnected()) {
+                c.closeConnection();
             }
         } catch (Exception ignored) {
         }
     }
-
 
     public void onConnected() {
         Platform.runLater(() -> lblStatus.setText("Connected to server."));
@@ -193,11 +203,10 @@ public class ClientController {
             }
 
             switch (env.getOp()) {
-            case RESPONSE_RESERVATIONS_LIST -> handleReservationsResponse(env.getPayload());
-            case RESPONSE_MAKE_RESERVATION -> handleMakeReservationResponse(env.getPayload());
-            default -> lblStatus.setText("Server replied: " + env.getOp());
-        }
-
+                case RESPONSE_RESERVATIONS_LIST -> handleReservationsResponse(env.getPayload());
+                case RESPONSE_MAKE_RESERVATION -> handleMakeReservationResponse(env.getPayload());
+                default -> lblStatus.setText("Server replied: " + env.getOp());
+            }
         });
     }
 
@@ -214,7 +223,7 @@ public class ClientController {
         }
         return null;
     }
-    
+
     private void handleMakeReservationResponse(Object payload) {
         if (!(payload instanceof MakeReservationResponseDTO res)) {
             lblStatus.setText("Bad payload for make reservation.");
@@ -231,7 +240,6 @@ public class ClientController {
             lblStatus.setText("❌ " + res.getMessage());
         }
     }
-
 
     @SuppressWarnings("unchecked")
     private void handleReservationsResponse(Object payload) {
@@ -298,6 +306,9 @@ public class ClientController {
 
     @FXML
     private void onRefreshReservations() {
+        // ✅ FIX: always pull the shared client right before using it
+        this.client = ClientSession.getClient();
+
         if (client == null || !client.isConnected()) {
             lblStatus.setText("Not connected.");
             return;
@@ -307,7 +318,6 @@ public class ClientController {
             Envelope env = Envelope.request(OpCode.REQUEST_RESERVATIONS_LIST, null);
             byte[] bytes = KryoUtil.toBytes(env);
 
-            // ✅ FIX #1: KryoMessage needs (type, payload)
             client.sendToServer(new KryoMessage("ENVELOPE", bytes));
 
             lblStatus.setText("Refreshing reservations...");
@@ -335,7 +345,7 @@ public class ClientController {
 
     @FXML private void onNavProfile() { if (isSubscriber) showPane(paneProfile); }
     @FXML private void onNavHistory() { if (isSubscriber) showPane(paneHistory); }
-    
+
     @FXML
     private void onLogout(ActionEvent e) {
         lblStatus.setText("Logout clicked (demo).");
@@ -350,7 +360,6 @@ public class ClientController {
         if (lblReservationFormMsg != null) lblReservationFormMsg.setText("");
     }
 
-  
     @FXML
     private void onRecoverCode(ActionEvent e) {
         lblRecoverResult.setText("Recovery (todo).");
@@ -373,10 +382,14 @@ public class ClientController {
         lblStatus.setText("Profile saved (todo).");
         // later: send REQUEST_PROFILE_UPDATE_CONTACT with phone/email
     }
+
     @FXML
     private void onCreateReservation(ActionEvent e) {
         try {
             if (lblReservationFormMsg != null) lblReservationFormMsg.setText("");
+
+            // ✅ FIX: always pull the shared client right before using it
+            this.client = ClientSession.getClient();
 
             // must be connected
             if (client == null || !client.isConnected()) {
@@ -428,7 +441,6 @@ public class ClientController {
         if (cbReservationTime != null) cbReservationTime.getSelectionModel().select("18:00");
         if (lblReservationFormMsg != null) lblReservationFormMsg.setText("");
     }
-
 }
 
 
