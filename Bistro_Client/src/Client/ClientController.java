@@ -391,7 +391,7 @@ public class ClientController implements ClientUI {
         try {
             if (lblReservationFormMsg != null) lblReservationFormMsg.setText("");
 
-            // ✅ FIX: always pull the shared client right before using it
+            // ✅ Always pull the shared client right before using it
             this.client = ClientSession.getClient();
 
             // must be connected
@@ -400,6 +400,7 @@ public class ClientController implements ClientUI {
                 return;
             }
 
+            // validate form
             int num = Integer.parseInt(txtNumCustomers.getText().trim());
             LocalDate date = dpReservationDate.getValue();
             String timeStr = cbReservationTime.getValue();
@@ -412,14 +413,43 @@ public class ClientController implements ClientUI {
             LocalTime time = LocalTime.parse(timeStr);
             Timestamp ts = Timestamp.valueOf(LocalDateTime.of(date, time));
 
-            // choose username (TEMP fallback until you hook login)
-            String username = (txtMemberNumber != null && !txtMemberNumber.getText().isBlank())
-                    ? txtMemberNumber.getText().trim()
-                    : "demo_subscriber";
+            // ===== Decide subscriber vs customer =====
+            boolean isSubscriber = "SUBSCRIBER".equals(ClientSession.getRole());
 
+            String subscriberUsername = null;
+            String guestPhone = null;
+            String guestEmail = null;
+
+            if (isSubscriber) {
+                // Subscriber: link to subscriber account
+                subscriberUsername = ClientSession.getUsername();
+                if (subscriberUsername == null || subscriberUsername.isBlank()) {
+                    if (lblReservationFormMsg != null) lblReservationFormMsg.setText("Missing subscriber username (session).");
+                    return;
+                }
+            } else {
+                // Customer: ask for email (required)
+                TextInputDialog dialog = new TextInputDialog();
+                dialog.setTitle("Customer Reservation");
+                dialog.setHeaderText("Enter your email to receive the confirmation code");
+                dialog.setContentText("Email:");
+
+                var result = dialog.showAndWait();
+                if (result.isEmpty() || result.get().isBlank()) {
+                    if (lblReservationFormMsg != null) lblReservationFormMsg.setText("Email is required for customers.");
+                    return;
+                }
+                guestEmail = result.get().trim();
+
+                // Optional: you can add phone later if you want
+                // guestPhone = ...
+            }
+
+            // Build DTO (works for both)
             MakeReservationRequestDTO dto = new MakeReservationRequestDTO(
-                    username,
-                    null, null,
+                    subscriberUsername, // subscriber OR null
+                    guestPhone,         // customer phone OR null
+                    guestEmail,         // customer email OR null
                     num,
                     ts
             );
@@ -436,6 +466,7 @@ public class ClientController implements ClientUI {
             ex.printStackTrace();
         }
     }
+
 
     @FXML
     private void onClearReservationForm(ActionEvent e) {
