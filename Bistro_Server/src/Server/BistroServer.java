@@ -46,12 +46,14 @@ public class BistroServer extends AbstractServer {
     protected void serverStarted() {
         log("Server started on port " + getPort());
         if (controller != null) controller.onServerStarted(getPort());
+        BackgroundJobs.start();
     }
 
     @Override
     protected void serverStopped() {
         log("Server stopped.");
         if (controller != null) controller.onServerStopped();
+        BackgroundJobs.stop();
     }
 
     @Override
@@ -125,8 +127,8 @@ public class BistroServer extends AbstractServer {
                 case REQUEST_BILL_GET_BY_CODE -> sendOk(client, OpCode.RESPONSE_BILL_GET_BY_CODE, null);
                 case REQUEST_PAY_BILL -> sendOk(client, OpCode.RESPONSE_PAY_BILL, "NOT_IMPLEMENTED_YET");
 
-                case REQUEST_TERMINAL_VALIDATE_CODE -> sendOk(client, OpCode.RESPONSE_TERMINAL_VALIDATE_CODE, "NOT_IMPLEMENTED_YET");
-                case REQUEST_TERMINAL_CHECK_IN -> sendOk(client, OpCode.RESPONSE_TERMINAL_CHECK_IN, "NOT_IMPLEMENTED_YET");
+                case REQUEST_TERMINAL_VALIDATE_CODE -> handleTerminalValidateCode(req, client);
+                case REQUEST_TERMINAL_CHECK_IN -> handleTerminalCheckIn(req, client);
                 case REQUEST_TERMINAL_CHECK_OUT -> sendOk(client, OpCode.RESPONSE_TERMINAL_CHECK_OUT, "NOT_IMPLEMENTED_YET");
                 case REQUEST_TERMINAL_NO_SHOW -> sendOk(client, OpCode.RESPONSE_TERMINAL_NO_SHOW, "NOT_IMPLEMENTED_YET");
                 
@@ -181,6 +183,71 @@ public class BistroServer extends AbstractServer {
 
     /* ==================== Handlers ==================== */
 
+    private void handleTerminalValidateCode(Envelope req, ConnectionToClient client) {
+        try {
+            Object payload = readEnvelopePayload(req);
+            String code = (payload instanceof String s) ? s : null;
+
+            if (code == null || code.isBlank()) {
+                sendOk( client, OpCode.RESPONSE_TERMINAL_VALIDATE_CODE,
+                        new common.dto.TerminalValidateResponseDTO(false, "Invalid confirmation code.") );
+                return;
+            }
+
+            var info = DataBase.dao.ReservationDAO.getTerminalInfoByCode(code.trim());
+            sendOk(client, OpCode.RESPONSE_TERMINAL_VALIDATE_CODE, info);
+
+        } catch (Exception e) {
+            try { sendError(client, OpCode.RESPONSE_TERMINAL_VALIDATE_CODE, "Server error: " + e.getMessage()); }
+            catch (Exception ignored) {}
+        }
+    }
+
+
+    
+    private void handleTerminalCheckIn(Envelope req, ConnectionToClient client) {
+        try {
+            Object payload = readEnvelopePayload(req);
+            String code = (payload instanceof String s) ? s : null;
+
+            if (code == null || code.isBlank()) {
+                sendOk(client, OpCode.RESPONSE_TERMINAL_CHECK_IN,
+                        new common.dto.TerminalValidateResponseDTO(false, "Invalid confirmation code."));
+                return;
+            }
+
+            // Try check-in (will throw with a clear message if it fails)
+            String tableId = DataBase.dao.ReservationDAO.markArrivedByCodeReturnTableId(code.trim());
+
+            // success
+            common.dto.TerminalValidateResponseDTO dto =
+                    DataBase.dao.ReservationDAO.getTerminalInfoByCode(code.trim());
+
+            dto.setValid(true);
+            dto.setStatus("ARRIVED");
+            dto.setMessage("ARRIVED");
+            dto.setTableId(tableId);
+
+            sendOk(client, OpCode.RESPONSE_TERMINAL_CHECK_IN, dto);
+
+        } catch (Exception e) {
+            common.dto.TerminalValidateResponseDTO err = new common.dto.TerminalValidateResponseDTO();
+            err.setValid(false);
+            err.setMessage(e.getMessage());
+
+            try {
+                sendOk(client, OpCode.RESPONSE_TERMINAL_CHECK_IN, err);
+            } catch (Exception ignored) {
+                // nothing else we can do here
+            }
+        }
+
+    }
+
+
+
+
+    
     private void handleLoginSubscriber(Envelope env, ConnectionToClient client) {
         try {
             var req = (common.dto.LoginRequestDTO) env.getPayload();
@@ -295,7 +362,8 @@ public class BistroServer extends AbstractServer {
         // Read payload safely even if Envelope uses different getter name
         Object payloadObj = readEnvelopePayload(req);
         if (!(payloadObj instanceof MakeReservationRequestDTO dto)) {
-            sendError(client, OpCode.RESPONSE_MAKE_RESERVATION, "Bad payload: expected MakeReservationRequestDTO");
+            sendError(client, OpCode.RESPONSE_MAKE_RESERVATION,
+                    "Bad payload: expected MakeReservationRequestDTO");
             return;
         }
 
@@ -315,20 +383,70 @@ public class BistroServer extends AbstractServer {
             }
         }
 
-        // Prevent past times (simple rule for now)
-        Timestamp nowPlus5 = new Timestamp(System.currentTimeMillis() + 5L * 60L * 1000L);
-        if (dto.getReservationTime().before(nowPlus5)) {
+        // =========================
+        // ✅ Step 1: Time rules (spec)
+        // =========================
+
+        Timestamp now = new Timestamp(System.currentTimeMillis());
+
+        // A) At least 1 hour from now
+        Timestamp minTime = new Timestamp(now.getTime() + 60L * 60L * 1000L);
+        //if (dto.getReservationTime().before(minTime)) {
+            //sendOk(client, OpCode.RESPONSE_MAKE_RESERVATION,
+                   // new MakeReservationResponseDTO(false, -1, null,
+                          //  "Reservation must be at least 1 hour from now."));
+            //return;
+       // }
+
+        // B) Up to 1 month ahead
+        java.time.LocalDateTime maxLdt = java.time.LocalDateTime.now().plusMonths(1);
+        Timestamp maxTime = Timestamp.valueOf(maxLdt);
+        if (dto.getReservationTime().after(maxTime)) {
             sendOk(client, OpCode.RESPONSE_MAKE_RESERVATION,
-                    new MakeReservationResponseDTO(false, -1, null, "Choose a future time (5+ minutes ahead)."));
+                    new MakeReservationResponseDTO(false, -1, null,
+                            "Reservation can be made up to 1 month ahead."));
             return;
         }
 
-        // Create reservation in DB
+        // C) Only 30-minute steps (xx:00 or xx:30)
+        java.time.LocalDateTime ldt = dto.getReservationTime().toLocalDateTime();
+        int minute = ldt.getMinute();
+        if (!(minute == 0 || minute == 30)) {
+            sendOk(client, OpCode.RESPONSE_MAKE_RESERVATION,
+                    new MakeReservationResponseDTO(false, -1, null,
+                            "Reservation time must be in 30-minute steps (xx:00 or xx:30)."));
+            return;
+        }
+
+        // =========================
+        // ✅ Arrival deadline rule (spec): up to 15 minutes after reservation time
+        // =========================
+        Timestamp start = dto.getReservationTime();
+        Timestamp expiry = Timestamp.valueOf(ldt.plusMinutes(15)); // ✅ 15 minutes, not 90
+
+        // =========================
+        // ✅ Step 2: Capacity check (no table assignment yet)
+        // =========================
+        int totalSeats = DataBase.dao.RestaurantTableDAO.getTotalSeatsAvailable(); // should count FREE seats
+        int bookedCustomers = DataBase.dao.ReservationDAO.getBookedCustomersInRange(start, expiry);
+
+        if (bookedCustomers + dto.getNumOfCustomers() > totalSeats) {
+            sendOk(client, OpCode.RESPONSE_MAKE_RESERVATION,
+                    new MakeReservationResponseDTO(false, -1, null,
+                            "No available seats at this time. Please choose another time."));
+            return;
+        }
+
+        // =========================
+        // ✅ Create reservation in DB
+        // =========================
+        // NOTE: DAO uses the SAME 15-min expiry internally
         ReservationDAO.CreateReservationResult r = reservationDAO.createReservationWithActivity(dto);
 
-        // ✅ EMAIL (stub for now)
+        // ✅ EMAIL
         try {
             String toEmail;
+
             if (dto.isSubscriber()) {
                 toEmail = DataBase.dao.SubscriberDAO.getEmailByUsername(dto.getSubscriberUsername());
             } else {
@@ -340,6 +458,7 @@ public class BistroServer extends AbstractServer {
             } else {
                 System.out.println("[EMAIL] No email found, skipping sending.");
             }
+
         } catch (Exception mailEx) {
             // Don't fail reservation if email fails
             System.out.println("[EMAIL] Failed to send email: " + mailEx.getMessage());
@@ -350,6 +469,7 @@ public class BistroServer extends AbstractServer {
                 new MakeReservationResponseDTO(true, r.reservationId, r.confirmationCode,
                         "Reservation created successfully!"));
     }
+
 
     
     private Object readEnvelopePayload(Envelope env) {

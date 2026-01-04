@@ -84,23 +84,18 @@
                 <children>
                     <Label text="Reservation Details" style="-fx-font-weight: bold;"/>
                     <GridPane hgap="12" vgap="10">
-                        <children>
-                            <Label text="Customer Name:" GridPane.rowIndex="0" GridPane.columnIndex="0"/>
-                            <Label fx:id="lblResName" text="-" GridPane.rowIndex="0" GridPane.columnIndex="1"/>
+    <children>
+        <Label text="Reservation ID:" GridPane.rowIndex="0" GridPane.columnIndex="0"/>
+        <Label fx:id="lblResId" text="-" GridPane.rowIndex="0" GridPane.columnIndex="1"/>
 
-                            <Label text="Phone:" GridPane.rowIndex="1" GridPane.columnIndex="0"/>
-                            <Label fx:id="lblResPhone" text="-" GridPane.rowIndex="1" GridPane.columnIndex="1"/>
+        <Label text="Reservation Time:" GridPane.rowIndex="1" GridPane.columnIndex="0"/>
+        <Label fx:id="lblResDateTime" text="-" GridPane.rowIndex="1" GridPane.columnIndex="1"/>
 
-                            <Label text="Date - Time:" GridPane.rowIndex="0" GridPane.columnIndex="2"/>
-                            <Label fx:id="lblResDateTime" text="-" GridPane.rowIndex="0" GridPane.columnIndex="3"/>
+        <Label text="Number of Guests:" GridPane.rowIndex="2" GridPane.columnIndex="0"/>
+        <Label fx:id="lblResGuests" text="-" GridPane.rowIndex="2" GridPane.columnIndex="1"/>
+    </children>
+</GridPane>
 
-                            <Label text="Guests:" GridPane.rowIndex="1" GridPane.columnIndex="2"/>
-                            <Label fx:id="lblResGuests" text="-" GridPane.rowIndex="1" GridPane.columnIndex="3"/>
-
-                            <Label text="Reservation Status:" GridPane.rowIndex="2" GridPane.columnIndex="0"/>
-                            <Label fx:id="lblResStatus" text="-" GridPane.rowIndex="2" GridPane.columnIndex="1"/>
-                        </children>
-                    </GridPane>
                 </children>
             </VBox>
 
