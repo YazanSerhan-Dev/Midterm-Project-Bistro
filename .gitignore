@@ -1,4 +1,10 @@
+# Eclipse
+.project
+.classpath
+
+# Compiled output
 **/bin/
 *.class
-.classpath
-.project
+
+# OS
+.DS_Store
