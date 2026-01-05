@@ -648,13 +648,72 @@ public class ClientController implements ClientUI {
 
     @FXML
     private void onCancelReservation() {
-        ReservationRow r = tblReservations.getSelectionModel().getSelectedItem();
-        if (r == null) return;
+        try {
+            this.client = ClientSession.getClient();
 
-        r.setStatus("CANCELLED");
-        tblReservations.refresh();
-        lblStatus.setText("Reservation cancelled (UI only for now).");
+            if (client == null || !client.isConnected()) {
+                lblStatus.setText("Not connected.");
+                return;
+            }
+
+            ReservationRow r = tblReservations.getSelectionModel().getSelectedItem();
+            if (r == null) {
+                lblStatus.setText("Select a reservation first.");
+                return;
+            }
+
+            // Only allow canceling active ones from UI side (server will re-check anyway)
+            String st = r.getStatus();
+            if (st != null && (st.equalsIgnoreCase("CANCELED") || st.equalsIgnoreCase("EXPIRED"))) {
+                lblStatus.setText("This reservation cannot be cancelled.");
+                return;
+            }
+
+            String role = ClientSession.getRole();              // "SUBSCRIBER" or "CUSTOMER"
+            String username = ClientSession.getUsername();      // subscriber only
+            String guestEmail = ClientSession.getGuestEmail();  // customer only (can be null)
+            String guestPhone = ClientSession.getGuestPhone();  // customer only (can be null)
+
+            // If customer and no identity stored yet, ask now (same logic you used before)
+            if (!"SUBSCRIBER".equalsIgnoreCase(role)) {
+                if (guestEmail == null || guestEmail.isBlank() || guestPhone == null || guestPhone.isBlank()) {
+                    GuestContact contact = askGuestEmailAndPhone();
+                    if (contact == null) {
+                        lblStatus.setText("Cancelled.");
+                        return;
+                    }
+                    if (contact.email == null || contact.email.isBlank() || contact.phone == null || contact.phone.isBlank()) {
+                        lblStatus.setText("Email + phone are required.");
+                        return;
+                    }
+                    ClientSession.setGuestEmail(contact.email.trim());
+                    ClientSession.setGuestPhone(contact.phone.trim());
+                    guestEmail = contact.email.trim();
+                    guestPhone = contact.phone.trim();
+                }
+            }
+
+            int reservationId = r.getReservationId();
+
+            Object[] payload = new Object[] {
+                    role,
+                    username,
+                    guestEmail,
+                    guestPhone,
+                    reservationId
+            };
+
+            Envelope env = Envelope.request(OpCode.REQUEST_CANCEL_RESERVATION, payload);
+            client.sendToServer(new KryoMessage("ENVELOPE", KryoUtil.toBytes(env)));
+
+            lblStatus.setText("Cancelling reservation...");
+
+        } catch (Exception ex) {
+            lblStatus.setText("Cancel failed: " + ex.getMessage());
+            ex.printStackTrace();
+        }
     }
+
 
     @FXML private void onPayBill() { SceneManager.showPayBill(); }
     @FXML private void onGoToTerminal() { SceneManager.showTerminal(); }

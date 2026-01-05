@@ -674,6 +674,82 @@ public class ReservationDAO {
 
         return list;
     }
+    
+    /**
+     * Cancel a reservation (set status to CANCELLED) only if:
+     * - it belongs to the requester (subscriber_username OR guest_email+guest_phone in user_activity)
+     * - and reservation is still cancellable (currently CONFIRMED)
+     *
+     * @return true if the reservation was updated, false otherwise
+     */
+    public static boolean cancelReservation(int reservationId, String role, String username, String guestEmail, String guestPhone) throws Exception {
+        if (role == null) return false;
+        String r = role.trim().toUpperCase();
+
+        if ("SUBSCRIBER".equals(r)) {
+            return cancelReservationForSubscriber(reservationId, username);
+        } else {
+            // treat anything else as CUSTOMER/GUEST
+            return cancelReservationForGuest(reservationId, guestEmail, guestPhone);
+        }
+    }
+
+    private static boolean cancelReservationForSubscriber(int reservationId, String username) throws Exception {
+        if (reservationId <= 0) return false;
+        if (username == null || username.isBlank()) return false;
+
+        String sql = """
+            UPDATE reservation r
+            JOIN user_activity ua ON ua.reservation_id = r.reservation_id
+            SET r.status = 'CANCELED'
+            WHERE r.reservation_id = ?
+              AND r.status = 'CONFIRMED'
+              AND ua.subscriber_username = ?
+        """;
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, reservationId);
+            ps.setString(2, username);
+            int updated = ps.executeUpdate();
+            return updated > 0;
+        } finally {
+            pool.releaseConnection(pc);
+        }
+    }
+
+    private static boolean cancelReservationForGuest(int reservationId, String email, String phone) throws Exception {
+        if (reservationId <= 0) return false;
+        if (email == null || email.isBlank()) return false;
+        if (phone == null || phone.isBlank()) return false;
+
+        String sql = """
+            UPDATE reservation r
+            JOIN user_activity ua ON ua.reservation_id = r.reservation_id
+            SET r.status = 'CANCELED'
+            WHERE r.reservation_id = ?
+              AND r.status = 'CONFIRMED'
+              AND ua.guest_email = ?
+              AND ua.guest_phone = ?
+        """;
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, reservationId);
+            ps.setString(2, email);
+            ps.setString(3, phone);
+            int updated = ps.executeUpdate();
+            return updated > 0;
+        } finally {
+            pool.releaseConnection(pc);
+        }
+    }
 
 
 }

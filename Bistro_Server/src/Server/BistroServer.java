@@ -126,8 +126,7 @@ public class BistroServer extends AbstractServer {
 
 
                 // TODO later:
-                case REQUEST_CANCEL_RESERVATION -> sendOk(client, OpCode.RESPONSE_CANCEL_RESERVATION, "NOT_IMPLEMENTED_YET");
-                case REQUEST_RECOVER_CONFIRMATION_CODE -> sendOk(client, OpCode.RESPONSE_RECOVER_CONFIRMATION_CODE, "NOT_IMPLEMENTED_YET");
+                case REQUEST_CANCEL_RESERVATION -> handleCancelReservation(req, client);
                 case REQUEST_PROFILE_GET -> sendOk(client, OpCode.RESPONSE_PROFILE_GET, null);
                 case REQUEST_PROFILE_UPDATE_CONTACT -> sendOk(client, OpCode.RESPONSE_PROFILE_UPDATE_CONTACT, "NOT_IMPLEMENTED_YET");
                 case REQUEST_HISTORY_GET -> sendOk(client, OpCode.RESPONSE_HISTORY_GET, List.of());
@@ -192,6 +191,83 @@ public class BistroServer extends AbstractServer {
     }
 
     /* ==================== Handlers ==================== */
+    
+    @SuppressWarnings("unchecked")
+    private void handleCancelReservation(Envelope req, ConnectionToClient client) {
+        try {
+            Object payload = req.getPayload();
+
+            // Expected payload: Object[] { role, username, guestEmail, guestPhone, reservationId }
+            if (!(payload instanceof Object[] arr) || arr.length < 5) {
+                sendOk(client, OpCode.RESPONSE_CANCEL_RESERVATION,
+                        "Bad payload. Expected {role, username, email, phone, reservationId}.");
+                return;
+            }
+
+            String role = arr[0] == null ? null : String.valueOf(arr[0]);
+            String username = arr[1] == null ? null : String.valueOf(arr[1]);
+            String guestEmail = arr[2] == null ? null : String.valueOf(arr[2]);
+            String guestPhone = arr[3] == null ? null : String.valueOf(arr[3]);
+
+            int reservationId;
+            try {
+                reservationId = (arr[4] instanceof Number n) ? n.intValue() : Integer.parseInt(String.valueOf(arr[4]));
+            } catch (Exception ex) {
+                sendOk(client, OpCode.RESPONSE_CANCEL_RESERVATION, "Bad reservation id.");
+                return;
+            }
+
+            boolean isSubscriber = role != null && role.equalsIgnoreCase("SUBSCRIBER");
+            boolean isCustomer = role != null && role.equalsIgnoreCase("CUSTOMER");
+
+            if (!isSubscriber && !isCustomer) {
+                sendOk(client, OpCode.RESPONSE_CANCEL_RESERVATION, "Unknown role.");
+                return;
+            }
+
+            if (isSubscriber) {
+                if (username == null || username.isBlank()) {
+                    sendOk(client, OpCode.RESPONSE_CANCEL_RESERVATION, "Missing subscriber username.");
+                    return;
+                }
+            } else {
+                // Customer must prove identity (email + phone)
+                if (guestEmail == null || guestEmail.isBlank() || guestPhone == null || guestPhone.isBlank()) {
+                    sendOk(client, OpCode.RESPONSE_CANCEL_RESERVATION, "Email + phone are required for customers.");
+                    return;
+                }
+            }
+
+            // Call DAO
+            // This method should:
+            // 1) Verify reservation belongs to the requester
+            // 2) Verify status is cancel-able (e.g., CONFIRMED)
+            // 3) Update status to CANCELLED
+            boolean ok = ReservationDAO.cancelReservation(
+                    reservationId,
+                    role,
+                    username,
+                    guestEmail,
+                    guestPhone
+            );
+
+            if (ok) {
+                sendOk(client, OpCode.RESPONSE_CANCEL_RESERVATION, "Reservation cancelled.");
+            } else {
+                sendOk(client, OpCode.RESPONSE_CANCEL_RESERVATION, "Cancel failed (not found / not yours / not active).");
+            }
+
+
+        } catch (Exception e) {
+            log("Cancel reservation failed: " + e.getMessage());
+            try {
+                sendOk(client, OpCode.RESPONSE_CANCEL_RESERVATION, "Server error: " + e.getMessage());
+            } catch (Exception ignored) {
+                log("Also failed to send response to client: " + ignored.getMessage());
+            }
+        }
+    }
+
 
     private void handleCheckAvailability(Envelope req, ConnectionToClient client) throws Exception {
         Object payloadObj = readEnvelopePayload(req);
