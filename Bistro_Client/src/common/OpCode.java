@@ -22,6 +22,10 @@ public enum OpCode {
     REQUEST_MAKE_RESERVATION,
     RESPONSE_MAKE_RESERVATION,
 
+    // Pre-check reservation availability (no email/phone prompt)
+    REQUEST_CHECK_AVAILABILITY,
+    RESPONSE_CHECK_AVAILABILITY,
+
     // Subscriber-only
     REQUEST_PROFILE_GET,
     RESPONSE_PROFILE_GET,
@@ -58,5 +62,4 @@ public enum OpCode {
     REQUEST_TERMINAL_NO_SHOW,
     RESPONSE_TERMINAL_NO_SHOW
 }
-
 

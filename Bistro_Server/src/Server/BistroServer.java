@@ -18,6 +18,7 @@ import common.dto.MakeReservationResponseDTO;
 
 import DataBase.Reservation;
 import DataBase.dao.ReservationDAO;
+import DataBase.dao.RestaurantTableDAO;
 
 public class BistroServer extends AbstractServer {
 
@@ -138,6 +139,8 @@ public class BistroServer extends AbstractServer {
                 
                 case REQUEST_MAKE_RESERVATION -> handleMakeReservation(req, client);
 
+                case REQUEST_CHECK_AVAILABILITY -> handleCheckAvailability(req, client);
+
                 default -> sendError(client, OpCode.ERROR, "Unknown op: " + req.getOp());
             }
 
@@ -183,6 +186,39 @@ public class BistroServer extends AbstractServer {
 
     /* ==================== Handlers ==================== */
 
+    private void handleCheckAvailability(Envelope req, ConnectionToClient client) throws Exception {
+        Object payloadObj = readEnvelopePayload(req);
+
+        if (!(payloadObj instanceof MakeReservationRequestDTO dto)) {
+            sendError(client, OpCode.RESPONSE_CHECK_AVAILABILITY, "Bad payload.");
+            return;
+        }
+
+        if (dto.getNumOfCustomers() <= 0 || dto.getReservationTime() == null) {
+            sendOk(client, OpCode.RESPONSE_CHECK_AVAILABILITY,
+                    new MakeReservationResponseDTO(false, -1, null, "Invalid input."));
+            return;
+        }
+
+        Timestamp start = dto.getReservationTime();
+        Timestamp expiry = Timestamp.valueOf(start.toLocalDateTime().plusMinutes(15));
+
+        int totalSeats = RestaurantTableDAO.getTotalSeatsAvailable();
+        int booked = ReservationDAO.getBookedCustomersInRange(start, expiry);
+
+        if (booked + dto.getNumOfCustomers() > totalSeats) {
+            List<Timestamp> suggestions = findAlternativeTimes(dto.getReservationTime(), dto.getNumOfCustomers());
+
+            sendOk(client, OpCode.RESPONSE_CHECK_AVAILABILITY,
+                    new MakeReservationResponseDTO(false, "No available seats at requested time.", suggestions));
+            return;
+        }
+
+        sendOk(client, OpCode.RESPONSE_CHECK_AVAILABILITY,
+                new MakeReservationResponseDTO(true, -1, null, "Available"));
+    }
+
+    
     private void handleTerminalValidateCode(Envelope req, ConnectionToClient client) {
         try {
             Object payload = readEnvelopePayload(req);
@@ -389,11 +425,11 @@ public class BistroServer extends AbstractServer {
         // A) At least 1 hour from now
         Timestamp minTime = new Timestamp(now.getTime() + 60L * 60L * 1000L);
         //if (dto.getReservationTime().before(minTime)) {
-            //sendOk(client, OpCode.RESPONSE_MAKE_RESERVATION,
+           // sendOk(client, OpCode.RESPONSE_MAKE_RESERVATION,
                    // new MakeReservationResponseDTO(false, -1, null,
-                          //  "Reservation must be at least 1 hour from now."));
+                         //   "Reservation must be at least 1 hour from now."));
             //return;
-       // }
+        //}
 
         // B) Up to 1 month ahead
         java.time.LocalDateTime maxLdt = java.time.LocalDateTime.now().plusMonths(1);
@@ -408,12 +444,12 @@ public class BistroServer extends AbstractServer {
         // C) Only 30-minute steps (xx:00 or xx:30)
         java.time.LocalDateTime ldt = dto.getReservationTime().toLocalDateTime();
         //int minute = ldt.getMinute();
-        //if (!(minute == 0 || minute == 30)) {
-         //   sendOk(client, OpCode.RESPONSE_MAKE_RESERVATION,
-             //       new MakeReservationResponseDTO(false, -1, null,
-                  //          "Reservation time must be in 30-minute steps (xx:00 or xx:30)."));
-            //return;
-      //  }
+       //if (!(minute == 0 || minute == 30)) {
+           // sendOk(client, OpCode.RESPONSE_MAKE_RESERVATION,
+                  // new MakeReservationResponseDTO(false, -1, null,
+                         //   "Reservation time must be in 30-minute steps (xx:00 or xx:30)."));
+           // return;
+       // }
 
         // =========================
         // ✅ Arrival deadline rule (spec): up to 15 minutes after reservation time
@@ -533,7 +569,6 @@ public class BistroServer extends AbstractServer {
 
 
 }
-
 
 
 

@@ -75,11 +75,17 @@ public class ClientController implements ClientUI {
 
     @FXML private TableView<HistoryRow> tblHistory;
     private final ObservableList<HistoryRow> history = FXCollections.observableArrayList();
+    
+    private boolean isSubscriber;
 
-    private boolean isSubscriber = true;
+
 
     // IMPORTANT: this field now mirrors the SINGLE shared client from ClientSession
     private BistroClient client;
+
+    // ✅ Pending reservation base (after availability check)
+    private MakeReservationRequestDTO pendingReservationBase;
+
 
     @FXML
     private void initialize() {
@@ -287,6 +293,7 @@ public class ClientController implements ClientUI {
             switch (env.getOp()) {
                 case RESPONSE_RESERVATIONS_LIST -> handleReservationsResponse(env.getPayload());
                 case RESPONSE_MAKE_RESERVATION -> handleMakeReservationResponse(env.getPayload());
+                case RESPONSE_CHECK_AVAILABILITY -> handleAvailabilityCheckResponse(env.getPayload());
                 default -> lblStatus.setText("Server replied: " + env.getOp());
             }
         });
@@ -305,6 +312,123 @@ public class ClientController implements ClientUI {
         }
         return null;
     }
+    
+ // ===== Guest contact dialog (email + phone) =====
+    private static class GuestContact {
+        final String email;
+        final String phone;
+
+        GuestContact(String email, String phone) {
+            this.email = email;
+            this.phone = phone;
+        }
+    }
+
+    private GuestContact askGuestEmailAndPhone() {
+
+        Dialog<GuestContact> dialog = new Dialog<>();
+        dialog.setTitle("Customer Reservation");
+        dialog.setHeaderText("Enter your email and phone to receive confirmation + reminders");
+
+        ButtonType okBtn = new ButtonType("OK", ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(okBtn, ButtonType.CANCEL);
+
+        javafx.scene.layout.GridPane grid = new javafx.scene.layout.GridPane();
+        grid.setHgap(10);
+        grid.setVgap(10);
+
+        TextField emailField = new TextField();
+        emailField.setPromptText("email@example.com");
+
+        TextField phoneField = new TextField();
+        phoneField.setPromptText("05XXXXXXXX");
+
+        grid.add(new Label("Email:"), 0, 0);
+        grid.add(emailField, 1, 0);
+        grid.add(new Label("Phone:"), 0, 1);
+        grid.add(phoneField, 1, 1);
+
+        dialog.getDialogPane().setContent(grid);
+
+        dialog.setResultConverter(btn -> {
+            if (btn == okBtn) {
+                String email = emailField.getText() == null ? "" : emailField.getText().trim();
+                String phone = phoneField.getText() == null ? "" : phoneField.getText().trim();
+                return new GuestContact(email, phone);
+            }
+            return null;
+        });
+
+        return dialog.showAndWait().orElse(null);
+    }
+
+    
+    private void handleAvailabilityCheckResponse(Object payload) {
+        if (!(payload instanceof MakeReservationResponseDTO res)) {
+            lblStatus.setText("Bad payload for availability check.");
+            return;
+        }
+
+        if (res.isOk()) {
+            // Available -> now continue and ask details (guest only) and send make reservation
+            boolean isSubscriber = "SUBSCRIBER".equals(ClientSession.getRole());
+
+            String subscriberUsername = null;
+            String guestEmail = null;
+            String guestPhone = null;
+
+            if (isSubscriber) {
+                subscriberUsername = ClientSession.getUsername();
+                if (subscriberUsername == null || subscriberUsername.isBlank()) {
+                    if (lblReservationFormMsg != null) lblReservationFormMsg.setText("Missing subscriber username (session).");
+                    return;
+                }
+            } else {
+                GuestContact contact = askGuestEmailAndPhone();
+                if (contact == null) {
+                    if (lblReservationFormMsg != null) lblReservationFormMsg.setText("Cancelled.");
+                    return;
+                }
+                guestEmail = contact.email;
+                guestPhone = contact.phone;
+
+                if (guestEmail.isBlank()) {
+                    if (lblReservationFormMsg != null) lblReservationFormMsg.setText("Email is required for customers.");
+                    return;
+                }
+                if (guestPhone.isBlank()) {
+                    if (lblReservationFormMsg != null) lblReservationFormMsg.setText("Phone is required for customers.");
+                    return;
+                }
+            }
+
+            // Use the pending base request time+num
+            MakeReservationRequestDTO dto = new MakeReservationRequestDTO(
+                    subscriberUsername,
+                    guestPhone,
+                    guestEmail,
+                    pendingReservationBase.getNumOfCustomers(),
+                    pendingReservationBase.getReservationTime()
+            );
+
+            try {
+                Envelope env = Envelope.request(OpCode.REQUEST_MAKE_RESERVATION, dto);
+                client.sendToServer(new KryoMessage("ENVELOPE", KryoUtil.toBytes(env)));
+                if (lblReservationFormMsg != null) lblReservationFormMsg.setText("Sending...");
+            } catch (Exception ex) {
+                if (lblReservationFormMsg != null) lblReservationFormMsg.setText("Failed: " + ex.getMessage());
+            }
+
+        } else {
+            // Not available -> show alternatives (no email/phone asked)
+            if (lblReservationFormMsg != null) lblReservationFormMsg.setText(res.getMessage());
+
+            List<Timestamp> alts = res.getSuggestedTimes();
+            if (alts != null && !alts.isEmpty()) showSuggestedTimesUI(alts);
+            else hideSuggestedTimesUI();
+        }
+    }
+
 
     private void handleMakeReservationResponse(Object payload) {
         if (!(payload instanceof MakeReservationResponseDTO res)) {
@@ -479,8 +603,6 @@ public class ClientController implements ClientUI {
         try {
             if (lblReservationFormMsg != null) lblReservationFormMsg.setText("");
 
-            // IMPORTANT: if user tries again, keep list visible (don’t auto-hide here)
-
             this.client = ClientSession.getClient();
 
             if (client == null || !client.isConnected()) {
@@ -500,44 +622,14 @@ public class ClientController implements ClientUI {
             LocalTime time = LocalTime.parse(timeStr);
             Timestamp ts = Timestamp.valueOf(LocalDateTime.of(date, time));
 
-            boolean isSubscriber = "SUBSCRIBER".equals(ClientSession.getRole());
+            // Save pending base request
+            pendingReservationBase = new MakeReservationRequestDTO(null, null, null, num, ts);
 
-            String subscriberUsername = null;
-            String guestPhone = null;
-            String guestEmail = null;
-
-            if (isSubscriber) {
-                subscriberUsername = ClientSession.getUsername();
-                if (subscriberUsername == null || subscriberUsername.isBlank()) {
-                    if (lblReservationFormMsg != null) lblReservationFormMsg.setText("Missing subscriber username (session).");
-                    return;
-                }
-            } else {
-                TextInputDialog dialog = new TextInputDialog();
-                dialog.setTitle("Customer Reservation");
-                dialog.setHeaderText("Enter your email to receive the confirmation code");
-                dialog.setContentText("Email:");
-
-                var result = dialog.showAndWait();
-                if (result.isEmpty() || result.get().isBlank()) {
-                    if (lblReservationFormMsg != null) lblReservationFormMsg.setText("Email is required for customers.");
-                    return;
-                }
-                guestEmail = result.get().trim();
-            }
-
-            MakeReservationRequestDTO dto = new MakeReservationRequestDTO(
-                    subscriberUsername,
-                    guestPhone,
-                    guestEmail,
-                    num,
-                    ts
-            );
-
-            Envelope env = Envelope.request(OpCode.REQUEST_MAKE_RESERVATION, dto);
+            // ✅ Ask server if there is availability BEFORE asking for email/phone
+            Envelope env = Envelope.request(OpCode.REQUEST_CHECK_AVAILABILITY, pendingReservationBase);
             client.sendToServer(new KryoMessage("ENVELOPE", KryoUtil.toBytes(env)));
 
-            if (lblReservationFormMsg != null) lblReservationFormMsg.setText("Sending...");
+            if (lblReservationFormMsg != null) lblReservationFormMsg.setText("Checking availability...");
 
         } catch (NumberFormatException ex) {
             if (lblReservationFormMsg != null) lblReservationFormMsg.setText("Customers must be a number.");
@@ -546,6 +638,7 @@ public class ClientController implements ClientUI {
             ex.printStackTrace();
         }
     }
+
 
     @FXML
     private void onClearReservationForm(ActionEvent e) {
