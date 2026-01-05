@@ -39,19 +39,14 @@
                 <Label text="Actions" style="-fx-font-weight: bold; -fx-font-size: 14px;"/>
                 <Button fx:id="btnCheckIn" text="Check-in" maxWidth="Infinity"
                         onAction="#onCheckIn" disable="true"/>
-                        <Button
-        fx:id="btnJoinWaitingList"
-        text="Join Waiting List"
-        onAction="#onJoinWaitingList"
-        disable="true"
-        maxWidth="Infinity"/>
+				<Button fx:id="btnJoinWaitingList" text="Join Waiting List" onAction="#onJoinWaitingList" maxWidth="Infinity" />
 
-<Button
-        fx:id="btnLeaveWaitingList"
-        text="Leave Waiting List"
-        onAction="#onLeaveWaitingList"
-        disable="true"
-        maxWidth="Infinity"/>
+
+				<Button
+       				fx:id="btnLeaveWaitingList"
+        			text="Leave Waiting List"
+        			onAction="#onLeaveWaitingList"
+        			maxWidth="Infinity"/>
                         
 
                 <Separator/>
@@ -113,6 +108,32 @@
                 </children>
             </VBox>
 
+            <!-- WAITING LIST DETAILS -->
+            <VBox spacing="10"
+                  style="-fx-border-color: #dddddd; -fx-border-radius: 10; -fx-background-radius: 10; -fx-padding: 12;">
+                <children>
+                    <Label text="Waiting List Details" style="-fx-font-weight: bold;"/>
+                    <GridPane hgap="12" vgap="10">
+                        <children>
+                            <Label text="Waiting Code:" GridPane.rowIndex="0" GridPane.columnIndex="0"/>
+                            <Label fx:id="lblWaitCode" text="-" GridPane.rowIndex="0" GridPane.columnIndex="1"/>
+
+                            <Label text="Status:" GridPane.rowIndex="1" GridPane.columnIndex="0"/>
+                            <Label fx:id="lblWaitStatus" text="-" GridPane.rowIndex="1" GridPane.columnIndex="1"/>
+
+                            <Label text="People:" GridPane.rowIndex="2" GridPane.columnIndex="0"/>
+                            <Label fx:id="lblWaitPeople" text="-" GridPane.rowIndex="2" GridPane.columnIndex="1"/>
+
+                            <Label text="Email:" GridPane.rowIndex="3" GridPane.columnIndex="0"/>
+                            <Label fx:id="lblWaitEmail" text="-" GridPane.rowIndex="3" GridPane.columnIndex="1"/>
+
+                            <Label text="Phone:" GridPane.rowIndex="4" GridPane.columnIndex="0"/>
+                            <Label fx:id="lblWaitPhone" text="-" GridPane.rowIndex="4" GridPane.columnIndex="1"/>
+                        </children>
+                    </GridPane>
+                </children>
+            </VBox>
+
             <!-- TABLE ASSIGNMENT -->
             <VBox spacing="10"
                   style="-fx-border-color: #dddddd; -fx-border-radius: 10; -fx-background-radius: 10; -fx-padding: 12;">
@@ -142,4 +163,3 @@
     </bottom>
 
 </BorderPane>
-

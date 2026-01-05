@@ -108,5 +108,20 @@ public class EmailService {
 
         sendEmail(toEmail, subject, body);
     }
+    
+    public static void sendWaitingTableReady(String toEmail, String waitingCode) {
+        String subject = "Bistro - Your table is ready!";
+        String body =
+                "Hello,\n\n" +
+                "A table is now available for you.\n\n" +
+                "Please check in within 15 minutes using this code:\n" +
+                waitingCode + "\n\n" +
+                "See you soon,\n" +
+                "Bistro System";
+
+        sendEmail(toEmail, subject, body);
+    }
+
+
 }
 

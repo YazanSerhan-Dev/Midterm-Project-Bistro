@@ -2,6 +2,7 @@ package Server;
 
 import DataBase.dao.ReservationDAO;
 import DataBase.dao.RestaurantTableDAO;
+import DataBase.dao.WaitingListDAO;
 import DataBase.Reservation;
 
 import java.sql.Timestamp;
@@ -57,6 +58,45 @@ public class BackgroundJobs {
                 if (freed > 0) {
                     System.out.println("[JOB] Freed tables for EXPIRED reservations: " + freed);
                 }
+                int canceled = WaitingListDAO.cancelAssignedOver15Minutes();
+                if (canceled > 0) {
+                    System.out.println("[JOB] CANCELED assigned waiting over 15min: " + canceled);
+                }
+                
+                int oldCanceled = WaitingListDAO.cancelWaitingOlderThanHours(4);
+                if (oldCanceled > 0) {
+                    System.out.println("[JOB] CANCELED old WAITING entries (4h): " + oldCanceled);
+                }
+             // =========================
+             // Assign WAITING -> ASSIGNED + notify
+             // =========================
+             int assignedCount = 0;
+
+             while (true) {
+                 // Oldest WAITING that fits any FREE table
+                 var next = WaitingListDAO.getOldestWaitingThatFits(); // you will add this DAO method
+                 if (next == null) break;
+
+                 boolean ok = WaitingListDAO.markAssignedById(next.getId()); // sets status=ASSIGNED and request_time=NOW()
+                 if (!ok) break;
+
+                 assignedCount++;
+
+                 // Email customer that table is ready
+                 String email = WaitingListDAO.getGuestEmailForWaitingId(next.getId()); // read from user_activity by waiting_id
+                 if (email != null && !email.isBlank()) {
+                     EmailService.sendWaitingTableReady(email, next.getConfirmationCode());
+                     System.out.println("[JOB] Waiting ASSIGNED email sent to: " + email + " | Code: " + next.getConfirmationCode());
+                 } else {
+                     System.out.println("[JOB] Waiting ASSIGNED but email not found | Code: " + next.getConfirmationCode());
+                 }
+             }
+
+             if (assignedCount > 0) {
+                 System.out.println("[JOB] ASSIGNED waiting entries: " + assignedCount);
+             }
+
+
 
             } catch (Exception e) {
                 System.out.println("[JOB] expire/free error: " + e.getMessage());

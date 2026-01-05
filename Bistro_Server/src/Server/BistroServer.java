@@ -18,7 +18,8 @@ import common.OpCode;
 import common.dto.RegistrationDTO;
 import common.dto.ReservationDTO;
 import common.dto.SubscriberDTO;
-
+import common.dto.TerminalValidateResponseDTO;
+import common.dto.WaitingListDTO;
 // Imports from MAIN (Reservation & Login)
 import common.dto.LoginResponseDTO;
 import common.dto.MakeReservationRequestDTO;
@@ -28,6 +29,8 @@ import common.dto.MakeReservationResponseDTO;
 import DataBase.Reservation;
 import DataBase.dao.ReservationDAO;
 import DataBase.dao.SubscriberDAO;
+import DataBase.dao.UserActivityDAO;
+import DataBase.dao.WaitingListDAO;
 import DataBase.dao.RestaurantTableDAO; // From MAIN
 
 public class BistroServer extends AbstractServer {
@@ -125,6 +128,9 @@ public class BistroServer extends AbstractServer {
                 
                 case REQUEST_TERMINAL_VALIDATE_CODE -> handleTerminalValidateCode(req, client);
                 case REQUEST_TERMINAL_CHECK_IN -> handleTerminalCheckIn(req, client);
+                
+                //updated from Yazan for the waiting list
+                case REQUEST_WAITING_LIST -> handleWaitingList(req, client);
 
                 // TODO later:
                 case REQUEST_CANCEL_RESERVATION -> handleCancelReservation(req, client);
@@ -180,6 +186,110 @@ public class BistroServer extends AbstractServer {
     }
 
     /* ==================== Handlers ==================== */
+    
+    private void handleWaitingList(Envelope req, ConnectionToClient client) {
+        try {
+            Object payload = readEnvelopePayload(req);
+
+            if (!(payload instanceof Object[] arr) || arr.length < 3 || !(arr[2] instanceof WaitingListDTO dto)) {
+                sendOk(client, OpCode.RESPONSE_WAITING_LIST, "Bad payload.");
+                return;
+            }
+
+            String role = arr[0] == null ? "" : arr[0].toString();
+            String username = arr[1] == null ? "" : arr[1].toString();
+
+            int people = dto.getPeopleCount();
+            if (people <= 0) {
+                sendOk(client, OpCode.RESPONSE_WAITING_LIST, "People count must be > 0.");
+                return;
+            }
+
+            String email;
+            String phone;
+
+            if ("SUBSCRIBER".equalsIgnoreCase(role)) {
+                if (username.isBlank()) {
+                    sendOk(client, OpCode.RESPONSE_WAITING_LIST, "Missing subscriber username.");
+                    return;
+                }
+
+                email = DataBase.dao.SubscriberDAO.getEmailByUsername(username);
+
+                phone = SubscriberDAO.getPhoneByUsername(username);
+                if (phone == null) phone = "";
+
+                if (email == null || email.isBlank()) {
+                    sendOk(client, OpCode.RESPONSE_WAITING_LIST, "Subscriber email not found.");
+                    return;
+                }
+            } else {
+                // CUSTOMER: must send email + phone
+                email = dto.getEmail() == null ? "" : dto.getEmail().trim();
+                phone = dto.getPhone() == null ? "" : dto.getPhone().trim();
+
+                if (email.isBlank() || phone.isBlank()) {
+                    sendOk(client, OpCode.RESPONSE_WAITING_LIST, "Email and phone are required for customers.");
+                    return;
+                }
+            }
+
+            Timestamp now = new Timestamp(System.currentTimeMillis());
+
+            // ✅ Insert ONCE with unique code retry
+            String code = null;
+            int waitingId = -1;
+
+            for (int i = 0; i < 5; i++) {
+                code = "W" + java.util.UUID.randomUUID()
+                        .toString()
+                        .replace("-", "")
+                        .substring(0, 8)
+                        .toUpperCase();
+
+                try {
+                    waitingId = WaitingListDAO.insertWaitingReturnId(
+                            people,
+                            now,
+                            "WAITING",
+                            code
+                    );
+                    if (waitingId > 0) break; // success
+                } catch (Exception ex) {
+                    // if duplicate code, retry
+                    String msg = ex.getMessage() == null ? "" : ex.getMessage().toLowerCase();
+                    if (!msg.contains("duplicate")) {
+                        throw ex;
+                    }
+                }
+            }
+
+            if (waitingId <= 0 || code == null) {
+                sendOk(client, OpCode.RESPONSE_WAITING_LIST, "Failed to generate unique waiting code. Please try again.");
+                return;
+            }
+
+            // ✅ store contact info in user_activity for later email notification
+            UserActivityDAO.insertWaitingActivity(waitingId, email, phone);
+
+            // ✅ build response DTO
+            WaitingListDTO resp = new WaitingListDTO();
+            resp.setId(waitingId);
+            resp.setPeopleCount(people);
+            resp.setStatus("WAITING");
+            resp.setConfirmationCode(code);
+            resp.setEmail(email);
+            resp.setPhone(phone);
+
+            sendOk(client, OpCode.RESPONSE_WAITING_LIST, resp);
+
+        } catch (Exception e) {
+            try {
+                sendOk(client, OpCode.RESPONSE_WAITING_LIST, "Server error: " + e.getMessage());
+            } catch (Exception ignored) {}
+        }
+    }
+
     
     @SuppressWarnings("unchecked")
     private void handleCancelReservation(Envelope req, ConnectionToClient client) {
@@ -394,42 +504,144 @@ public class BistroServer extends AbstractServer {
         try {
             Object payload = readEnvelopePayload(req);
             String code = (payload instanceof String s) ? s : null;
+
             if (code == null || code.isBlank()) {
-                sendOk( client, OpCode.RESPONSE_TERMINAL_VALIDATE_CODE, new common.dto.TerminalValidateResponseDTO(false, "Invalid confirmation code.") );
+                sendOk(client, OpCode.RESPONSE_TERMINAL_VALIDATE_CODE,
+                        new TerminalValidateResponseDTO(false, "Invalid confirmation code."));
                 return;
             }
-            var info = DataBase.dao.ReservationDAO.getTerminalInfoByCode(code.trim());
-            sendOk(client, OpCode.RESPONSE_TERMINAL_VALIDATE_CODE, info);
+
+            code = code.trim();
+
+            // 1) Try RESERVATION code (existing)
+            TerminalValidateResponseDTO info = DataBase.dao.ReservationDAO.getTerminalInfoByCode(code);
+            if (info != null && info.isValid()) {
+                sendOk(client, OpCode.RESPONSE_TERMINAL_VALIDATE_CODE, info);
+                return;
+            }
+
+         // 2) Try WAITING LIST code (NEW)
+            WaitingListDTO w = WaitingListDAO.getByCode(code);
+            if (w == null) {
+                sendOk(client, OpCode.RESPONSE_TERMINAL_VALIDATE_CODE,
+                        new TerminalValidateResponseDTO(false, "Code not found."));
+                return;
+            }
+
+            TerminalValidateResponseDTO dto = new TerminalValidateResponseDTO();
+
+            // Not a reservation
+            dto.setReservationId(0);
+            dto.setNumOfCustomers(w.getPeopleCount());
+            dto.setStatus(w.getStatus());
+
+            String st = (w.getStatus() == null) ? "" : w.getStatus().trim();
+
+            if ("ASSIGNED".equalsIgnoreCase(st)) {
+                dto.setValid(true);
+                dto.setCheckInAllowed(true);
+                dto.setMessage("Table is assigned. You may check-in now.");
+            } else if ("WAITING".equalsIgnoreCase(st)) {
+                dto.setValid(true);
+                dto.setCheckInAllowed(false);
+                dto.setMessage("You are in the waiting list. Please wait…");
+            } else if ("CANCELED".equalsIgnoreCase(st)) {
+                // ✅ IMPORTANT: expired/canceled should NOT be valid
+                dto.setValid(false);
+                dto.setCheckInAllowed(false);
+                dto.setMessage("This waiting code has expired or was canceled.");
+            } else {
+                // Unknown status -> treat as invalid
+                dto.setValid(false);
+                dto.setCheckInAllowed(false);
+                dto.setMessage("Invalid waiting list status.");
+            }
+
+            sendOk(client, OpCode.RESPONSE_TERMINAL_VALIDATE_CODE, dto);
+            return;
+
         } catch (Exception e) {
-            try { sendError(client, OpCode.RESPONSE_TERMINAL_VALIDATE_CODE, "Server error: " + e.getMessage()); } catch (Exception ignored) {}
+            try {
+                sendError(client, OpCode.RESPONSE_TERMINAL_VALIDATE_CODE, "Server error: " + e.getMessage());
+            } catch (Exception ignored) {}
         }
     }
+
 
     private void handleTerminalCheckIn(Envelope req, ConnectionToClient client) {
         try {
             Object payload = readEnvelopePayload(req);
             String code = (payload instanceof String s) ? s : null;
+
             if (code == null || code.isBlank()) {
-                sendOk(client, OpCode.RESPONSE_TERMINAL_CHECK_IN, new common.dto.TerminalValidateResponseDTO(false, "Invalid confirmation code."));
+                sendOk(client, OpCode.RESPONSE_TERMINAL_CHECK_IN,
+                        new TerminalValidateResponseDTO(false, "Invalid confirmation code."));
                 return;
             }
 
-            String tableId = DataBase.dao.ReservationDAO.markArrivedByCodeReturnTableId(code.trim());
-            common.dto.TerminalValidateResponseDTO dto = DataBase.dao.ReservationDAO.getTerminalInfoByCode(code.trim());
+            code = code.trim();
 
+            // 1) If this is a RESERVATION code -> use existing behavior
+            TerminalValidateResponseDTO info = DataBase.dao.ReservationDAO.getTerminalInfoByCode(code);
+            if (info != null && info.isValid()) {
+                String tableId = DataBase.dao.ReservationDAO.markArrivedByCodeReturnTableId(code);
+
+                TerminalValidateResponseDTO dto = DataBase.dao.ReservationDAO.getTerminalInfoByCode(code);
+                dto.setValid(true);
+                dto.setStatus("ARRIVED");
+                dto.setMessage("ARRIVED");
+                dto.setTableId(tableId);
+
+                sendOk(client, OpCode.RESPONSE_TERMINAL_CHECK_IN, dto);
+                return;
+            }
+
+            // 2) Otherwise, try WAITING LIST code
+            WaitingListDTO w = WaitingListDAO.getByCode(code);
+            if (w == null) {
+                sendOk(client, OpCode.RESPONSE_TERMINAL_CHECK_IN,
+                        new TerminalValidateResponseDTO(false, "Code not found."));
+                return;
+            }
+
+            String st = w.getStatus() == null ? "" : w.getStatus().trim();
+
+            // only ASSIGNED can check-in
+            if (!"ASSIGNED".equalsIgnoreCase(st)) {
+                TerminalValidateResponseDTO dto = new TerminalValidateResponseDTO();
+                dto.setValid(true);
+                dto.setStatus(st.isBlank() ? "WAITING" : st);
+                dto.setNumOfCustomers(w.getPeopleCount());
+                dto.setCheckInAllowed(false);
+                dto.setMessage("Still waiting. Check-in allowed only when status is ASSIGNED.");
+                dto.setTableId("-");
+                sendOk(client, OpCode.RESPONSE_TERMINAL_CHECK_IN, dto);
+                return;
+            }
+
+            // consume / close the waiting entry (no “entered” status in your enum)
+            WaitingListDAO.updateStatusByCode(code, "CANCELED");
+
+            TerminalValidateResponseDTO dto = new TerminalValidateResponseDTO();
             dto.setValid(true);
-            dto.setStatus("ARRIVED");
-            dto.setMessage("ARRIVED");
-            dto.setTableId(tableId);
+            dto.setStatus("ASSIGNED");
+            dto.setNumOfCustomers(w.getPeopleCount());
+            dto.setCheckInAllowed(false);
+            dto.setMessage("Checked-in successfully (from waiting list).");
+            dto.setTableId("-");
 
             sendOk(client, OpCode.RESPONSE_TERMINAL_CHECK_IN, dto);
+
         } catch (Exception e) {
-            common.dto.TerminalValidateResponseDTO err = new common.dto.TerminalValidateResponseDTO();
+            TerminalValidateResponseDTO err = new TerminalValidateResponseDTO();
             err.setValid(false);
             err.setMessage(e.getMessage());
-            try { sendOk(client, OpCode.RESPONSE_TERMINAL_CHECK_IN, err); } catch (Exception ignored) {}
+            try {
+                sendOk(client, OpCode.RESPONSE_TERMINAL_CHECK_IN, err);
+            } catch (Exception ignored) {}
         }
     }
+
 
     private void handleLoginSubscriber(Envelope env, ConnectionToClient client) {
         try {

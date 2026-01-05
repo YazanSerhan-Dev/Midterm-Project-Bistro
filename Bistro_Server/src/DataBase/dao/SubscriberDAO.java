@@ -117,4 +117,25 @@ public class SubscriberDAO {
             pool.releaseConnection(pc);
         }
     }
+    
+    public static String getPhoneByUsername(String username) throws Exception {
+        String sql = "SELECT phone FROM subscribers WHERE username = ? LIMIT 1";
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, username);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) return null;
+                return rs.getString("phone");
+            }
+        } finally {
+            pool.releaseConnection(pc);
+        }
+    }
+
+
 }
