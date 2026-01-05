@@ -39,6 +39,20 @@
                 <Label text="Actions" style="-fx-font-weight: bold; -fx-font-size: 14px;"/>
                 <Button fx:id="btnCheckIn" text="Check-in" maxWidth="Infinity"
                         onAction="#onCheckIn" disable="true"/>
+                        <Button
+        fx:id="btnJoinWaitingList"
+        text="Join Waiting List"
+        onAction="#onJoinWaitingList"
+        disable="true"
+        maxWidth="Infinity"/>
+
+<Button
+        fx:id="btnLeaveWaitingList"
+        text="Leave Waiting List"
+        onAction="#onLeaveWaitingList"
+        disable="true"
+        maxWidth="Infinity"/>
+                        
 
                 <Separator/>
 

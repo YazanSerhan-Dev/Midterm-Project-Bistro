@@ -598,6 +598,11 @@ public class ClientController implements ClientUI {
     }
 
     // ===== UI actions =====
+    
+    @FXML
+    private void onLeaveWaitingList() {
+        lblStatus.setText("Leave waiting list (UI only – not implemented yet).");
+    }
 
     @FXML
     private void onRefreshReservations() {
