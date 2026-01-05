@@ -39,9 +39,6 @@ public class ClientController implements ClientUI {
     @FXML private Label lblBalanceDue;
     @FXML private Label lblSubscriptionStatus;
 
-    @FXML private TextField txtRecoverPhoneOrEmail;
-    @FXML private Label lblRecoverResult;
-
     @FXML private VBox paneNewReservation;
     @FXML private TextField txtNumCustomers;
     @FXML private DatePicker dpReservationDate;
@@ -72,9 +69,17 @@ public class ClientController implements ClientUI {
     @FXML private TextField txtFullName;
     @FXML private TextField txtPhone;
     @FXML private TextField txtEmail;
+    
+    @FXML private TableColumn<ReservationRow, Number> colHistResId;
+    @FXML private TableColumn<ReservationRow, String> colHistConfCode;
+    @FXML private TableColumn<ReservationRow, String> colHistResTime;
+    @FXML private TableColumn<ReservationRow, String> colHistExpTime;
+    @FXML private TableColumn<ReservationRow, Number> colHistCustomers;
+    @FXML private TableColumn<ReservationRow, String> colHistStatus;
 
-    @FXML private TableView<HistoryRow> tblHistory;
-    private final ObservableList<HistoryRow> history = FXCollections.observableArrayList();
+
+    @FXML private TableView<ReservationRow> tblHistory;
+    private final ObservableList<ReservationRow> history = FXCollections.observableArrayList();
     
     private boolean isSubscriber;
 
@@ -108,6 +113,11 @@ public class ClientController implements ClientUI {
         lblSubscriptionStatus.setText(isSubscriber ? "Active (10% off)" : "Not Subscribed");
 
         setupReservationsTable();
+        
+        setupHistoryTable();
+        tblHistory.setItems(history);
+        
+        tblHistory.setItems(history);
 
         tblReservations.setItems(reservations);
         reservations.clear();
@@ -165,6 +175,13 @@ public class ClientController implements ClientUI {
         }
 
         showPane(paneDashboard);
+
+        // Auto-load reservations when main screen opens (first login)
+        Platform.runLater(() -> {
+            if (client != null && client.isConnected()) {
+                onRefreshReservations();
+            }
+        });
     }
 
     private void setupReservationsTable() {
@@ -175,6 +192,16 @@ public class ClientController implements ClientUI {
         colCustomers.setCellValueFactory(c -> c.getValue().numOfCustomersProperty());
         colStatus.setCellValueFactory(c -> c.getValue().statusProperty());
     }
+    
+    private void setupHistoryTable() {
+    	colHistResId.setCellValueFactory(c -> c.getValue().reservationIdProperty());
+    	colHistConfCode.setCellValueFactory(c -> c.getValue().confirmationCodeProperty());
+    	colHistResTime.setCellValueFactory(c -> c.getValue().reservationTimeProperty());
+    	colHistExpTime.setCellValueFactory(c -> c.getValue().expiryTimeProperty());
+        colHistCustomers.setCellValueFactory(c -> c.getValue().numOfCustomersProperty());
+        colHistStatus.setCellValueFactory(c -> c.getValue().statusProperty());
+    }
+
 
     private void showPane(VBox pane) {
         paneDashboard.setVisible(false); paneDashboard.setManaged(false);
@@ -476,16 +503,58 @@ public class ClientController implements ClientUI {
         }
 
         reservations.clear();
+        history.clear(); // ✅ add this
+
+        int activeCount = 0;
+        int totalCount = 0;
+        int historyCount = 0; // optional counter
 
         for (Object dto : list) {
             ReservationRow row = dtoToRow(dto);
-            if (row != null) reservations.add(row);
+            if (row == null) continue;
+
+            totalCount++;
+
+            String status = row.getStatus();
+            boolean active = isActiveStatus(status);
+
+            if (active) activeCount++;
+
+            if (isSubscriber) {
+                if (active) {
+                    // ✅ Active -> My Reservations
+                    reservations.add(row);
+                } else {
+                    // ✅ Inactive -> History
+                    history.add(row);
+                    historyCount++;
+                }
+            } else {
+                // customer/guest: show all in My Reservations (no History page)
+                reservations.add(row);
+            }
         }
 
-        lblActiveReservations.setText(String.valueOf(reservations.size()));
-        lblStatus.setText("Loaded reservations: " + reservations.size());
+        // update counters/labels
+        lblActiveReservations.setText(String.valueOf(isSubscriber ? activeCount : totalCount));
+        lblStatus.setText("Loaded reservations: " + reservations.size() +
+                (isSubscriber ? (" | history: " + history.size()) : ""));
     }
 
+
+    private boolean isActiveStatus(String status) {
+        if (status == null) return false;
+
+        String s = status.trim().toUpperCase();
+
+        // Active reservations = still relevant "now"
+        // CONFIRMED -> future upcoming
+        // ARRIVED -> already came, still active until finished/closed
+        // (add more if your DB uses them)
+        return s.equals("CONFIRMED") || s.equals("ARRIVED");
+    }
+
+    
     private ReservationRow dtoToRow(Object dto) {
         try {
             int id = getInt(dto, "getReservationId", 0);
@@ -537,15 +606,36 @@ public class ClientController implements ClientUI {
         }
 
         try {
-        	String role = ClientSession.getRole();
-        	String username = ClientSession.getUsername();
-        	String email = ClientSession.getGuestEmail(); // if you already store it
-        	String phone = ClientSession.getGuestPhone(); // optional
+            // If customer and guest identity not known yet, ask now (covers clicking Refresh directly)
+            if (!isSubscriber) {
+                String email = ClientSession.getGuestEmail();
+                String phone = ClientSession.getGuestPhone();
 
-        	Object payload = new Object[] { role, username, email, phone };
+                if (email == null || email.isBlank() || phone == null || phone.isBlank()) {
+                    GuestContact contact = askGuestEmailAndPhone();
+                    if (contact == null) {
+                        lblStatus.setText("Cancelled.");
+                        return;
+                    }
+                    if (contact.email == null || contact.email.isBlank()
+                            || contact.phone == null || contact.phone.isBlank()) {
+                        lblStatus.setText("Email + phone are required to view your reservations.");
+                        return;
+                    }
+                    ClientSession.setGuestEmail(contact.email.trim());
+                    ClientSession.setGuestPhone(contact.phone.trim());
+                }
+            }
 
-        	Envelope env = Envelope.request(OpCode.REQUEST_RESERVATIONS_LIST, payload);
-        	client.sendToServer(new KryoMessage("ENVELOPE", KryoUtil.toBytes(env)));
+            String role = ClientSession.getRole();
+            String username = ClientSession.getUsername();
+            String email = ClientSession.getGuestEmail();
+            String phone = ClientSession.getGuestPhone();
+
+            Object payload = new Object[] { role, username, email, phone };
+
+            Envelope env = Envelope.request(OpCode.REQUEST_RESERVATIONS_LIST, payload);
+            client.sendToServer(new KryoMessage("ENVELOPE", KryoUtil.toBytes(env)));
 
             lblStatus.setText("Refreshing reservations...");
         } catch (Exception e) {
@@ -567,7 +657,36 @@ public class ClientController implements ClientUI {
     @FXML private void onGoToTerminal() { SceneManager.showTerminal(); }
 
     @FXML private void onNavDashboard() { showPane(paneDashboard); }
-    @FXML private void onNavReservations() { showPane(paneDashboard); }
+    @FXML
+    private void onNavReservations() {
+        // "My Reservations" -> go to Dashboard pane (where the table is) and refresh data
+        showPane(paneDashboard);
+
+        // If guest/customer: ask for email+phone if not known yet (after logout / first entry)
+        if (!isSubscriber) {
+            String email = ClientSession.getGuestEmail();
+            String phone = ClientSession.getGuestPhone();
+
+            if (email == null || email.isBlank() || phone == null || phone.isBlank()) {
+                GuestContact contact = askGuestEmailAndPhone();
+                if (contact == null) {
+                    lblStatus.setText("Cancelled.");
+                    return;
+                }
+                if (contact.email == null || contact.email.isBlank()
+                        || contact.phone == null || contact.phone.isBlank()) {
+                    lblStatus.setText("Email + phone are required to view your reservations.");
+                    return;
+                }
+
+                ClientSession.setGuestEmail(contact.email.trim());
+                ClientSession.setGuestPhone(contact.phone.trim());
+            }
+        }
+
+        // Finally, fetch the list from the server
+        onRefreshReservations();
+    }
 
     @FXML private void onNavProfile() { if (isSubscriber) showPane(paneProfile); }
     @FXML private void onNavHistory() { if (isSubscriber) showPane(paneHistory); }
@@ -585,11 +704,6 @@ public class ClientController implements ClientUI {
 
         if (lblReservationFormMsg != null) lblReservationFormMsg.setText("");
         hideSuggestedTimesUI();
-    }
-
-    @FXML
-    private void onRecoverCode(ActionEvent e) {
-        lblRecoverResult.setText("Recovery (todo).");
     }
 
     @FXML
