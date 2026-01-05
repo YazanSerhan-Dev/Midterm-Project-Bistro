@@ -5,7 +5,6 @@ import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
-import javafx.scene.layout.AnchorPane;
 import javafx.scene.layout.VBox;
 import javafx.event.ActionEvent;
 
@@ -49,7 +48,12 @@ public class ClientController implements ClientUI {
     @FXML private ComboBox<String> cbReservationTime;
     @FXML private Label lblReservationFormMsg;
 
-    // ===== Reservations table (UPDATED IDS expected in your FXML) =====
+    // ✅ NEW: suggested alternatives UI
+    @FXML private Label lblSuggestedTimesTitle;
+    @FXML private ListView<Timestamp> lvSuggestedTimes;
+    private final ObservableList<Timestamp> suggestedTimes = FXCollections.observableArrayList();
+
+    // ===== Reservations table =====
     @FXML private TableView<ReservationRow> tblReservations;
 
     @FXML private TableColumn<ReservationRow, Number> colReservationId;
@@ -79,13 +83,12 @@ public class ClientController implements ClientUI {
 
     @FXML
     private void initialize() {
-    	isSubscriber = "SUBSCRIBER".equals(ClientSession.getRole());
-    	
+        isSubscriber = "SUBSCRIBER".equals(ClientSession.getRole());
+
         lblStatus.setText("Ready.");
         lblUserInfo.setText(isSubscriber ? "Welcome, User (Subscriber)" : "Welcome, User (Customer)");
 
-        // ✅ FIX: when controller is created after switching scenes,
-        // sync it with the already-connected shared client (if exists)
+        // sync with already-connected shared client (if exists)
         this.client = ClientSession.getClient();
 
         btnMyProfile.setVisible(isSubscriber);
@@ -94,7 +97,6 @@ public class ClientController implements ClientUI {
         btnHistory.setVisible(isSubscriber);
         btnHistory.setManaged(isSubscriber);
 
-        // No demo money now
         lblActiveReservations.setText("0");
         lblBalanceDue.setText("₪0.00");
         lblSubscriptionStatus.setText(isSubscriber ? "Active (10% off)" : "Not Subscribed");
@@ -109,7 +111,7 @@ public class ClientController implements ClientUI {
                 btnCancelReservation.setDisable(newV == null)
         );
 
-        // init New Reservation controls (if pane exists in this screen)
+        // init New Reservation controls
         if (cbReservationTime != null) {
             cbReservationTime.getItems().setAll(
                     "10:00","10:30","11:00","11:30","12:00","12:30",
@@ -126,6 +128,34 @@ public class ClientController implements ClientUI {
 
         if (lblReservationFormMsg != null) {
             lblReservationFormMsg.setText("");
+        }
+
+        // ✅ Setup suggested times list (click -> autofill)
+        if (lvSuggestedTimes != null) {
+            lvSuggestedTimes.setItems(suggestedTimes);
+
+            // Display Timestamp nicely
+            lvSuggestedTimes.setCellFactory(list -> new ListCell<>() {
+                @Override
+                protected void updateItem(Timestamp item, boolean empty) {
+                    super.updateItem(item, empty);
+                    if (empty || item == null) {
+                        setText(null);
+                        return;
+                    }
+                    LocalDateTime ldt = item.toLocalDateTime();
+                    setText(ldt.toLocalDate() + "  " + String.format("%02d:%02d", ldt.getHour(), ldt.getMinute()));
+                }
+            });
+
+            // On click selection -> fill fields
+            lvSuggestedTimes.getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) -> {
+                if (newV != null) {
+                    applySuggestedTime(newV);
+                }
+            });
+
+            hideSuggestedTimesUI();
         }
 
         showPane(paneDashboard);
@@ -154,6 +184,55 @@ public class ClientController implements ClientUI {
         pane.setManaged(true);
     }
 
+    // ===== Suggested times helpers =====
+
+    private void showSuggestedTimesUI(List<Timestamp> alts) {
+        if (lblSuggestedTimesTitle == null || lvSuggestedTimes == null) return;
+
+        suggestedTimes.clear();
+        if (alts != null) suggestedTimes.addAll(alts);
+
+        boolean has = !suggestedTimes.isEmpty();
+
+        lblSuggestedTimesTitle.setVisible(has);
+        lblSuggestedTimesTitle.setManaged(has);
+
+        lvSuggestedTimes.setVisible(has);
+        lvSuggestedTimes.setManaged(has);
+
+        if (has) {
+            lvSuggestedTimes.getSelectionModel().clearSelection();
+        }
+    }
+
+    private void hideSuggestedTimesUI() {
+        if (lblSuggestedTimesTitle != null) {
+            lblSuggestedTimesTitle.setVisible(false);
+            lblSuggestedTimesTitle.setManaged(false);
+        }
+        if (lvSuggestedTimes != null) {
+            lvSuggestedTimes.setVisible(false);
+            lvSuggestedTimes.setManaged(false);
+        }
+        suggestedTimes.clear();
+    }
+
+    private void applySuggestedTime(Timestamp ts) {
+        LocalDateTime ldt = ts.toLocalDateTime();
+
+        if (dpReservationDate != null) {
+            dpReservationDate.setValue(ldt.toLocalDate());
+        }
+        if (cbReservationTime != null) {
+            String hhmm = String.format("%02d:%02d", ldt.getHour(), ldt.getMinute());
+            cbReservationTime.getSelectionModel().select(hhmm);
+        }
+
+        if (lblReservationFormMsg != null) {
+            lblReservationFormMsg.setText("✅ Selected alternative time. Click 'Create Reservation' again to confirm.");
+        }
+    }
+
     // ===== Networking =====
 
     public void connectToServer(String host, int port) {
@@ -161,7 +240,6 @@ public class ClientController implements ClientUI {
             ClientSession.configure(host, port);
             ClientSession.connect(this);
 
-            // ✅ FIX: always mirror the shared client after connect
             this.client = ClientSession.getClient();
 
             lblStatus.setText("Connecting to " + host + ":" + port + " ...");
@@ -172,7 +250,6 @@ public class ClientController implements ClientUI {
 
     public void disconnectFromServer() {
         try {
-            // ✅ FIX: use the shared connection (not only the controller field)
             BistroClient c = ClientSession.getClient();
             this.client = c;
 
@@ -236,13 +313,31 @@ public class ClientController implements ClientUI {
         }
 
         if (res.isOk()) {
-            lblStatus.setText("✅ " + res.getMessage() +
-                    " | Code: " + res.getConfirmationCode());
+            lblStatus.setText("✅ " + res.getMessage() + " | Code: " + res.getConfirmationCode());
 
-            // refresh the table after successful reservation
+            // clear alternatives when success
+            hideSuggestedTimesUI();
+
+            if (lblReservationFormMsg != null) {
+                lblReservationFormMsg.setText("");
+            }
+
             onRefreshReservations();
         } else {
             lblStatus.setText("❌ " + res.getMessage());
+
+            List<Timestamp> alts = res.getSuggestedTimes();
+            if (alts != null && !alts.isEmpty()) {
+                if (lblReservationFormMsg != null) {
+                    lblReservationFormMsg.setText("No availability at the selected time. Pick an alternative below:");
+                }
+                showSuggestedTimesUI(alts);
+            } else {
+                if (lblReservationFormMsg != null) {
+                    lblReservationFormMsg.setText("No availability and no alternative times found.");
+                }
+                hideSuggestedTimesUI();
+            }
         }
     }
 
@@ -264,10 +359,6 @@ public class ClientController implements ClientUI {
         lblStatus.setText("Loaded reservations: " + reservations.size());
     }
 
-    /**
-     * Converts common.dto.ReservationDTO -> ReservationRow using reflection
-     * (so client won’t crash if DTO changes slightly).
-     */
     private ReservationRow dtoToRow(Object dto) {
         try {
             int id = getInt(dto, "getReservationId", 0);
@@ -311,7 +402,6 @@ public class ClientController implements ClientUI {
 
     @FXML
     private void onRefreshReservations() {
-        // ✅ FIX: always pull the shared client right before using it
         this.client = ClientSession.getClient();
 
         if (client == null || !client.isConnected()) {
@@ -336,7 +426,6 @@ public class ClientController implements ClientUI {
         ReservationRow r = tblReservations.getSelectionModel().getSelectedItem();
         if (r == null) return;
 
-        // TODO later: send REQUEST_CANCEL_RESERVATION to server
         r.setStatus("CANCELLED");
         tblReservations.refresh();
         lblStatus.setText("Reservation cancelled (UI only for now).");
@@ -353,20 +442,21 @@ public class ClientController implements ClientUI {
 
     @FXML
     private void onLogout(ActionEvent e) {
-    	SceneManager.showLogin();
+        SceneManager.showLogin();
     }
 
     @FXML
     private void onNewReservation(ActionEvent e) {
         showPane(paneNewReservation);
         lblStatus.setText("Fill the form and click Create Reservation.");
+
         if (lblReservationFormMsg != null) lblReservationFormMsg.setText("");
+        hideSuggestedTimesUI();
     }
 
     @FXML
     private void onRecoverCode(ActionEvent e) {
         lblRecoverResult.setText("Recovery (todo).");
-        // later: send REQUEST_RECOVER_CONFIRMATION_CODE with phone/email
     }
 
     @FXML
@@ -377,13 +467,11 @@ public class ClientController implements ClientUI {
             return;
         }
         lblStatus.setText("Selected: " + r.getConfirmationCode());
-        // later: open details dialog / right-side pane
     }
 
     @FXML
     private void onSaveProfile(ActionEvent e) {
         lblStatus.setText("Profile saved (todo).");
-        // later: send REQUEST_PROFILE_UPDATE_CONTACT with phone/email
     }
 
     @FXML
@@ -391,16 +479,15 @@ public class ClientController implements ClientUI {
         try {
             if (lblReservationFormMsg != null) lblReservationFormMsg.setText("");
 
-            // ✅ Always pull the shared client right before using it
+            // IMPORTANT: if user tries again, keep list visible (don’t auto-hide here)
+
             this.client = ClientSession.getClient();
 
-            // must be connected
             if (client == null || !client.isConnected()) {
                 if (lblReservationFormMsg != null) lblReservationFormMsg.setText("Not connected to server.");
                 return;
             }
 
-            // validate form
             int num = Integer.parseInt(txtNumCustomers.getText().trim());
             LocalDate date = dpReservationDate.getValue();
             String timeStr = cbReservationTime.getValue();
@@ -413,7 +500,6 @@ public class ClientController implements ClientUI {
             LocalTime time = LocalTime.parse(timeStr);
             Timestamp ts = Timestamp.valueOf(LocalDateTime.of(date, time));
 
-            // ===== Decide subscriber vs customer =====
             boolean isSubscriber = "SUBSCRIBER".equals(ClientSession.getRole());
 
             String subscriberUsername = null;
@@ -421,14 +507,12 @@ public class ClientController implements ClientUI {
             String guestEmail = null;
 
             if (isSubscriber) {
-                // Subscriber: link to subscriber account
                 subscriberUsername = ClientSession.getUsername();
                 if (subscriberUsername == null || subscriberUsername.isBlank()) {
                     if (lblReservationFormMsg != null) lblReservationFormMsg.setText("Missing subscriber username (session).");
                     return;
                 }
             } else {
-                // Customer: ask for email (required)
                 TextInputDialog dialog = new TextInputDialog();
                 dialog.setTitle("Customer Reservation");
                 dialog.setHeaderText("Enter your email to receive the confirmation code");
@@ -440,16 +524,12 @@ public class ClientController implements ClientUI {
                     return;
                 }
                 guestEmail = result.get().trim();
-
-                // Optional: you can add phone later if you want
-                // guestPhone = ...
             }
 
-            // Build DTO (works for both)
             MakeReservationRequestDTO dto = new MakeReservationRequestDTO(
-                    subscriberUsername, // subscriber OR null
-                    guestPhone,         // customer phone OR null
-                    guestEmail,         // customer email OR null
+                    subscriberUsername,
+                    guestPhone,
+                    guestEmail,
                     num,
                     ts
             );
@@ -467,15 +547,17 @@ public class ClientController implements ClientUI {
         }
     }
 
-
     @FXML
     private void onClearReservationForm(ActionEvent e) {
         if (txtNumCustomers != null) txtNumCustomers.clear();
         if (dpReservationDate != null) dpReservationDate.setValue(LocalDate.now());
         if (cbReservationTime != null) cbReservationTime.getSelectionModel().select("18:00");
         if (lblReservationFormMsg != null) lblReservationFormMsg.setText("");
+
+        hideSuggestedTimesUI();
     }
 }
+
 
 
 

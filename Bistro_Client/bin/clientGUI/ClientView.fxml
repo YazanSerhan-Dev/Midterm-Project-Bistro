@@ -101,18 +101,16 @@
                     <Label text="My Reservations" style="-fx-font-weight: bold; -fx-font-size: 14px;"/>
 
                     <!-- RESERVATIONS TABLE -->
-					<TableView fx:id="tblReservations" prefHeight="400.0" prefWidth="700.0">
-    <columns>
-        <TableColumn fx:id="colReservationId" text="Reservation ID" prefWidth="120.0"/>
-        <TableColumn fx:id="colConfirmationCode" text="Confirmation Code" prefWidth="150.0"/>
-        <TableColumn fx:id="colReservationTime" text="Reservation Time" prefWidth="170.0"/>
-        <TableColumn fx:id="colExpiryTime" text="Expiry Time" prefWidth="170.0"/>
-        <TableColumn fx:id="colCustomers" text="Customers" prefWidth="120.0"/>
-        <TableColumn fx:id="colStatus" text="Status" prefWidth="140.0"/>
-    </columns>
-</TableView>
-
-
+                    <TableView fx:id="tblReservations" prefHeight="400.0" prefWidth="700.0">
+                        <columns>
+                            <TableColumn fx:id="colReservationId" text="Reservation ID" prefWidth="120.0"/>
+                            <TableColumn fx:id="colConfirmationCode" text="Confirmation Code" prefWidth="150.0"/>
+                            <TableColumn fx:id="colReservationTime" text="Reservation Time" prefWidth="170.0"/>
+                            <TableColumn fx:id="colExpiryTime" text="Expiry Time" prefWidth="170.0"/>
+                            <TableColumn fx:id="colCustomers" text="Customers" prefWidth="120.0"/>
+                            <TableColumn fx:id="colStatus" text="Status" prefWidth="140.0"/>
+                        </columns>
+                    </TableView>
 
                     <HBox spacing="10">
                         <children>
@@ -125,47 +123,66 @@
                 </children>
             </VBox>
 
-
             <!-- NEW RESERVATION -->
-            <VBox fx:id="paneNewReservation" spacing="12" visible="false" managed="false">
+<VBox fx:id="paneNewReservation"
+      spacing="12"
+      alignment="TOP_CENTER"
+      visible="false"
+      managed="false">
+
+    <Label text="New Reservation"/>
+
+    <!-- ✅ aligned form -->
+    <GridPane hgap="10" vgap="10" alignment="CENTER">
+        <columnConstraints>
+            <!-- labels column -->
+            <ColumnConstraints halignment="RIGHT" minWidth="90" prefWidth="90"/>
+            <!-- input column -->
+            <ColumnConstraints halignment="LEFT" minWidth="180" prefWidth="180"/>
+            <!-- hint column (for time rule text) -->
+            <ColumnConstraints halignment="LEFT" minWidth="140" prefWidth="140"/>
+        </columnConstraints>
+
+        <children>
+            <Label text="Customers:" GridPane.rowIndex="0" GridPane.columnIndex="0"/>
+            <TextField fx:id="txtNumCustomers" prefWidth="160"
+                       GridPane.rowIndex="0" GridPane.columnIndex="1"/>
+
+            <Label text="Date:" GridPane.rowIndex="1" GridPane.columnIndex="0"/>
+            <DatePicker fx:id="dpReservationDate"
+                        GridPane.rowIndex="1" GridPane.columnIndex="1"/>
+
+            <Label text="Time:" GridPane.rowIndex="2" GridPane.columnIndex="0"/>
+            <ComboBox fx:id="cbReservationTime" prefWidth="160"
+                      GridPane.rowIndex="2" GridPane.columnIndex="1"/>
+            <Label text="(30-min slots)" GridPane.rowIndex="2" GridPane.columnIndex="2"/>
+
+            <!-- Buttons row -->
+            <HBox spacing="10" alignment="CENTER"
+                  GridPane.rowIndex="3" GridPane.columnIndex="0" GridPane.columnSpan="3">
                 <children>
-                    <Label text="New Reservation" style="-fx-font-weight: bold; -fx-font-size: 16px;"/>
-
-                    <HBox spacing="10" alignment="CENTER_LEFT">
-                        <children>
-                            <Label text="Customers:"/>
-                            <TextField fx:id="txtNumCustomers" promptText="e.g. 2" prefWidth="120"/>
-                        </children>
-                    </HBox>
-
-                    <HBox spacing="10" alignment="CENTER_LEFT">
-                        <children>
-                            <Label text="Date:"/>
-                            <DatePicker fx:id="dpReservationDate"/>
-                        </children>
-                    </HBox>
-
-                    <HBox spacing="10" alignment="CENTER_LEFT">
-                        <children>
-                            <Label text="Time:"/>
-                            <ComboBox fx:id="cbReservationTime" prefWidth="140"/>
-                            <Label text="(30-min slots)" style="-fx-text-fill: #666666;"/>
-                        </children>
-                    </HBox>
-
-                    <HBox spacing="10">
-                        <children>
-                            <Button text="Create Reservation" onAction="#onCreateReservation"/>
-                            <Button text="Clear" onAction="#onClearReservationForm"/>
-                        </children>
-                    </HBox>
-
-                    <Label fx:id="lblReservationFormMsg" text="" wrapText="true" style="-fx-text-fill: darkred;"/>
-
-                    <Label text="Rules: choose a 30-minute slot • min 1 hour from now • up to 1 month ahead"
-                           wrapText="true" style="-fx-text-fill: #666666;"/>
+                    <Button text="Create Reservation" onAction="#onCreateReservation"/>
+                    <Button text="Clear" onAction="#onClearReservationForm"/>
                 </children>
-            </VBox>
+            </HBox>
+        </children>
+    </GridPane>
+
+    <Label fx:id="lblReservationFormMsg" text="" wrapText="true"/>
+
+    <Label fx:id="lblSuggestedTimesTitle"
+           text="Closest available times (click one to autofill):"
+           wrapText="true"
+           visible="false" managed="false"/>
+
+    <ListView fx:id="lvSuggestedTimes"
+              prefHeight="140"
+              visible="false" managed="false"/>
+
+    <Label text="Rules: choose a 30-minute slot • min 1 hour from now • up to 1 month ahead"
+           wrapText="true"/>
+
+</VBox>
 
             <!-- PROFILE (Subscriber only) -->
             <VBox fx:id="paneProfile" spacing="10" visible="false" managed="false">
@@ -233,6 +250,7 @@
     </bottom>
 
 </BorderPane>
+
 
 
 

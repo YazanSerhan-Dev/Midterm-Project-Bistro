@@ -244,9 +244,6 @@ public class BistroServer extends AbstractServer {
 
     }
 
-
-
-
     
     private void handleLoginSubscriber(Envelope env, ConnectionToClient client) {
         try {
@@ -410,13 +407,13 @@ public class BistroServer extends AbstractServer {
 
         // C) Only 30-minute steps (xx:00 or xx:30)
         java.time.LocalDateTime ldt = dto.getReservationTime().toLocalDateTime();
-        int minute = ldt.getMinute();
-        if (!(minute == 0 || minute == 30)) {
-            sendOk(client, OpCode.RESPONSE_MAKE_RESERVATION,
-                    new MakeReservationResponseDTO(false, -1, null,
-                            "Reservation time must be in 30-minute steps (xx:00 or xx:30)."));
-            return;
-        }
+        //int minute = ldt.getMinute();
+        //if (!(minute == 0 || minute == 30)) {
+         //   sendOk(client, OpCode.RESPONSE_MAKE_RESERVATION,
+             //       new MakeReservationResponseDTO(false, -1, null,
+                  //          "Reservation time must be in 30-minute steps (xx:00 or xx:30)."));
+            //return;
+      //  }
 
         // =========================
         // ✅ Arrival deadline rule (spec): up to 15 minutes after reservation time
@@ -431,12 +428,20 @@ public class BistroServer extends AbstractServer {
         int bookedCustomers = DataBase.dao.ReservationDAO.getBookedCustomersInRange(start, expiry);
 
         if (bookedCustomers + dto.getNumOfCustomers() > totalSeats) {
+
+            List<Timestamp> suggestions =
+                    findAlternativeTimes(dto.getReservationTime(),
+                                         dto.getNumOfCustomers());
+
             sendOk(client, OpCode.RESPONSE_MAKE_RESERVATION,
-                    new MakeReservationResponseDTO(false, -1, null,
-                            "No available seats at this time. Please choose another time."));
+                new MakeReservationResponseDTO(
+                    false,
+                    "No available seats at requested time.",
+                    suggestions
+                )
+            );
             return;
         }
-
         // =========================
         // ✅ Create reservation in DB
         // =========================
@@ -491,6 +496,39 @@ public class BistroServer extends AbstractServer {
         } catch (Exception ignored) {
             return null;
         }
+    }
+
+    private List<Timestamp> findAlternativeTimes(
+            Timestamp requested,
+            int numCustomers
+    ) throws Exception {
+
+        List<Timestamp> alternatives = new ArrayList<>();
+
+        int[] offsets = { -90, -60, -30, 30, 60, 90 };
+
+        for (int minutes : offsets) {
+            Timestamp candidate = Timestamp.valueOf(
+                    requested.toLocalDateTime().plusMinutes(minutes)
+            );
+
+            // keep 30-minute rule
+            int m = candidate.toLocalDateTime().getMinute();
+            if (m != 0 && m != 30) continue;
+
+            // max 1 month rule
+            if (candidate.after(Timestamp.valueOf(
+                    java.time.LocalDateTime.now().plusMonths(1)
+            ))) continue;
+
+            if (ReservationDAO.canFitAtTime(candidate, numCustomers)) {
+                alternatives.add(candidate);
+            }
+
+            if (alternatives.size() == 5) break;
+        }
+
+        return alternatives;
     }
 
 

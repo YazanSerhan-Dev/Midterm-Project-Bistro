@@ -526,5 +526,77 @@ public class ReservationDAO {
     }
 
 
+ // inside ReservationDAO
+    public static boolean canFitAtTime(
+            Timestamp start,
+            int numCustomers
+    ) throws Exception {
+
+        Timestamp end = Timestamp.valueOf(
+                start.toLocalDateTime().plusMinutes(15)
+        );
+
+        int totalSeats = RestaurantTableDAO.getTotalSeatsAvailable();
+        int booked = getBookedCustomersInRange(start, end);
+
+        return booked + numCustomers <= totalSeats;
+    }
+
+    public static String getReservationEmail(int reservationId) throws Exception {
+        String sql = """
+            SELECT COALESCE(s.email, ua.guest_email) AS email
+            FROM user_activity ua
+            LEFT JOIN subscribers s ON s.username = ua.subscriber_username
+            WHERE ua.reservation_id = ?
+            LIMIT 1
+        """;
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        java.sql.Connection conn = pc.getConnection();
+
+        try (java.sql.PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, reservationId);
+
+            try (java.sql.ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    String email = rs.getString("email");
+                    return (email == null || email.isBlank()) ? null : email.trim();
+                }
+                return null;
+            }
+        } finally {
+            pool.releaseConnection(pc);
+        }
+    }
+
+    public static String getReservationPhone(int reservationId) throws Exception {
+        String sql = """
+            SELECT COALESCE(s.phone, ua.guest_phone) AS phone
+            FROM user_activity ua
+            LEFT JOIN subscribers s ON s.username = ua.subscriber_username
+            WHERE ua.reservation_id = ?
+            LIMIT 1
+        """;
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        java.sql.Connection conn = pc.getConnection();
+
+        try (java.sql.PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, reservationId);
+
+            try (java.sql.ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    String phone = rs.getString("phone");
+                    return (phone == null || phone.isBlank()) ? null : phone.trim();
+                }
+                return null;
+            }
+        } finally {
+            pool.releaseConnection(pc);
+        }
+    }
+
 
 }
