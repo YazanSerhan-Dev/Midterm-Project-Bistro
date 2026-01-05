@@ -1,7 +1,8 @@
 package common.dto;
 
-public class ReservationDTO {
+import java.io.Serializable;
 
+public class ReservationDTO implements Serializable { 
     private int reservationId;
     private String confirmationCode;
     private String reservationTime;
@@ -11,6 +12,7 @@ public class ReservationDTO {
 
     public ReservationDTO() {}
 
+    
     public ReservationDTO(int reservationId, String confirmationCode,
                           String reservationTime, String expiryTime,
                           int numOfCustomers, String status) {
@@ -22,6 +24,13 @@ public class ReservationDTO {
         this.status = status;
     }
 
+    public ReservationDTO(int reservationId, String reservationTime, int numOfCustomers) {
+        this.reservationId = reservationId;
+        this.reservationTime = reservationTime;
+        this.numOfCustomers = numOfCustomers;
+    }
+
+    // Getters and Setters...
     public int getReservationId() { return reservationId; }
     public void setReservationId(int reservationId) { this.reservationId = reservationId; }
 
@@ -40,5 +49,3 @@ public class ReservationDTO {
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
 }
-
-

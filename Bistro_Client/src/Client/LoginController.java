@@ -174,7 +174,7 @@ public class LoginController implements ClientUI {
                         ClientSession.setUsername(res.getUsername());
 
                         lblMsg.setText("");
-                        SceneManager.showTerminal();
+                        SceneManager.showStaffDashboard();
                     } else {
                         lblMsg.setText(res.getMessage());
                     }

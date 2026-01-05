@@ -17,9 +17,9 @@ import java.util.concurrent.TimeUnit;
 public class MySQLConnectionPool {
 
     // ---------- DB CONFIG
-    private static final String URL = "jdbc:mysql://localhost:3306/bistro";
+    private static final String URL = "jdbc:mysql://localhost:3306/Bistro";
     private static final String USER = "root";
-    private static final String PASSWORD = "Yazan12@"; 
+    private static final String PASSWORD = "binan100"; 
 
     // ---------- POOL CONFIG ----------
     /** Maximum number of pooled connections that can be cached. */

@@ -850,15 +850,3 @@ public class ClientController implements ClientUI {
         hideSuggestedTimesUI();
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
