@@ -586,6 +586,7 @@ public class BistroServer extends AbstractServer {
         }
 
         return alternatives;
+    }
 
     private void handleAgentSeatWaitingList(Envelope req, ConnectionToClient client)
             throws IOException {
