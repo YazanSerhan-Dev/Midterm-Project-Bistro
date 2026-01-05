@@ -400,6 +400,9 @@ public class ClientController implements ClientUI {
                     if (lblReservationFormMsg != null) lblReservationFormMsg.setText("Phone is required for customers.");
                     return;
                 }
+                
+                ClientSession.setGuestEmail(guestEmail);
+                ClientSession.setGuestPhone(guestPhone);
             }
 
             // Use the pending base request time+num
@@ -534,10 +537,15 @@ public class ClientController implements ClientUI {
         }
 
         try {
-            Envelope env = Envelope.request(OpCode.REQUEST_RESERVATIONS_LIST, null);
-            byte[] bytes = KryoUtil.toBytes(env);
+        	String role = ClientSession.getRole();
+        	String username = ClientSession.getUsername();
+        	String email = ClientSession.getGuestEmail(); // if you already store it
+        	String phone = ClientSession.getGuestPhone(); // optional
 
-            client.sendToServer(new KryoMessage("ENVELOPE", bytes));
+        	Object payload = new Object[] { role, username, email, phone };
+
+        	Envelope env = Envelope.request(OpCode.REQUEST_RESERVATIONS_LIST, payload);
+        	client.sendToServer(new KryoMessage("ENVELOPE", KryoUtil.toBytes(env)));
 
             lblStatus.setText("Refreshing reservations...");
         } catch (Exception e) {
@@ -566,6 +574,7 @@ public class ClientController implements ClientUI {
 
     @FXML
     private void onLogout(ActionEvent e) {
+    	ClientSession.clearGuestIdentity();
         SceneManager.showLogin();
     }
 

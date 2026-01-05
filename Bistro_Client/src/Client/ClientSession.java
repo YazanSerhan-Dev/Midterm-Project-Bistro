@@ -7,6 +7,10 @@ public class ClientSession {
     private static int port = 5555;
     private static String role = "CUSTOMER";
     private static String username = "";
+ // ===== Guest (Customer) identity (for "My Reservations") =====
+    private static String guestEmail;
+    private static String guestPhone;
+
 
     public static void configure(String host, int port) {
         ClientSession.host = host;
@@ -22,6 +26,23 @@ public class ClientSession {
 
     public static void setUsername(String u) { username = u; }
     public static String getUsername() { return username; }
+    
+
+    public static String getGuestEmail() {
+        return guestEmail;
+    }
+
+    public static void setGuestEmail(String email) {
+        guestEmail = email;
+    }
+
+    public static String getGuestPhone() {
+        return guestPhone;
+    }
+
+    public static void setGuestPhone(String phone) {
+        guestPhone = phone;
+    }
 
 
 
@@ -54,5 +75,11 @@ public class ClientSession {
             }
         } catch (Exception ignored) {}
     }
+    
+    public static void clearGuestIdentity() {
+        guestEmail = null;
+        guestPhone = null;
+    }
+
 }
 

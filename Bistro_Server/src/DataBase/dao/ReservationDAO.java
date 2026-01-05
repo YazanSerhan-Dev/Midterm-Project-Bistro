@@ -598,5 +598,82 @@ public class ReservationDAO {
         }
     }
 
+    public List<Reservation> getReservationsBySubscriber(String username) throws Exception {
+
+        String sql = """
+            SELECT r.reservation_id, r.num_of_customers, r.reservation_time,
+                   r.expiry_time, r.status, r.confirmation_code
+            FROM reservation r
+            JOIN user_activity ua ON ua.reservation_id = r.reservation_id
+            WHERE ua.subscriber_username = ?
+            ORDER BY r.reservation_time DESC
+        """;
+
+        List<Reservation> list = new ArrayList<>();
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, username);
+            ResultSet rs = ps.executeQuery();
+
+            while (rs.next()) {
+                list.add(new Reservation(
+                    rs.getInt("reservation_id"),
+                    rs.getInt("num_of_customers"),
+                    rs.getTimestamp("reservation_time"),
+                    rs.getTimestamp("expiry_time"),
+                    rs.getString("status"),
+                    rs.getString("confirmation_code")
+                ));
+            }
+        } finally {
+            pool.releaseConnection(pc);
+        }
+
+        return list;
+    }
+
+    public List<Reservation> getReservationsByGuest(String email, String phone) throws Exception {
+
+        String sql = """
+            SELECT r.reservation_id, r.num_of_customers, r.reservation_time,
+                   r.expiry_time, r.status, r.confirmation_code
+            FROM reservation r
+            JOIN user_activity ua ON ua.reservation_id = r.reservation_id
+            WHERE (ua.guest_email = ? OR ua.guest_phone = ?)
+            ORDER BY r.reservation_time DESC
+        """;
+
+        List<Reservation> list = new ArrayList<>();
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, email);
+            ps.setString(2, phone);
+
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                list.add(new Reservation(
+                    rs.getInt("reservation_id"),
+                    rs.getInt("num_of_customers"),
+                    rs.getTimestamp("reservation_time"),
+                    rs.getTimestamp("expiry_time"),
+                    rs.getString("status"),
+                    rs.getString("confirmation_code")
+                ));
+            }
+        } finally {
+            pool.releaseConnection(pc);
+        }
+
+        return list;
+    }
+
 
 }

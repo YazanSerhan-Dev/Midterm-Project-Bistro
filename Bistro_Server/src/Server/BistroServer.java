@@ -329,7 +329,21 @@ public class BistroServer extends AbstractServer {
 
     
     private void handleReservationsList(Envelope req, ConnectionToClient client) throws Exception {
-        List<Reservation> rows = reservationDAO.getAllReservations(); // must match your DAO method name
+        Object payload = readEnvelopePayload(req);
+
+        Object[] arr = (Object[]) payload;
+        String role = (String) arr[0];
+        String username = (String) arr[1];
+        String email = (String) arr[2];
+        String phone = (String) arr[3];
+
+        List<Reservation> rows;
+
+        if ("SUBSCRIBER".equals(role)) {
+            rows = reservationDAO.getReservationsBySubscriber(username);
+        } else {
+            rows = reservationDAO.getReservationsByGuest(email, phone);
+        }
 
         List<Object> dtoList = new ArrayList<>();
         for (Reservation r : rows) {
@@ -338,8 +352,8 @@ public class BistroServer extends AbstractServer {
         }
 
         sendOk(client, OpCode.RESPONSE_RESERVATIONS_LIST, dtoList);
-        log("Sent RESPONSE_RESERVATIONS_LIST size=" + dtoList.size());
     }
+
 
     /**
      * Maps DB Reservation -> common.dto.ReservationDTO
