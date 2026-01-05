@@ -47,6 +47,14 @@
 
                 <Button fx:id="btnMyProfile" text="My Profile" maxWidth="Infinity" onAction="#onNavProfile"/>
                 <Button fx:id="btnHistory" text="History" maxWidth="Infinity" onAction="#onNavHistory"/>
+                
+                <Button
+        			fx:id="btnLeaveWaitingList"
+        			text="Leave Waiting List"
+        			onAction="#onLeaveWaitingList"
+        			visible="true"
+        			managed="true"
+        			maxWidth="Infinity"/>              
 
                 <Separator/>
 

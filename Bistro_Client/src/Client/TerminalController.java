@@ -42,6 +42,10 @@ public class TerminalController implements ClientUI {
     // Lost code
     @FXML private TextField txtRecoverPhoneOrEmail;
     @FXML private Label lblRecoverResult;
+    
+    @FXML private Button btnJoinWaitingList;
+    @FXML private Button btnLeaveWaitingList;
+
 
     private volatile boolean validated = false;
     private volatile boolean tableAvailable = false;
@@ -59,6 +63,17 @@ public class TerminalController implements ClientUI {
     // =========================
     // UI Actions
     // =========================
+    
+    @FXML
+    private void onJoinWaitingList() {
+        lblTerminalStatus.setText("Join waiting list (UI only – not implemented yet).");
+    }
+
+    @FXML
+    private void onLeaveWaitingList() {
+        lblTerminalStatus.setText("Leave waiting list (UI only – not implemented yet).");
+    }
+
 
     @FXML
     private void onValidateCode() {
