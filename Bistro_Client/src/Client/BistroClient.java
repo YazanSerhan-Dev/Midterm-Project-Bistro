@@ -31,10 +31,16 @@ public class BistroClient extends AbstractClient {
         Platform.runLater(() -> { if (ui != null) ui.onConnectionError(exception); });
     }
 
-    @Override
-    protected void handleMessageFromServer(Object msg) {
-        Platform.runLater(() -> { if (ui != null) ui.handleServerMessage(msg); });
-    }
+@Override
+protected void handleMessageFromServer(Object msg) {
+    Platform.runLater(() -> {
+        if (ui != null) {
+            ui.handleServerMessage(msg);
+        }
+    });
+}
+
+    
 }
 
 

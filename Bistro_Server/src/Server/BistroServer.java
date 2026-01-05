@@ -12,9 +12,12 @@ import common.Envelope;
 import common.KryoMessage;
 import common.KryoUtil;
 import common.OpCode;
+
 import common.dto.LoginResponseDTO;
 import common.dto.MakeReservationRequestDTO;
 import common.dto.MakeReservationResponseDTO;
+
+import common.dto.AgentSeatWaitingListDTO;
 
 import DataBase.Reservation;
 import DataBase.dao.ReservationDAO;
@@ -117,6 +120,10 @@ public class BistroServer extends AbstractServer {
             switch (req.getOp()) {
 
                 case REQUEST_RESERVATIONS_LIST -> handleReservationsList(req, client);
+             // ===== AGENT =====
+                case REQUEST_AGENT_SEAT_WAITING_LIST ->handleAgentSeatWaitingList(req, client);
+
+
 
                 // TODO later:
                 case REQUEST_CANCEL_RESERVATION -> sendOk(client, OpCode.RESPONSE_CANCEL_RESERVATION, "NOT_IMPLEMENTED_YET");
@@ -579,6 +586,19 @@ public class BistroServer extends AbstractServer {
         }
 
         return alternatives;
+
+    private void handleAgentSeatWaitingList(Envelope req, ConnectionToClient client)
+            throws IOException {
+
+        AgentSeatWaitingListDTO dto =
+                (AgentSeatWaitingListDTO) req.getPayload();
+
+        log("Agent seats waiting-list entry with code: " + dto.getConfirmationCode());
+
+        sendOk(client,
+               OpCode.RESPONSE_AGENT_SEAT_WAITING_LIST,
+               dto.getConfirmationCode());
+
     }
 
 

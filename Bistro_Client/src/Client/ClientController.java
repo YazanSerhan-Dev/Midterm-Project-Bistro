@@ -295,6 +295,7 @@ public class ClientController implements ClientUI {
 
     public void onConnected() {
         Platform.runLater(() -> lblStatus.setText("Connected to server."));
+   
     }
 
     public void onDisconnected() {
@@ -319,8 +320,10 @@ public class ClientController implements ClientUI {
 
             switch (env.getOp()) {
                 case RESPONSE_RESERVATIONS_LIST -> handleReservationsResponse(env.getPayload());
+
                 case RESPONSE_MAKE_RESERVATION -> handleMakeReservationResponse(env.getPayload());
                 case RESPONSE_CHECK_AVAILABILITY -> handleAvailabilityCheckResponse(env.getPayload());
+
                 default -> lblStatus.setText("Server replied: " + env.getOp());
             }
         });
@@ -720,6 +723,16 @@ public class ClientController implements ClientUI {
     private void onSaveProfile(ActionEvent e) {
         lblStatus.setText("Profile saved (todo).");
     }
+    ////to refactor
+    public BistroClient getClient() {
+        return client;
+    }
+ 
+    // temp to delete after login is available
+    public void setClient(BistroClient client) {
+        this.client = client;
+    }
+
 
     @FXML
     private void onCreateReservation(ActionEvent e) {
