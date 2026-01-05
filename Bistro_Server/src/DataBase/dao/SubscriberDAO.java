@@ -5,6 +5,10 @@ import java.sql.PreparedStatement;
 import java.sql.Date;
 import DataBase.MySQLConnectionPool;
 import DataBase.PooledConnection;
+import java.sql.ResultSet;
+import java.util.ArrayList;
+import java.util.List;
+import common.dto.SubscriberDTO;
 
 public class SubscriberDAO {
 
@@ -37,4 +41,36 @@ public class SubscriberDAO {
             pool.releaseConnection(pc);
         }
     }
+    
+    
+    public static List<SubscriberDTO> getAllSubscribers() throws Exception {
+        List<SubscriberDTO> list = new ArrayList<>();
+        String sql = "SELECT * FROM subscribers"; // Adjust table name if needed
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try (PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+
+            while (rs.next()) {
+                // Assuming your table has these columns. 
+                // Note: If you don't have an auto-increment ID, you might mock it or use row number.
+                int id = 0; // or rs.getInt("id") if you have one
+                String name = rs.getString("name"); 
+                String phone = rs.getString("phone");
+                String email = rs.getString("email");
+                
+                // If you don't have a status column yet, default to "Active"
+                String status = "Active"; 
+
+                list.add(new SubscriberDTO(id, name, phone, email, status));
+            }
+        } finally {
+            pool.releaseConnection(pc);
+        }
+        return list;
+    
+}
 }

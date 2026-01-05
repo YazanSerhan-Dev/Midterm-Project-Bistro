@@ -33,6 +33,7 @@ public class TempAgentClientFX extends Application {
 
         AgentController agentController = loader.getController();
         agentController.setClientController(clientController);
+        clientController.setAgentController(agentController);
 
         stage.setTitle("Agent Client (Simulation)");
         stage.setScene(new Scene(root));

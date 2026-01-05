@@ -5,19 +5,31 @@ import javafx.fxml.FXML;
 import javafx.scene.control.Label;
 import javafx.scene.control.TableCell;
 import javafx.scene.control.TableView;
+import javafx.scene.control.TextField;
 import javafx.scene.control.TableColumn;
 import javafx.scene.control.Button;
 import javafx.scene.control.cell.PropertyValueFactory;
+import javafx.scene.layout.VBox;
 import Client.ReservationRow;
 import Client.WaitingListRow;
 import Client.SubscriberRow;
 import Client.CurrentDinersRow;
 import common.Envelope;
 import common.OpCode;
-import common.dto.AgentSeatWaitingListDTO;
+import common.dto.RegistrationDTO;
 import Client.BistroClient;
 import Client.ClientController;
 import javafx.collections.FXCollections;
+
+import javafx.scene.control.Dialog;
+import javafx.scene.control.ButtonType;
+
+import javafx.scene.control.PasswordField;
+import javafx.scene.control.DatePicker;
+import javafx.scene.layout.GridPane;
+import javafx.util.Callback;
+import java.time.format.DateTimeFormatter;
+import java.util.List;
 
 public class AgentController {
 
@@ -40,6 +52,12 @@ public class AgentController {
     public void setClientController(ClientController clientController) {
         this.clientController = clientController;
     }
+    
+    @FXML private VBox paneRegisterSubscriber;
+    @FXML private TextField txtSubName;
+    @FXML private TextField txtSubPhone;
+    @FXML private TextField txtSubEmail;
+
 
     
     @FXML
@@ -51,15 +69,25 @@ public class AgentController {
     @FXML
     private void onViewReservations(ActionEvent event) {
         lblTitle.setText("Reservations");
-        showReservationsTable();
+        setupReservationsColumns();
+        hideAllTables();
+        tblReservations.setVisible(true);
+        tblReservations.setManaged(true);
+        tblReservations.getItems().clear();
+
+        // USE THE NEW OPCODE
+        Envelope env = Envelope.request(OpCode.REQUEST_AGENT_RESERVATIONS_LIST, null);
+        
+        try {
+            if (clientController != null) {
+                clientController.getClient().sendToServer(env);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
-    @FXML
-    private void onViewSubscribers(ActionEvent event) {
-        lblTitle.setText("Subscribers");
-        showSubscribersTable();
-    }
-
+   
     @FXML
     private void onViewCurrentDiners(ActionEvent event) {
         lblTitle.setText("Current Diners");
@@ -68,9 +96,99 @@ public class AgentController {
 
     @FXML
     private void onRegisterCustomer(ActionEvent event) {
-        System.out.println("Agent: Register Customer");
-    }
+        // 1. Create a custom Dialog
+        Dialog<RegistrationDTO> dialog = new Dialog<>();
+        dialog.setTitle("Register New Customer");
+        dialog.setHeaderText("Enter Customer Details");
 
+        // 2. Set the button types
+        ButtonType registerButtonType = new ButtonType("Register", javafx.scene.control.ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(registerButtonType, ButtonType.CANCEL);
+
+        // 3. Create the layout and fields
+        GridPane grid = new GridPane();
+        grid.setHgap(10);
+        grid.setVgap(10);
+        grid.setPadding(new javafx.geometry.Insets(20, 150, 10, 10));
+
+        TextField txtUsername = new TextField();
+        txtUsername.setPromptText("Username");
+
+        PasswordField txtPassword = new PasswordField();
+        txtPassword.setPromptText("Password");
+
+        TextField txtName = new TextField();
+        txtName.setPromptText("Full Name");
+
+        TextField txtPhone = new TextField();
+        txtPhone.setPromptText("Phone");
+
+        TextField txtEmail = new TextField();
+        txtEmail.setPromptText("Email");
+
+        // --- REMOVED Member Code and Barcode inputs --- 
+
+        DatePicker datePicker = new DatePicker();
+
+        grid.add(new Label("Username:"), 0, 0);
+        grid.add(txtUsername, 1, 0);
+        grid.add(new Label("Password:"), 0, 1);
+        grid.add(txtPassword, 1, 1);
+        grid.add(new Label("Full Name:"), 0, 2);
+        grid.add(txtName, 1, 2);
+        grid.add(new Label("Phone:"), 0, 3);
+        grid.add(txtPhone, 1, 3);
+        grid.add(new Label("Email:"), 0, 4);
+        grid.add(txtEmail, 1, 4);
+        
+        // Adjusted row index for Date since we removed 2 rows
+        grid.add(new Label("Birth Date:"), 0, 5); 
+        grid.add(datePicker, 1, 5);
+
+        dialog.getDialogPane().setContent(grid);
+
+        // 4. Convert the result
+        dialog.setResultConverter(dialogButton -> {
+            if (dialogButton == registerButtonType) {
+                String dob = "";
+                if (datePicker.getValue() != null) {
+                    dob = datePicker.getValue().format(DateTimeFormatter.ISO_LOCAL_DATE);
+                }
+                
+                return new RegistrationDTO(
+                    txtUsername.getText(),
+                    txtPassword.getText(),
+                    txtName.getText(),
+                    txtPhone.getText(),
+                    txtEmail.getText(),
+                    null, // Member Code (Server will generate)
+                    null, // Barcode (Server will generate)
+                    dob
+                );
+            }
+            return null;
+        });
+
+        // 5. Show dialog and send request
+        dialog.showAndWait().ifPresent(dto -> {
+            Envelope env = Envelope.request(OpCode.REQUEST_REGISTER_CUSTOMER, dto);
+            try {
+                if (clientController != null) {
+                    clientController.getClient().sendToServer(env);
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        });
+    }
+    
+    @FXML
+    private void onCancelRegisterSubscriber() {
+        paneRegisterSubscriber.setVisible(false);
+        paneRegisterSubscriber.setManaged(false);
+        lblTitle.setText("Welcome Agent");
+    }
+    
     @FXML
     private void onUpdateTables(ActionEvent event) {
         System.out.println("Agent: Update Tables");
@@ -127,63 +245,15 @@ public class AgentController {
                 new TableColumn<>("Status");
         colStatus.setCellValueFactory(new PropertyValueFactory<>("status"));
 
-        // Action: Seat
-        TableColumn<WaitingListRow, Void> colSeat = new TableColumn<>("Seat");
-        colSeat.setCellFactory(param -> new TableCell<>() {
-            private final Button btn = new Button("Seat");
+        
 
-            {
-                btn.setOnAction(event -> {
-                    WaitingListRow row = getTableView().getItems().get(getIndex());
-                    AgentSeatWaitingListDTO dto =
-                            new AgentSeatWaitingListDTO(row.getConfirmationCode());
+       
 
-                    Envelope env =
-                            Envelope.request(
-                                    OpCode.REQUEST_AGENT_SEAT_WAITING_LIST,
-                                    dto
-                            );
-
-                    try {
-                        clientController.getClient().sendToServer(env);
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
-
-
-                });
-            }
-
-            @Override
-            protected void updateItem(Void item, boolean empty) {
-                super.updateItem(item, empty);
-                setGraphic(empty ? null : btn);
-            }
-        });
-
-        // Action: No-Show
-        TableColumn<WaitingListRow, Void> colNoShow = new TableColumn<>("No-Show");
-        colNoShow.setCellFactory(param -> new TableCell<>() {
-            private final Button btn = new Button("No-Show");
-
-            {
-                btn.setOnAction(event -> {
-                    WaitingListRow row = getTableView().getItems().get(getIndex());
-                    System.out.println("Marking no-show: " + row.getName());
-                });
-            }
-
-            @Override
-            protected void updateItem(Void item, boolean empty) {
-                super.updateItem(item, empty);
-                setGraphic(empty ? null : btn);
-            }
-        });
-
+        
         // Add all columns (NOW variables exist)
         tblWaitingList.getColumns().addAll(
-                colPosition, colName, colPhone, colPeople, colStatus,
-                colSeat, colNoShow
+                colPosition, colName, colPhone, colPeople, colStatus
+                
         );
 
         tblWaitingList.setItems(FXCollections.observableArrayList(
@@ -194,127 +264,116 @@ public class AgentController {
 
     }
 
-    private void showReservationsTable() {
-        hideAllTables();
-
-        tblReservations.setVisible(true);
-        tblReservations.setManaged(true);
-
+ // Helper to setup columns (Cleaner code)
+    private void setupReservationsColumns() {
         tblReservations.getColumns().clear();
-        tblReservations.getItems().clear();
 
-        TableColumn<ReservationRow, Integer> colId =
-                new TableColumn<>("Reservation ID");
+        TableColumn<ReservationRow, Integer> colId = new TableColumn<>("ID");
         colId.setCellValueFactory(new PropertyValueFactory<>("reservationId"));
 
-        TableColumn<ReservationRow, String> colCode =
-                new TableColumn<>("Confirmation Code");
+        TableColumn<ReservationRow, String> colCode = new TableColumn<>("Code");
         colCode.setCellValueFactory(new PropertyValueFactory<>("confirmationCode"));
 
-        TableColumn<ReservationRow, String> colTime =
-                new TableColumn<>("Reservation Time");
+        TableColumn<ReservationRow, String> colTime = new TableColumn<>("Reservation Time");
         colTime.setCellValueFactory(new PropertyValueFactory<>("reservationTime"));
 
-        TableColumn<ReservationRow, String> colExpiry =
-                new TableColumn<>("Expiry Time");
+        TableColumn<ReservationRow, String> colExpiry = new TableColumn<>("Expiry Time");
         colExpiry.setCellValueFactory(new PropertyValueFactory<>("expiryTime"));
 
-        TableColumn<ReservationRow, Integer> colCustomers =
-                new TableColumn<>("Customers");
+        TableColumn<ReservationRow, Integer> colCustomers = new TableColumn<>("Guests");
         colCustomers.setCellValueFactory(new PropertyValueFactory<>("numOfCustomers"));
 
-        TableColumn<ReservationRow, String> colStatus =
-                new TableColumn<>("Status");
+        TableColumn<ReservationRow, String> colStatus = new TableColumn<>("Status");
         colStatus.setCellValueFactory(new PropertyValueFactory<>("status"));
-        
-     // Action: Seat reservation
-        TableColumn<ReservationRow, Void> colSeat = new TableColumn<>("Seat");
-        colSeat.setCellFactory(param -> new TableCell<>() {
-            private final Button btn = new Button("Seat");
 
-            {
-                btn.setOnAction(event -> {
-                    ReservationRow row = getTableView().getItems().get(getIndex());
-                    System.out.println(
-                        "Seating reservation. Code: " + row.getConfirmationCode()
-                    );
-                });
-            }
+        tblReservations.getColumns().addAll(colId, colCode, colTime, colExpiry, colCustomers, colStatus);
+    }
 
-            @Override
-            protected void updateItem(Void item, boolean empty) {
-                super.updateItem(item, empty);
-                setGraphic(empty ? null : btn);
-            }
-        });
-
-        // Action: Cancel reservation
-        TableColumn<ReservationRow, Void> colCancel = new TableColumn<>("Cancel");
-        colCancel.setCellFactory(param -> new TableCell<>() {
-            private final Button btn = new Button("Cancel");
-
-            {
-                btn.setOnAction(event -> {
-                    ReservationRow row = getTableView().getItems().get(getIndex());
-                    System.out.println(
-                        "Cancelling reservation. Code: " + row.getConfirmationCode()
-                    );
-                });
-            }
-
-            @Override
-            protected void updateItem(Void item, boolean empty) {
-                super.updateItem(item, empty);
-                setGraphic(empty ? null : btn);
+    // Method called by ClientController when data arrives
+    public void updateReservationsTable(List<?> data) {
+        javafx.application.Platform.runLater(() -> {
+            tblReservations.getItems().clear();
+            
+            for (Object obj : data) {
+                if (obj instanceof common.dto.ReservationDTO dto) {
+                    tblReservations.getItems().add(new ReservationRow(
+                        dto.getReservationId(),
+                        dto.getConfirmationCode(),
+                        dto.getReservationTime(),
+                        dto.getExpiryTime(),
+                        dto.getNumOfCustomers(),
+                        dto.getStatus()
+                    ));
+                }
             }
         });
-
-
-        tblReservations.getColumns().addAll(
-        		colId, colCode, colTime, colExpiry, colCustomers, colStatus,
-                colSeat, colCancel
-        );
-
-        tblReservations.setItems(FXCollections.observableArrayList(
-                new ReservationRow(101, "ABC123", "2025-02-10 18:00", "2025-02-10 18:30", 4, "ACTIVE"),
-                new ReservationRow(102, "XYZ456", "2025-02-10 19:00", "2025-02-10 19:30", 2, "ACTIVE"),
-                new ReservationRow(103, "LMN789", "2025-02-11 20:00", "2025-02-11 20:30", 5, "CANCELLED")
-        ));
     }
     
-    private void showSubscribersTable() {
-    	tblSubscibers.getColumns().clear();
-    	tblSubscibers.getItems().clear();
+ // 1. Change the button action to REQUEST data instead of showing dummy data
+    @FXML
+    private void onViewSubscribers(ActionEvent event) {
+        lblTitle.setText("Subscribers");
+        
+        // Setup columns (only need to do this once, but it's safe here)
+        setupSubscriberColumns(); 
+        
+        // Show the table (it will be empty initially)
+        hideAllTables();
+        tblSubscibers.setVisible(true);
+        tblSubscibers.setManaged(true);
+        tblSubscibers.getItems().clear(); // Clear old data
 
-        TableColumn<SubscriberRow, Integer> colId =
-                new TableColumn<>("Subscriber ID");
+        // Send Request to Server
+        Envelope env = Envelope.request(OpCode.REQUEST_SUBSCRIBERS_LIST, null);
+        try {
+            if (clientController != null) {
+                clientController.getClient().sendToServer(env);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    // 2. Helper to setup columns (moved out for clarity)
+    private void setupSubscriberColumns() {
+        tblSubscibers.getColumns().clear();
+        
+        TableColumn<SubscriberRow, Integer> colId = new TableColumn<>("Subscriber ID");
         colId.setCellValueFactory(new PropertyValueFactory<>("subscriberId"));
 
-        TableColumn<SubscriberRow, String> colName =
-                new TableColumn<>("Full Name");
+        TableColumn<SubscriberRow, String> colName = new TableColumn<>("Full Name");
         colName.setCellValueFactory(new PropertyValueFactory<>("fullName"));
 
-        TableColumn<SubscriberRow, String> colPhone =
-                new TableColumn<>("Phone");
+        TableColumn<SubscriberRow, String> colPhone = new TableColumn<>("Phone");
         colPhone.setCellValueFactory(new PropertyValueFactory<>("phone"));
 
-        TableColumn<SubscriberRow, String> colEmail =
-                new TableColumn<>("Email");
+        TableColumn<SubscriberRow, String> colEmail = new TableColumn<>("Email");
         colEmail.setCellValueFactory(new PropertyValueFactory<>("email"));
 
-        TableColumn<SubscriberRow, String> colStatus =
-                new TableColumn<>("Status");
+        TableColumn<SubscriberRow, String> colStatus = new TableColumn<>("Status");
         colStatus.setCellValueFactory(new PropertyValueFactory<>("status"));
 
-        tblSubscibers.getColumns().addAll(
-                colId, colName, colPhone, colEmail, colStatus
-        );
+        tblSubscibers.getColumns().addAll(colId, colName, colPhone, colEmail, colStatus);
+    }
 
-        tblSubscibers.setItems(FXCollections.observableArrayList(
-                new SubscriberRow(201, "Ahmad Ali", "050-1112222", "ahmad@mail.com", "ACTIVE"),
-                new SubscriberRow(202, "Sara Cohen", "052-3334444", "sara@mail.com", "FROZEN"),
-                new SubscriberRow(203, "Omar Hassan", "054-5556666", "omar@mail.com", "ACTIVE")
-        ));
+    // 3. New method called by ClientController when data arrives
+    public void updateSubscribersTable(List<?> data) {
+        javafx.application.Platform.runLater(() -> {
+            tblSubscibers.getItems().clear();
+            
+            for (Object obj : data) {
+                if (obj instanceof common.dto.SubscriberDTO dto) {
+                    // Convert DTO to UI Row
+                    tblSubscibers.getItems().add(new SubscriberRow(
+                        dto.getId(), 
+                        dto.getFullName(), 
+                        dto.getPhone(), 
+                        dto.getEmail(), 
+                        dto.getStatus()
+                    ));
+                }
+            }
+        });
     }
     
     private void showCurrentDinersTable() {
@@ -345,31 +404,9 @@ public class AgentController {
         TableColumn<CurrentDinersRow, String> colStatus =
                 new TableColumn<>("Status");
         colStatus.setCellValueFactory(new PropertyValueFactory<>("status"));
-     // Action: Finish dining
-        TableColumn<CurrentDinersRow, Void> colFinish = new TableColumn<>("Finish");
-        colFinish.setCellFactory(param -> new TableCell<>() {
-            private final Button btn = new Button("Finish");
-
-            {
-                btn.setOnAction(event -> {
-                    CurrentDinersRow row = getTableView().getItems().get(getIndex());
-                    System.out.println(
-                        "Finishing dining. Table: " + row.getTableNumber()
-                    );
-                });
-            }
-
-            @Override
-            protected void updateItem(Void item, boolean empty) {
-                super.updateItem(item, empty);
-                setGraphic(empty ? null : btn);
-            }
-        });
-
-
+     
         tblCurrentDiners.getColumns().addAll(
-        		colTable, colName, colPeople, colCheckIn, colStatus,
-                colFinish
+        		colTable, colName, colPeople, colCheckIn, colStatus
         );
 
         tblCurrentDiners.setItems(FXCollections.observableArrayList(
@@ -378,6 +415,13 @@ public class AgentController {
                 new CurrentDinersRow(12, "Omar Hassan", 6, "19:00", "DINING")
         ));
     }
+    
+   
+
+   
+
+  
+
 
 
 

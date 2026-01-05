@@ -12,14 +12,20 @@ import common.Envelope;
 import common.KryoMessage;
 import common.KryoUtil;
 import common.OpCode;
-import common.dto.AgentSeatWaitingListDTO;
+import common.dto.RegistrationDTO;
+import common.dto.ReservationDTO;
+import common.dto.SubscriberDTO;
 import DataBase.Reservation;
 import DataBase.dao.ReservationDAO;
+import DataBase.dao.SubscriberDAO;
+
+import java.sql.Date;
 
 public class BistroServer extends AbstractServer {
 
     private final ServerController controller;
     private final ReservationDAO reservationDAO = new ReservationDAO();
+    private final SubscriberDAO subscriberDAO = new SubscriberDAO();
 
     public BistroServer(int port, ServerController controller) {
         super(port);
@@ -111,8 +117,9 @@ public class BistroServer extends AbstractServer {
             switch (req.getOp()) {
 
                 case REQUEST_RESERVATIONS_LIST -> handleReservationsList(req, client);
-             // ===== AGENT =====
-                case REQUEST_AGENT_SEAT_WAITING_LIST ->handleAgentSeatWaitingList(req, client);
+                case REQUEST_REGISTER_CUSTOMER -> handleRegisterCustomer(req, client);
+                case REQUEST_SUBSCRIBERS_LIST -> handleSubscribersList(client);
+                case REQUEST_AGENT_RESERVATIONS_LIST -> handleAgentReservationsList(client);
 
 
 
@@ -239,18 +246,81 @@ public class BistroServer extends AbstractServer {
         } catch (Exception ignored) {}
     }
     
-    private void handleAgentSeatWaitingList(Envelope req, ConnectionToClient client)
-            throws IOException {
+    private void handleRegisterCustomer(Envelope req, ConnectionToClient client) throws IOException {
+        try {
+            RegistrationDTO dto = (RegistrationDTO) req.getPayload();
+            
+            // Convert String date to java.sql.Date
+            Date sqlBirthDate = null;
+            try {
+                sqlBirthDate = Date.valueOf(dto.getBirthDate());
+            } catch (Exception e) {
+                // Handle invalid date or set default
+                sqlBirthDate = new Date(System.currentTimeMillis());
+            }
 
-        AgentSeatWaitingListDTO dto =
-                (AgentSeatWaitingListDTO) req.getPayload();
+            // Call the static DAO method
+            SubscriberDAO.insertSubscriber(
+                dto.getUsername(),
+                dto.getPassword(),
+                dto.getFullName(),
+                dto.getPhone(),
+                dto.getEmail(),
+                dto.getMemberCode(),
+                dto.getBarcode(),
+                sqlBirthDate
+            );
 
-        log("Agent seats waiting-list entry with code: " + dto.getConfirmationCode());
+            log("Registered new subscriber: " + dto.getUsername());
+            sendOk(client, OpCode.RESPONSE_REGISTER_CUSTOMER, "Success");
 
-        sendOk(client,
-               OpCode.RESPONSE_AGENT_SEAT_WAITING_LIST,
-               dto.getConfirmationCode());
+        } catch (Exception e) {
+            log("Error registering customer: " + e.getMessage());
+            sendError(client, OpCode.ERROR, "Registration failed: " + e.getMessage());
+        }
+        
+        
     }
+    private void handleSubscribersList(ConnectionToClient client) {
+        try {
+            List<SubscriberDTO> list = DataBase.dao.SubscriberDAO.getAllSubscribers();
+            sendOk(client, OpCode.RESPONSE_SUBSCRIBERS_LIST, list);
+            log("Sent " + list.size() + " subscribers to client.");
+        } catch (Exception e) {
+            log("Error fetching subscribers: " + e.getMessage());
+            try { sendError(client, OpCode.ERROR, "Fetch failed"); } catch (Exception ignored) {}
+        }
+        
+    }
+    private void handleAgentReservationsList(ConnectionToClient client) {
+        try {
+            List<Reservation> rows = reservationDAO.getAllReservations();
+            
+            List<ReservationDTO> dtoList = new ArrayList<>();
+            for (Reservation r : rows) {
+                String resTimeStr = (r.getReservationTime() != null) ? r.getReservationTime().toString() : "";
+                String expTimeStr = (r.getExpiryTime() != null) ? r.getExpiryTime().toString() : "";
+
+               
+                dtoList.add(new ReservationDTO(
+                    r.getReservationId(),      
+                    r.getConfirmationCode(),   
+                    resTimeStr,                
+                    expTimeStr,                
+                    r.getNumOfCustomers(),     
+                    r.getStatus()              
+                ));
+            }
+
+            sendOk(client, OpCode.RESPONSE_AGENT_RESERVATIONS_LIST, dtoList); 
+            log("Sent all reservations to Agent.");
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+   
+
 
 
 }

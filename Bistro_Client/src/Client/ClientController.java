@@ -13,6 +13,7 @@ import common.KryoMessage;
 import common.KryoUtil;
 import common.OpCode;
 
+
 import java.lang.reflect.Method;
 import java.util.List;
 
@@ -60,6 +61,12 @@ public class ClientController {
 
     private boolean isSubscriber = true;
     private BistroClient client;
+    
+    private agent.AgentController agentController;
+    public void setAgentController(agent.AgentController agentController) {
+        this.agentController = agentController;
+    }
+
 
     @FXML
     private void initialize() {
@@ -128,37 +135,76 @@ public class ClientController {
 
 
     public void onConnected() {
-        Platform.runLater(() -> lblStatus.setText("Connected to server."));
-   
+        Platform.runLater(() -> {
+            if (lblStatus != null) { // Add this check
+                lblStatus.setText("Connected to server.");
+            } else {
+                System.out.println("Client connected to server.");
+            }
+        });
     }
 
     public void onDisconnected() {
-        Platform.runLater(() -> lblStatus.setText("Disconnected."));
+        Platform.runLater(() -> {
+            if (lblStatus != null) { // Add this check
+                lblStatus.setText("Disconnected.");
+            } else {
+                System.out.println("Client disconnected.");
+            }
+        });
     }
 
     public void onConnectionError(Exception e) {
-        Platform.runLater(() -> lblStatus.setText("Connection error: " + e.getMessage()));
+        Platform.runLater(() -> {
+            if (lblStatus != null) { // Add this check
+                lblStatus.setText("Connection error: " + e.getMessage());
+            } else {
+                e.printStackTrace();
+            }
+        });
     }
 
     public void handleServerMessage(Object msg) {
         Platform.runLater(() -> {
             Envelope env = unwrapToEnvelope(msg);
+
             if (env == null) {
                 lblStatus.setText("Decode failed.");
                 return;
             }
+
             if (!env.isOk()) {
                 lblStatus.setText("ERROR: " + env.getMessage());
                 return;
             }
 
             switch (env.getOp()) {
-                case RESPONSE_RESERVATIONS_LIST -> handleReservationsResponse(env.getPayload());
+
+                // ===== Customer =====
+                case RESPONSE_RESERVATIONS_LIST ->
+                        handleReservationsResponse(env.getPayload());
                 
-                default -> lblStatus.setText("Server replied: " + env.getOp());
+                // ======Agent======
+                case RESPONSE_SUBSCRIBERS_LIST -> {
+                    if (agentController != null) {
+                        agentController.updateSubscribersTable((List<?>) env.getPayload());
+                    }
+                }
+                case RESPONSE_AGENT_RESERVATIONS_LIST -> {
+                    if (agentController != null) {
+                        agentController.updateReservationsTable((List<?>) env.getPayload());
+                    }
+                }
+                
+
+
+                // ===== Default =====
+                default ->
+                        lblStatus.setText("Server replied: " + env.getOp());
             }
         });
     }
+
 
     private Envelope unwrapToEnvelope(Object msg) {
         try {
@@ -321,6 +367,15 @@ public class ClientController {
     public void setClient(BistroClient client) {
         this.client = client;
     }
+    
+    public void send(Envelope env) {
+        try {
+            client.sendToServer(env);
+        } catch (Exception e) {
+            onConnectionError(e);
+        }
+    }
+
 
 
 }
