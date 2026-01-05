@@ -49,6 +49,9 @@ public class SceneManager {
     public static void showPayBill() {
         setRoot("/clientGUI/PayBillView.fxml", "Bistro Client - Pay Bill");
     }
+    public static void showStaffDashboard() {
+        setRoot("/clientGUI/StaffView.fxml", "Bistro Staff - Dashboard");
+    }
 }
 
 
