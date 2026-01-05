@@ -1,12 +1,15 @@
 package DataBase.dao;
 
 import java.sql.Connection;
+import java.sql.Date;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
-import java.sql.Date;
+import java.util.ArrayList;
+import java.util.List;
 
 import DataBase.MySQLConnectionPool;
 import DataBase.PooledConnection;
+import common.dto.SubscriberDTO;
 
 public class SubscriberDAO {
 
@@ -41,7 +44,43 @@ public class SubscriberDAO {
         }
     }
 
-    // ✅ NEW: login check for subscriber
+    // ============================================
+    // YOUR CODE (From HEAD) - Get List for Agent
+    // ============================================
+    public static List<SubscriberDTO> getAllSubscribers() throws Exception {
+        List<SubscriberDTO> list = new ArrayList<>();
+        String sql = "SELECT * FROM subscribers"; 
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try (PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+
+            while (rs.next()) {
+                // Adjust ID fetching if you have an actual ID column
+                int id = 0; 
+                // int id = rs.getInt("subscriber_id"); // Uncomment if you have this column
+
+                String name = rs.getString("name"); 
+                String phone = rs.getString("phone");
+                String email = rs.getString("email");
+                
+                // If you don't have a status column yet, default to "Active"
+                String status = "Active"; 
+
+                list.add(new SubscriberDTO(id, name, phone, email, status));
+            }
+        } finally {
+            pool.releaseConnection(pc);
+        }
+        return list;
+    }
+
+    // ============================================
+    // TEAMMATE'S CODE (From main) - Login Checks
+    // ============================================
     public static boolean checkLogin(String username, String password) throws Exception {
         String sql = "SELECT 1 FROM subscribers WHERE username=? AND password=? LIMIT 1";
 
@@ -78,5 +117,4 @@ public class SubscriberDAO {
             pool.releaseConnection(pc);
         }
     }
-
 }

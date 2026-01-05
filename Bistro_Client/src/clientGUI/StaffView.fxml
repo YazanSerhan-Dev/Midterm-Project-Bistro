@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.Separator?>
+<?import javafx.scene.control.TableColumn?>
+<?import javafx.scene.control.TableView?>
+<?import javafx.scene.control.TextField?>
+<?import javafx.scene.layout.BorderPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.VBox?>
+<?import javafx.scene.text.Font?>
+
+<BorderPane prefHeight="600.0" prefWidth="900.0" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="Client.StaffController">
+   
+   <left>
+      <VBox prefHeight="600.0" prefWidth="200.0" spacing="10.0" style="-fx-background-color: #2c3e50; -fx-padding: 15;">
+         <children>
+            <Label text="Bistro Staff" textFill="WHITE">
+               <font>
+                  <Font name="System Bold" size="20.0" />
+               </font>
+            </Label>
+            <Separator prefWidth="200.0" />
+            
+            <Label text="Agent Actions" textFill="#bdc3c7" />
+            
+            <Button maxWidth="1.7976931348623157E308" mnemonicParsing="false" onAction="#onNewReservation" style="-fx-alignment: CENTER-LEFT; -fx-background-color: #27ae60;" text="+ New Reservation" textFill="WHITE" />
+
+            <Button maxWidth="1.7976931348623157E308" mnemonicParsing="false" onAction="#onViewReservations" style="-fx-alignment: CENTER-LEFT;" text="Reservations" />
+            <Button maxWidth="1.7976931348623157E308" mnemonicParsing="false" onAction="#onViewWaitingList" style="-fx-alignment: CENTER-LEFT;" text="Waiting List" />
+            <Button maxWidth="1.7976931348623157E308" mnemonicParsing="false" onAction="#onViewCurrentDiners" style="-fx-alignment: CENTER-LEFT;" text="Current Diners" />
+            <Button maxWidth="1.7976931348623157E308" mnemonicParsing="false" onAction="#onViewSubscribers" style="-fx-alignment: CENTER-LEFT;" text="Manage Subscribers" />
+            <Button maxWidth="1.7976931348623157E308" mnemonicParsing="false" onAction="#onRegisterCustomer" style="-fx-alignment: CENTER-LEFT;" text="Register Customer" />
+            
+            <Separator prefWidth="200.0" />
+            
+            <Label text="Manager Actions" textFill="#bdc3c7" />
+            <Button fx:id="btnViewReports" maxWidth="1.7976931348623157E308" mnemonicParsing="false" onAction="#onViewReports" style="-fx-alignment: CENTER-LEFT; -fx-background-color: #e67e22;" text="View Reports" textFill="WHITE" />
+            <Button fx:id="btnManageEmployees" maxWidth="1.7976931348623157E308" mnemonicParsing="false" onAction="#onManageEmployees" style="-fx-alignment: CENTER-LEFT; -fx-background-color: #e67e22;" text="Manage Employees" textFill="WHITE" />
+            
+            <VBox VBox.vgrow="ALWAYS" />
+            <Button maxWidth="1.7976931348623157E308" mnemonicParsing="false" onAction="#onLogout" style="-fx-background-color: #c0392b;" text="Logout" textFill="WHITE" />
+         </children>
+      </VBox>
+   </left>
+   
+   <center>
+      <VBox spacing="15.0" style="-fx-padding: 20;">
+         <children>
+            <HBox alignment="CENTER_LEFT" spacing="15.0">
+               <children>
+                  <Label fx:id="lblTitle" text="Dashboard">
+                     <font>
+                        <Font size="24.0" />
+                     </font>
+                  </Label>
+                  <Label fx:id="lblStatus" text="Connected" textFill="#7f8c8d" />
+               </children>
+            </HBox>
+            <Separator prefWidth="200.0" />
+            
+            <VBox VBox.vgrow="ALWAYS">
+               <children>
+                  <TableView fx:id="tblReservations" visible="false" managed="false" VBox.vgrow="ALWAYS" />
+                  <TableView fx:id="tblSubscribers" visible="false" managed="false" VBox.vgrow="ALWAYS" />
+                  <TableView fx:id="tblWaitingList" visible="false" managed="false" VBox.vgrow="ALWAYS" />
+                  <TableView fx:id="tblCurrentDiners" visible="false" managed="false" VBox.vgrow="ALWAYS" />
+                  
+                  <VBox fx:id="paneReports" visible="false" managed="false" alignment="CENTER" spacing="10">
+                       <Label text="Reports Dashboard (Under Construction)" textFill="GRAY"/>
+                  </VBox>
+               </children>
+            </VBox>
+         </children>
+      </VBox>
+   </center>
+</BorderPane>
