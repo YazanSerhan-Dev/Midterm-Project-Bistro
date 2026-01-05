@@ -18,6 +18,13 @@ public enum OpCode {
 
     REQUEST_RECOVER_CONFIRMATION_CODE,
     RESPONSE_RECOVER_CONFIRMATION_CODE,
+    
+    REQUEST_MAKE_RESERVATION,
+    RESPONSE_MAKE_RESERVATION,
+
+    // Pre-check reservation availability (no email/phone prompt)
+    REQUEST_CHECK_AVAILABILITY,
+    RESPONSE_CHECK_AVAILABILITY,
 
     // Subscriber-only
     REQUEST_PROFILE_GET,
@@ -28,6 +35,12 @@ public enum OpCode {
 
     REQUEST_HISTORY_GET,
     RESPONSE_HISTORY_GET,
+    
+    REQUEST_LOGIN_SUBSCRIBER,
+    RESPONSE_LOGIN_SUBSCRIBER,
+
+    REQUEST_LOGIN_STAFF,
+    RESPONSE_LOGIN_STAFF,
 
     // ===== Pay Bill Page =====
     REQUEST_BILL_GET_BY_CODE,

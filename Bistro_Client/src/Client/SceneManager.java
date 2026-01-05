@@ -13,21 +13,33 @@ public class SceneManager {
         stage = primaryStage;
     }
 
-    private static void setRoot(String fxmlFileName, String title) {
+    private static void setRoot(String fxmlPath, String title) {
         try {
-            // Since all FXML files are in the same resources folder as ClientFX,
-            // we load them by name.
-            Parent root = FXMLLoader.load(SceneManager.class.getResource(fxmlFileName));
-            stage.setScene(new Scene(root));
+            FXMLLoader loader = new FXMLLoader(SceneManager.class.getResource(fxmlPath));
+            Parent root = loader.load();
+
+            // ✅ ADD THIS BLOCK (bind the active controller to the shared client)
+            Object controller = loader.getController();
+            if (controller instanceof ClientUI ui) {
+                ClientSession.bindUI(ui);
+            }
+            // ✅ END BLOCK
+
             stage.setTitle(title);
+            stage.setScene(new Scene(root));
             stage.show();
         } catch (Exception e) {
-            throw new RuntimeException("Failed to load FXML: " + fxmlFileName, e);
+            e.printStackTrace();
         }
     }
 
+    // === Screens ===
+    public static void showLogin() {
+        setRoot("/clientGUI/LoginView.fxml", "Bistro Client - Login");
+    }
+
     public static void showCustomerMain() {
-        setRoot("/clientGUI/ClientView.fxml", "Bistro Client - Customer/Subscriber");
+        setRoot("/clientGUI/ClientView.fxml", "Bistro Client - Main");
     }
 
     public static void showTerminal() {
@@ -37,10 +49,7 @@ public class SceneManager {
     public static void showPayBill() {
         setRoot("/clientGUI/PayBillView.fxml", "Bistro Client - Pay Bill");
     }
-
-    public static void showLogin() {
-        setRoot("/clientGUI/LoginView.fxml", "Bistro Client - Login");
-    }
 }
+
 
 

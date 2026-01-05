@@ -1,10 +1,4 @@
-# Eclipse
-.project
-.classpath
-
-# Compiled output
+/bin/
+/bin1/
 **/bin/
-*.class
-
-# OS
-.DS_Store
+**/*.class

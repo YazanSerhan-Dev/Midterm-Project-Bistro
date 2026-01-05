@@ -2,6 +2,7 @@ package DataBase.dao;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 
 import DataBase.MySQLConnectionPool;
 import DataBase.PooledConnection;
@@ -32,4 +33,108 @@ public class RestaurantTableDAO {
             pool.releaseConnection(pc);
         }
     }
+    
+    public static int getTotalSeatsAvailable() throws Exception {
+        String sql =
+                "SELECT COALESCE(SUM(num_of_seats),0) AS total " +
+                "FROM restaurant_table " +
+                "WHERE status = ?";
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+        	ps.setString(1, "FREE"); // change this if your status values differ
+
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) return rs.getInt("total");
+                return 0;
+            }
+
+        } finally {
+            pool.releaseConnection(pc);
+        }
+    }
+    
+    public static int getTotalSeats() throws Exception {
+        String sql =
+                "SELECT COALESCE(SUM(num_of_seats),0) AS total " +
+                "FROM restaurant_table";
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try (PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+
+            return rs.next() ? rs.getInt("total") : 0;
+
+        } finally {
+            pool.releaseConnection(pc);
+        }
+    }
+
+
+    public static String allocateFreeTable(Connection conn, int numCustomers) throws Exception {
+        String selectSql = """
+            SELECT table_id
+            FROM restaurant_table
+            WHERE status = 'FREE' AND num_of_seats >= ?
+            ORDER BY num_of_seats ASC
+            LIMIT 1
+        """;
+
+        String updateSql = """
+            UPDATE restaurant_table
+            SET status = 'OCCUPIED'
+            WHERE table_id = ? AND status = 'FREE'
+        """;
+
+        String tableId = null;
+
+        try (PreparedStatement ps = conn.prepareStatement(selectSql)) {
+            ps.setInt(1, numCustomers);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) tableId = rs.getString("table_id");
+            }
+        }
+
+        if (tableId == null) return null;
+
+        try (PreparedStatement ps2 = conn.prepareStatement(updateSql)) {
+            ps2.setString(1, tableId);
+            int updated = ps2.executeUpdate();
+            if (updated != 1) return null; // someone took it
+        }
+
+        return tableId;
+    }
+    
+    public static int freeTablesForExpiredReservations() throws Exception {
+
+        String sql = """
+            UPDATE restaurant_table t
+            JOIN visit v ON v.table_id = t.table_id
+            JOIN user_activity ua ON ua.activity_id = v.activity_id
+            JOIN reservation r ON r.reservation_id = ua.reservation_id
+            SET t.status = 'FREE'
+            WHERE r.status = 'EXPIRED'
+              AND t.status = 'OCCUPIED'
+        """;
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            return ps.executeUpdate();
+        } finally {
+            pool.releaseConnection(pc);
+        }
+    }
+
+
+
 }
