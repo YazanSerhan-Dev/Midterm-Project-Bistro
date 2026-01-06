@@ -13,6 +13,7 @@ import common.KryoMessage;
 import common.KryoUtil;
 import common.OpCode;
 import common.dto.MakeReservationResponseDTO;
+import common.dto.WaitingListDTO;
 import common.dto.MakeReservationRequestDTO;
 
 import java.sql.Timestamp;
@@ -323,6 +324,7 @@ public class ClientController implements ClientUI {
 
                 case RESPONSE_MAKE_RESERVATION -> handleMakeReservationResponse(env.getPayload());
                 case RESPONSE_CHECK_AVAILABILITY -> handleAvailabilityCheckResponse(env.getPayload());
+                case RESPONSE_LEAVE_WAITING_LIST -> handleLeaveWaitingListResponse(env.getPayload());
 
                 default -> lblStatus.setText("Server replied: " + env.getOp());
             }
@@ -596,13 +598,58 @@ public class ClientController implements ClientUI {
             return def;
         }
     }
+    
+    private void handleLeaveWaitingListResponse(Object payload) {
+        if (payload instanceof WaitingListDTO dto) {
+            lblStatus.setText("✅ Left waiting list. Code: " + dto.getConfirmationCode() +
+                    " | Status: " + dto.getStatus());
+            return;
+        }
+
+        // If server sends string messages for errors, show them
+        lblStatus.setText(payload == null ? "✅ Left waiting list." : payload.toString());
+    }
+
 
     // ===== UI actions =====
     
     @FXML
     private void onLeaveWaitingList() {
-        lblStatus.setText("Leave waiting list (UI only – not implemented yet).");
+        this.client = ClientSession.getClient();
+
+        if (client == null || !client.isConnected()) {
+            lblStatus.setText("Not connected.");
+            return;
+        }
+
+        // Ask for waiting code (since main page doesn't show it)
+        TextInputDialog dialog = new TextInputDialog();
+        dialog.setTitle("Leave Waiting List");
+        dialog.setHeaderText("Enter your waiting list code");
+        dialog.setContentText("Waiting Code:");
+
+        String code = dialog.showAndWait().orElse("").trim();
+
+        if (code.isBlank()) {
+            lblStatus.setText("Cancelled.");
+            return;
+        }
+
+        try {
+            String role = ClientSession.getRole();
+            String username = ClientSession.getUsername();
+
+            Object[] payload = new Object[] { role, username, code };
+
+            Envelope env = Envelope.request(OpCode.REQUEST_LEAVE_WAITING_LIST, payload);
+            client.sendToServer(new KryoMessage("ENVELOPE", KryoUtil.toBytes(env)));
+
+            lblStatus.setText("Leaving waiting list...");
+        } catch (Exception e) {
+            lblStatus.setText("Send failed: " + e.getMessage());
+        }
     }
+
 
     @FXML
     private void onRefreshReservations() {

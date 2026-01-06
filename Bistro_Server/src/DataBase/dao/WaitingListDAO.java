@@ -242,6 +242,31 @@ public class WaitingListDAO {
         }
     }
 
+    public static boolean cancelIfWaitingByCode(String code) {
 
+        String sql = """
+            UPDATE waiting_list
+            SET status = 'CANCELED'
+            WHERE confirmation_code = ?
+              AND status = 'WAITING'
+        """;
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, code);
+            return ps.executeUpdate() == 1;   // true only if 1 row updated
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        } finally {
+            pool.releaseConnection(pc);
+        }
+    }
 }
+
+
+
 

@@ -131,6 +131,8 @@ public class BistroServer extends AbstractServer {
                 
                 //updated from Yazan for the waiting list
                 case REQUEST_WAITING_LIST -> handleWaitingList(req, client);
+                
+                case REQUEST_LEAVE_WAITING_LIST -> handleLeaveWaitingList(req, client);
 
                 // TODO later:
                 case REQUEST_CANCEL_RESERVATION -> handleCancelReservation(req, client);
@@ -186,6 +188,82 @@ public class BistroServer extends AbstractServer {
     }
 
     /* ==================== Handlers ==================== */
+    
+    private void handleLeaveWaitingList(Envelope req, ConnectionToClient client) {
+        try {
+            Object payload = readEnvelopePayload(req);
+
+            // Expected payload: Object[] { role, username, confirmationCode }
+            if (!(payload instanceof Object[] arr) || arr.length < 3) {
+                sendOk(client, OpCode.RESPONSE_LEAVE_WAITING_LIST, "Bad payload.");
+                return;
+            }
+
+            String role = arr[0] == null ? "" : arr[0].toString();
+            String username = arr[1] == null ? "" : arr[1].toString();
+            String code = arr[2] == null ? "" : arr[2].toString().trim();
+
+            System.out.println("[LEAVE_WAITING_LIST] code=" + code + " role=" + role + " username=" + username);
+
+            if (code.isBlank()) {
+                sendOk(client, OpCode.RESPONSE_LEAVE_WAITING_LIST, "Missing waiting code.");
+                return;
+            }
+            
+            System.out.println("[LEAVE_WAITING_LIST] passed code checks");
+
+            // (Optional) if SUBSCRIBER you can require username, same style as handleWaitingList
+            if ("SUBSCRIBER".equalsIgnoreCase(role) && username.isBlank()) {
+                sendOk(client, OpCode.RESPONSE_LEAVE_WAITING_LIST, "Missing subscriber username.");
+                return;
+            }
+
+            // Load entry by code
+            WaitingListDTO w = WaitingListDAO.getByCode(code);
+            System.out.println("[LEAVE_WAITING_LIST] w=" + (w == null ? "null" : ("status=" + w.getStatus())));
+            
+            if (w == null) {
+                sendOk(client, OpCode.RESPONSE_LEAVE_WAITING_LIST, "Waiting code not found.");
+                return;
+            }
+
+            String st = w.getStatus() == null ? "" : w.getStatus().trim();
+
+            // Business rules:
+            if ("CANCELED".equalsIgnoreCase(st)) {
+                sendOk(client, OpCode.RESPONSE_LEAVE_WAITING_LIST, "Already canceled.");
+                return;
+            }
+            if ("ASSIGNED".equalsIgnoreCase(st)) {
+                sendOk(client, OpCode.RESPONSE_LEAVE_WAITING_LIST, "Already assigned a table. Can't leave now.");
+                return;
+            }
+            if (!"WAITING".equalsIgnoreCase(st)) {
+                sendOk(client, OpCode.RESPONSE_LEAVE_WAITING_LIST, "Invalid status: " + st);
+                return;
+            }
+
+            // Update status -> CANCELED (only if WAITING)
+            System.out.println("[LEAVE_WAITING_LIST] about to cancel in DB");
+            boolean ok = WaitingListDAO.cancelIfWaitingByCode(code);
+            System.out.println("[LEAVE_WAITING_LIST] updated=" + ok);
+
+            if (!ok) {
+                sendOk(client, OpCode.RESPONSE_LEAVE_WAITING_LIST, "Cancel failed (already changed).");
+                return;
+            }
+
+            // Return updated DTO
+            w.setStatus("CANCELED");
+            sendOk(client, OpCode.RESPONSE_LEAVE_WAITING_LIST, w);
+
+        } catch (Exception e) {
+            try {
+                sendOk(client, OpCode.RESPONSE_LEAVE_WAITING_LIST, "Server error: " + e.getMessage());
+            } catch (Exception ignored) {}
+        }
+    }
+
     
     private void handleWaitingList(Envelope req, ConnectionToClient client) {
         try {

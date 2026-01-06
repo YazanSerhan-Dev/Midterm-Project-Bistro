@@ -127,9 +127,44 @@ public class TerminalController implements ClientUI {
 
     @FXML
     private void onLeaveWaitingList() {
-        lblTerminalStatus.setText("Leave waiting list (UI only – not implemented yet).");
-    }
+        if (!isConnected()) {
+            lblTerminalStatus.setText("Not connected.");
+            return;
+        }
 
+        // Use the code already displayed after join
+        String code = safeTrim(lblWaitCode == null ? "" : lblWaitCode.getText());
+
+        // If user didn't join in this session, fallback to typed confirmation code (optional)
+        if (code.isEmpty() || "-".equals(code)) {
+            code = safeTrim(txtConfirmationCode.getText());
+        }
+
+        if (code.isEmpty()) {
+            lblTerminalStatus.setText("No waiting code found. Join waiting list first.");
+            return;
+        }
+
+        // Build payload: role + username + confirmationCode
+        // (matches your join pattern that sends [role, username, dto])
+        String role = ClientSession.getRole();          // SUBSCRIBER / CUSTOMER
+        String username = ClientSession.getUsername();  // subscriber username (customer may be null/empty)
+
+        Object[] payload = new Object[] { role, username, code };
+
+        Envelope env = Envelope.request(OpCode.REQUEST_LEAVE_WAITING_LIST, payload);
+
+        try {
+            ClientSession.getClient().sendToServer(new KryoMessage("ENVELOPE", KryoUtil.toBytes(env)));
+
+            lblTerminalStatus.setText("Leaving waiting list...");
+            btnLeaveWaitingList.setDisable(true);
+
+        } catch (Exception e) {
+            lblTerminalStatus.setText("Failed: " + e.getMessage());
+            btnLeaveWaitingList.setDisable(false);
+        }
+    }
 
     @FXML
     private void onValidateCode() {
@@ -453,6 +488,32 @@ public class TerminalController implements ClientUI {
                             lblTerminalStatus.setText(msg.isBlank() ? "Waiting list response received." : msg);
                         }
                     }
+                    
+                    case RESPONSE_LEAVE_WAITING_LIST -> {
+                        Object payload = env.getPayload();
+
+                        // If server returns WaitingListDTO updated
+                        if (payload instanceof common.dto.WaitingListDTO dto) {
+                            lblTerminalStatus.setText("✅ Left waiting list. Code: " + nonEmptyOrDash(dto.getConfirmationCode()));
+
+                            // Update waiting box
+                            lblWaitStatus.setText(nonEmptyOrDash(dto.getStatus()));
+
+                            // Disable leave, clear fields if you want
+                            btnLeaveWaitingList.setDisable(true);
+                            // Optional: clear all waiting details
+                            resetWaitingDetails();
+
+                        } else {
+                            // Or server returns String
+                            String msg = (payload == null) ? "" : payload.toString();
+                            lblTerminalStatus.setText(msg.isBlank() ? "Left waiting list." : msg);
+
+                            btnLeaveWaitingList.setDisable(true);
+                            resetWaitingDetails();
+                        }
+                    }
+
 
                     default -> {
                         // ignore
