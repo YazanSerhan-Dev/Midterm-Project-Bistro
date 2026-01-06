@@ -751,5 +751,30 @@ public class ReservationDAO {
         }
     }
 
+    public static int getDueReservationSeatsNow() throws Exception {
+
+        String sql = """
+            SELECT COALESCE(SUM(num_of_customers),0) AS total
+            FROM reservation
+            WHERE status = 'CONFIRMED'
+              AND NOW() >= reservation_time
+              AND NOW() <= DATE_ADD(reservation_time, INTERVAL 15 MINUTE)
+        """;
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try (PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+
+            if (rs.next()) return rs.getInt("total");
+            return 0;
+
+        } finally {
+            pool.releaseConnection(pc);
+        }
+    }
+
 
 }

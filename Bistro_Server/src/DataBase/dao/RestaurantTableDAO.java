@@ -135,6 +135,23 @@ public class RestaurantTableDAO {
         }
     }
 
+    public static int getMaxTableSeats() throws Exception {
+        String sql = "SELECT COALESCE(MAX(num_of_seats),0) AS maxSeats FROM restaurant_table";
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try (PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+
+            if (rs.next()) return rs.getInt("maxSeats");
+            return 0;
+        } finally {
+            pool.releaseConnection(pc);
+        }
+    }
+
 
 
 }

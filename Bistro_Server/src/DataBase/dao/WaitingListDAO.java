@@ -92,19 +92,31 @@ public class WaitingListDAO {
     }
     
     public static common.dto.WaitingListDTO getOldestWaitingThatFits() throws Exception {
-        String sql = """
-            SELECT w.waiting_id, w.num_of_customers, w.status, w.confirmation_code
-            FROM waiting_list w
-            WHERE w.status = 'WAITING'
-              AND EXISTS (
-                  SELECT 1
-                  FROM restaurant_table t
-                  WHERE t.status = 'FREE'
-                    AND t.num_of_seats >= w.num_of_customers
-              )
-            ORDER BY w.request_time ASC
-            LIMIT 1
-        """;
+    	String sql = """
+    		    SELECT *
+    		    FROM waiting_list w
+    		    WHERE w.status = 'WAITING'
+    		      AND w.request_time <= NOW()
+    		      AND EXISTS (
+    		          SELECT 1
+    		          FROM restaurant_table t
+    		          WHERE t.status = 'FREE'
+    		            AND t.num_of_seats >= w.num_of_customers
+    		      )
+    		      AND w.num_of_customers <= (
+    		          (SELECT COALESCE(SUM(t2.num_of_seats),0)
+    		           FROM restaurant_table t2
+    		           WHERE t2.status = 'FREE')
+    		          -
+    		          (SELECT COALESCE(SUM(r.num_of_customers),0)
+    		           FROM reservation r
+    		           WHERE r.status = 'CONFIRMED'
+    		             AND NOW() >= r.reservation_time
+    		             AND NOW() <= DATE_ADD(r.reservation_time, INTERVAL 15 MINUTE))
+    		      )
+    		    ORDER BY w.request_time ASC
+    		    LIMIT 1
+    		""";
 
         MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
         PooledConnection pc = pool.getConnection();

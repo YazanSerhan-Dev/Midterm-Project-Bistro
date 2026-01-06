@@ -282,6 +282,17 @@ public class BistroServer extends AbstractServer {
                 sendOk(client, OpCode.RESPONSE_WAITING_LIST, "People count must be > 0.");
                 return;
             }
+            int maxSeats = RestaurantTableDAO.getMaxTableSeats();
+
+            if (people > maxSeats) {
+                String msg = "No table can accommodate " + people
+                        + " guests. Maximum table size is " + maxSeats
+                        + ". Please split into two parties or contact staff.";
+
+                sendOk(client, OpCode.RESPONSE_WAITING_LIST, msg);
+                return;
+            }
+
 
             String email;
             String phone;

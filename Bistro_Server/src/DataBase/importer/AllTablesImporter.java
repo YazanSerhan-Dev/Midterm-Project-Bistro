@@ -4,7 +4,7 @@ public class AllTablesImporter {
 
     // Folder that contains ALL txt files
     private static final String BASE_PATH =
-            "C:/Users/yazan/git/Midterm-Project-Bistro/bistro_sample_data/";
+    		"C:/Users/Lenovo2024/git/Midterm-Project-Bistro/bistro_sample_data/";
 
     public static void main(String[] args) {
 
