@@ -533,10 +533,10 @@ public class ReservationDAO {
     ) throws Exception {
 
         Timestamp end = Timestamp.valueOf(
-                start.toLocalDateTime().plusMinutes(15)
+                start.toLocalDateTime().plusMinutes(120)
         );
 
-        int totalSeats = RestaurantTableDAO.getTotalSeatsAvailable();
+        int totalSeats = RestaurantTableDAO.getTotalSeats();
         int booked = getBookedCustomersInRange(start, end);
 
         return booked + numCustomers <= totalSeats;

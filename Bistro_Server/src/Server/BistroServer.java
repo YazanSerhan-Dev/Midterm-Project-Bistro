@@ -632,16 +632,26 @@ public class BistroServer extends AbstractServer {
             sendOk(client, OpCode.RESPONSE_MAKE_RESERVATION, new MakeReservationResponseDTO(false, -1, null, "Reservation can be made up to 1 month ahead."));
             return;
         }
+        
+     // Rule: reservation must be at least 1 hour from now
+        java.time.LocalDateTime nowPlus1Hour = java.time.LocalDateTime.now().plusHours(1);
+        Timestamp minAllowed = Timestamp.valueOf(nowPlus1Hour);
 
-        Timestamp start = dto.getReservationTime();
-        Timestamp expiry = Timestamp.valueOf(dto.getReservationTime().toLocalDateTime().plusMinutes(15)); 
+        //if (dto.getReservationTime().before(minAllowed)) {
+            //sendOk(client, OpCode.RESPONSE_MAKE_RESERVATION,
+                 //   new MakeReservationResponseDTO(false, -1, null,
+                        //    "Reservation must be at least 1 hour from now."));
+           // return;
+        //}
 
-        int totalSeats = DataBase.dao.RestaurantTableDAO.getTotalSeatsAvailable();
-        int bookedCustomers = DataBase.dao.ReservationDAO.getBookedCustomersInRange(start, expiry);
 
-        if (bookedCustomers + dto.getNumOfCustomers() > totalSeats) {
-            List<Timestamp> suggestions = findAlternativeTimes(dto.getReservationTime(), dto.getNumOfCustomers());
-            sendOk(client, OpCode.RESPONSE_MAKE_RESERVATION, new MakeReservationResponseDTO(false, "No available seats at requested time.", suggestions));
+        boolean canFit = ReservationDAO.canFitAtTime(dto.getReservationTime(), dto.getNumOfCustomers());
+
+        if (!canFit) {
+            List<Timestamp> suggestions =
+                    findAlternativeTimes(dto.getReservationTime(), dto.getNumOfCustomers());
+            sendOk(client, OpCode.RESPONSE_MAKE_RESERVATION,
+                    new MakeReservationResponseDTO(false, "No available seats at requested time.", suggestions));
             return;
         }
 
@@ -681,20 +691,21 @@ public class BistroServer extends AbstractServer {
             sendOk(client, OpCode.RESPONSE_CHECK_AVAILABILITY, new MakeReservationResponseDTO(false, -1, null, "Invalid input."));
             return;
         }
+        
 
-        Timestamp start = dto.getReservationTime();
-        Timestamp expiry = Timestamp.valueOf(start.toLocalDateTime().plusMinutes(15));
+        boolean canFit = ReservationDAO.canFitAtTime(dto.getReservationTime(), dto.getNumOfCustomers());
 
-        int totalSeats = RestaurantTableDAO.getTotalSeatsAvailable();
-        int booked = ReservationDAO.getBookedCustomersInRange(start, expiry);
-
-        if (booked + dto.getNumOfCustomers() > totalSeats) {
-            List<Timestamp> suggestions = findAlternativeTimes(dto.getReservationTime(), dto.getNumOfCustomers());
-            sendOk(client, OpCode.RESPONSE_CHECK_AVAILABILITY, new MakeReservationResponseDTO(false, "No available seats at requested time.", suggestions));
+        if (!canFit) {
+            List<Timestamp> suggestions =
+                    findAlternativeTimes(dto.getReservationTime(), dto.getNumOfCustomers());
+            sendOk(client, OpCode.RESPONSE_CHECK_AVAILABILITY,
+                    new MakeReservationResponseDTO(false, "No available seats at requested time.", suggestions));
             return;
         }
 
-        sendOk(client, OpCode.RESPONSE_CHECK_AVAILABILITY, new MakeReservationResponseDTO(true, -1, null, "Available"));
+        sendOk(client, OpCode.RESPONSE_CHECK_AVAILABILITY,
+                new MakeReservationResponseDTO(true, -1, null, "Available"));
+
     }
 
     private void handleTerminalValidateCode(Envelope req, ConnectionToClient client) {
@@ -1033,7 +1044,7 @@ public class BistroServer extends AbstractServer {
 
     private List<Timestamp> findAlternativeTimes(Timestamp requested, int numCustomers) throws Exception {
         List<Timestamp> alternatives = new ArrayList<>();
-        int[] offsets = { -90, -60, -30, 30, 60, 90 };
+        int[] offsets = { -120 ,-90, -60, -30, 30, 60, 90 ,120};
 
         for (int minutes : offsets) {
             Timestamp candidate = Timestamp.valueOf(requested.toLocalDateTime().plusMinutes(minutes));
