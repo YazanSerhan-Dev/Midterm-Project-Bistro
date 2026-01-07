@@ -1,19 +1,25 @@
 package DataBase.dao;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
 import DataBase.MySQLConnectionPool;
 import DataBase.PooledConnection;
+import common.dto.BillDTO;
+
+
+import java.sql.*;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
+
 
 public class BillDAO {
 
-    public static void insertBill(
-            int visitId, double amount,
-            String discount, String paid) throws Exception {
-
+    // =========================
+    // Existing insert (kept)
+    // =========================
+    public static void insertBill(int visitId, double amount, String discount, String paid) throws Exception {
         String sql = """
-            INSERT INTO bill
-            (visit_id, total_amount, is_subscriber_discount, is_paid)
+            INSERT INTO bill (visit_id, total_amount, is_subscriber_discount, is_paid)
             VALUES (?, ?, ?, ?)
         """;
 
@@ -31,4 +37,553 @@ public class BillDAO {
             pool.releaseConnection(pc);
         }
     }
+
+    // =========================================================
+    // 1) Lookup bill by confirmation code (reservation OR waiting)
+    // =========================================================
+    public static BillLookupResult getBillByConfirmationCode(String code) throws Exception {
+        if (code == null) code = "";
+        code = code.trim();
+        if (code.isBlank()) return BillLookupResult.notFound("Empty code.");
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try {
+            // 1) Resolve code -> reservation_id or waiting_id
+            Integer reservationId = findReservationIdByCode(conn, code);
+            Integer waitingId = (reservationId == null) ? findWaitingIdByCode(conn, code) : null;
+
+            if (reservationId == null && waitingId == null) {
+                return BillLookupResult.notFound("Code not found.");
+            }
+
+            // 2) Resolve -> user_activity row
+            UserActivityRow ua = findUserActivity(conn, reservationId, waitingId);
+            if (ua == null) {
+                return BillLookupResult.notFound("No activity found for this code.");
+            }
+
+            // 3) Find ACTIVE visit (Option A: actual_end_time IS NULL)
+            VisitRow v = findActiveVisit(conn, ua.activityId);
+            if (v == null) {
+                // maybe it was already paid / ended; try last visit to show "already paid"
+                VisitRow last = findLastVisit(conn, ua.activityId);
+                if (last == null) return BillLookupResult.notFound("No visit found for this code.");
+
+                BillRow b2 = findBillByVisit(conn, last.visitId);
+                if (b2 != null && "YES".equalsIgnoreCase(b2.isPaid)) {
+                    BillDTO dtoPaid = buildBillDTO(ua, last, b2);
+                    return BillLookupResult.alreadyPaid(dtoPaid, "Bill already paid.");
+                }
+
+                return BillLookupResult.notFound("No active visit for this code (not checked-in or already ended).");
+            }
+
+            // 4) Find bill for that visit
+            BillRow b = findBillByVisit(conn, v.visitId);
+            if (b == null) {
+                // ✅ Create bill on-demand (first lookup)
+                double subtotal = computeSubtotalForCode(conn, reservationId, waitingId);
+
+                // if you have no pricing model yet, subtotal will be a simple placeholder
+                try (PreparedStatement ps = conn.prepareStatement("""
+                    INSERT INTO bill (visit_id, total_amount, is_subscriber_discount, is_paid)
+                    VALUES (?, ?, 'NO', 'NO')
+                """)) {
+                    ps.setInt(1, v.visitId);
+                    ps.setDouble(2, subtotal);
+                    ps.executeUpdate();
+                }
+
+                // re-fetch
+                b = findBillByVisit(conn, v.visitId);
+                if (b == null) {
+                    return BillLookupResult.notFound("Failed to create bill for this visit.");
+                }
+            }
+
+
+            BillDTO dto = buildBillDTO(ua, v, b);
+
+            boolean paid = "YES".equalsIgnoreCase(b.isPaid);
+            if (paid) return BillLookupResult.alreadyPaid(dto, "Bill already paid.");
+
+            return BillLookupResult.ok(dto, "Bill found ✅");
+
+        } finally {
+            pool.releaseConnection(pc);
+        }
+    }
+
+    // =========================================================
+    // 2) Pay bill by confirmation code (transaction)
+    //    - mark bill paid
+    //    - end visit (actual_end_time = NOW())
+    //    - free table (status = FREE)
+    // =========================================================
+    public static PayBillResult payBillByConfirmationCode(String code) throws Exception {
+        if (code == null) code = "";
+        code = code.trim();
+        if (code.isBlank()) return PayBillResult.fail("Empty code.");
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try {
+            conn.setAutoCommit(false);
+
+            Integer reservationId = findReservationIdByCode(conn, code);
+            Integer waitingId = (reservationId == null) ? findWaitingIdByCode(conn, code) : null;
+
+            if (reservationId == null && waitingId == null) {
+                conn.rollback();
+                return PayBillResult.fail("Code not found.");
+            }
+
+            UserActivityRow ua = findUserActivity(conn, reservationId, waitingId);
+            if (ua == null) {
+                conn.rollback();
+                return PayBillResult.fail("No activity found for this code.");
+            }
+
+            VisitRow v = findActiveVisit(conn, ua.activityId);
+            if (v == null) {
+                conn.rollback();
+                return PayBillResult.fail("No active visit found for this code.");
+            }
+
+            BillRow b = findBillByVisit(conn, v.visitId);
+            if (b == null) {
+                conn.rollback();
+                return PayBillResult.fail("Bill not created yet for this visit.");
+            }
+
+            if ("YES".equalsIgnoreCase(b.isPaid)) {
+                conn.rollback();
+                return PayBillResult.fail("Bill already paid.");
+            }
+
+            // compute final amount (10% for subscriber)
+            double subtotal = b.totalAmount;
+            boolean subscriber = (ua.subscriberUsername != null && !ua.subscriberUsername.isBlank());
+            double discount = subscriber ? subtotal * 0.10 : 0.0;
+            double total = subtotal - discount;
+
+            // 1) Update bill: mark paid + store final amount + discount flag
+            try (PreparedStatement ps = conn.prepareStatement("""
+                UPDATE bill
+                SET is_paid = 'YES',
+                    is_subscriber_discount = ?,
+                    total_amount = ?
+                WHERE bill_id = ? AND is_paid = 'NO'
+            """)) {
+                ps.setString(1, subscriber ? "YES" : "NO");
+                ps.setDouble(2, total);
+                ps.setInt(3, b.billId);
+                int updated = ps.executeUpdate();
+                if (updated != 1) {
+                    conn.rollback();
+                    return PayBillResult.fail("Pay failed (bill state changed).");
+                }
+            }
+
+            // 2) End visit (Option A): actual_end_time becomes real checkout time
+            try (PreparedStatement ps = conn.prepareStatement("""
+                UPDATE visit
+                SET actual_end_time = NOW()
+                WHERE visit_id = ? AND actual_end_time IS NULL
+            """)) {
+                ps.setInt(1, v.visitId);
+                int updated = ps.executeUpdate();
+                if (updated != 1) {
+                    conn.rollback();
+                    return PayBillResult.fail("Pay failed (visit already ended).");
+                }
+            }
+
+            // 3) Free table (ONLY after successful payment)
+            try (PreparedStatement ps = conn.prepareStatement("""
+                UPDATE restaurant_table
+                SET status = 'FREE'
+                WHERE table_id = ? AND status = 'OCCUPIED'
+            """)) {
+                ps.setString(1, v.tableId);
+                int updated = ps.executeUpdate();
+                if (updated != 1) {
+                    conn.rollback();
+                    return PayBillResult.fail("Pay failed (table status changed).");
+                }
+            }
+
+            // 4) Finish reservation ONLY after payment: ARRIVED -> EXPIRED (your "finished" state)
+            if (reservationId != null) {
+                try (PreparedStatement ps = conn.prepareStatement("""
+                    UPDATE reservation
+                    SET status = 'EXPIRED'
+                    WHERE reservation_id = ?
+                      AND status = 'ARRIVED'
+                """)) {
+                    ps.setInt(1, reservationId);
+                    int updated = ps.executeUpdate();
+                    if (updated != 1) {
+                        conn.rollback();
+                        return PayBillResult.fail("Pay failed (reservation not ARRIVED / already finished).");
+                    }
+                }
+            }
+            
+         // ✅ Finish waiting list ONLY after payment: ASSIGNED -> EXPIRED
+            if (waitingId != null) {
+                try (PreparedStatement ps = conn.prepareStatement("""
+                    UPDATE waiting_list
+                    SET status = 'EXPIRED'
+                    WHERE waiting_id = ?
+                      AND status = 'ASSIGNED'
+                """)) {
+                    ps.setInt(1, waitingId);
+                    int updated = ps.executeUpdate();
+                    if (updated != 1) {
+                        conn.rollback();
+                        return PayBillResult.fail("Pay failed (waiting list not ASSIGNED / already finished).");
+                    }
+                }
+            }
+
+            // (Optional) If you later confirm waiting_list enum supports 'EXPIRED' or another final state,
+            // add a similar UPDATE here for waitingId.
+
+            conn.commit();
+            return PayBillResult.ok("Payment successful ✅ — table released", v.tableId);
+
+        } catch (Exception e) {
+            try { conn.rollback(); } catch (Exception ignored) {}
+            return PayBillResult.fail("Server error: " + e.getMessage());
+        } finally {
+            try { conn.setAutoCommit(true); } catch (Exception ignored) {}
+            pool.releaseConnection(pc);
+        }
+    }
+
+
+    // =========================
+    // Helpers (private)
+    // =========================
+
+    private static Integer findReservationIdByCode(Connection conn, String code) throws Exception {
+        try (PreparedStatement ps = conn.prepareStatement("""
+            SELECT reservation_id FROM reservation WHERE confirmation_code = ?
+        """)) {
+            ps.setString(1, code);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getInt(1) : null;
+            }
+        }
+    }
+
+    private static Integer findWaitingIdByCode(Connection conn, String code) throws Exception {
+        try (PreparedStatement ps = conn.prepareStatement("""
+            SELECT waiting_id FROM waiting_list WHERE confirmation_code = ?
+        """)) {
+            ps.setString(1, code);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getInt(1) : null;
+            }
+        }
+    }
+
+    private static UserActivityRow findUserActivity(Connection conn, Integer reservationId, Integer waitingId) throws Exception {
+        if (reservationId != null) {
+            try (PreparedStatement ps = conn.prepareStatement("""
+                SELECT activity_id, subscriber_username, guest_email, guest_phone
+                FROM user_activity
+                WHERE reservation_id = ?
+                ORDER BY activity_date DESC
+                LIMIT 1
+            """)) {
+                ps.setInt(1, reservationId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (!rs.next()) return null;
+                    return new UserActivityRow(
+                            rs.getInt("activity_id"),
+                            rs.getString("subscriber_username"),
+                            rs.getString("guest_email"),
+                            rs.getString("guest_phone")
+                    );
+                }
+            }
+        } else {
+            try (PreparedStatement ps = conn.prepareStatement("""
+                SELECT activity_id, subscriber_username, guest_email, guest_phone
+                FROM user_activity
+                WHERE waiting_id = ?
+                ORDER BY activity_date DESC
+                LIMIT 1
+            """)) {
+                ps.setInt(1, waitingId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (!rs.next()) return null;
+                    return new UserActivityRow(
+                            rs.getInt("activity_id"),
+                            rs.getString("subscriber_username"),
+                            rs.getString("guest_email"),
+                            rs.getString("guest_phone")
+                    );
+                }
+            }
+        }
+    }
+
+    private static VisitRow findActiveVisit(Connection conn, int activityId) throws Exception {
+        try (PreparedStatement ps = conn.prepareStatement("""
+            SELECT visit_id, table_id, actual_start_time, actual_end_time
+            FROM visit
+            WHERE activity_id = ?
+              AND actual_end_time IS NULL
+            ORDER BY actual_start_time DESC
+            LIMIT 1
+        """)) {
+            ps.setInt(1, activityId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) return null;
+                return new VisitRow(
+                        rs.getInt("visit_id"),
+                        rs.getString("table_id"),
+                        rs.getTimestamp("actual_start_time"),
+                        rs.getTimestamp("actual_end_time")
+                );
+            }
+        }
+    }
+
+    private static VisitRow findLastVisit(Connection conn, int activityId) throws Exception {
+        try (PreparedStatement ps = conn.prepareStatement("""
+            SELECT visit_id, table_id, actual_start_time, actual_end_time
+            FROM visit
+            WHERE activity_id = ?
+            ORDER BY actual_start_time DESC
+            LIMIT 1
+        """)) {
+            ps.setInt(1, activityId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) return null;
+                return new VisitRow(
+                        rs.getInt("visit_id"),
+                        rs.getString("table_id"),
+                        rs.getTimestamp("actual_start_time"),
+                        rs.getTimestamp("actual_end_time")
+                );
+            }
+        }
+    }
+
+    private static BillRow findBillByVisit(Connection conn, int visitId) throws Exception {
+        try (PreparedStatement ps = conn.prepareStatement("""
+            SELECT bill_id, visit_id, total_amount, is_subscriber_discount, is_paid
+            FROM bill
+            WHERE visit_id = ?
+            ORDER BY bill_id DESC
+            LIMIT 1
+        """)) {
+            ps.setInt(1, visitId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) return null;
+                return new BillRow(
+                        rs.getInt("bill_id"),
+                        rs.getInt("visit_id"),
+                        rs.getDouble("total_amount"),
+                        rs.getString("is_subscriber_discount"),
+                        rs.getString("is_paid")
+                );
+            }
+        }
+    }
+
+    private static BillDTO buildBillDTO(UserActivityRow ua, VisitRow v, BillRow b) {
+        boolean subscriber = (ua.subscriberUsername != null && !ua.subscriberUsername.isBlank());
+        double subtotal = b.totalAmount;
+        double discount = subscriber ? subtotal * 0.10 : 0.0;
+        double total = subtotal - discount;
+
+        String customerName = subscriber ? ua.subscriberUsername : (ua.guestEmail != null && !ua.guestEmail.isBlank() ? ua.guestEmail : "Guest");
+
+        // due date = start + 2 hours (computed)
+        String due = "-";
+        if (v.start != null) {
+            LocalDateTime dueLdt = v.start.toLocalDateTime().plusHours(2);
+            due = dueLdt.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"));
+        }
+
+        BillDTO dto = new BillDTO();
+        dto.setCustomerName(customerName);
+        dto.setItemsCount(1);
+        dto.setSubtotal(subtotal);
+        dto.setDiscount(discount);
+        dto.setTotal(total);
+        dto.setDueDate(due);
+        dto.setSubscriberDiscountApplied(subscriber);
+
+        return dto;
+    }
+    
+    private static double computeSubtotalForCode(Connection conn, Integer reservationId, Integer waitingId) throws Exception {
+        final double PRICE_PER_PERSON = 100.0; // <-- change if you want
+
+        if (reservationId != null) {
+            try (PreparedStatement ps = conn.prepareStatement("""
+                SELECT num_of_customers FROM reservation WHERE reservation_id = ?
+            """)) {
+                ps.setInt(1, reservationId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) {
+                        int ppl = rs.getInt(1);
+                        return Math.max(0, ppl) * PRICE_PER_PERSON;
+                    }
+                }
+            }
+            return 0.0;
+        }
+
+        // waiting list
+        try (PreparedStatement ps = conn.prepareStatement("""
+            SELECT num_of_customers FROM waiting_list WHERE waiting_id = ?
+        """)) {
+            ps.setInt(1, waitingId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    int ppl = rs.getInt(1);
+                    return Math.max(0, ppl) * PRICE_PER_PERSON;
+                }
+            }
+        }
+        return 0.0;
+    }
+
+
+    // =========================
+    // Small structs
+    // =========================
+    private record UserActivityRow(int activityId, String subscriberUsername, String guestEmail, String guestPhone) {}
+    private record VisitRow(int visitId, String tableId, Timestamp start, Timestamp end) {}
+    private record BillRow(int billId, int visitId, double totalAmount, String isSubscriberDiscount, String isPaid) {}
+
+    // =========================
+    // Results (simple)
+    // =========================
+    public static class BillLookupResult {
+        public final boolean ok;
+        public final boolean alreadyPaid;
+        public final String message;
+        public final BillDTO bill;
+
+        private BillLookupResult(boolean ok, boolean alreadyPaid, String message, BillDTO bill) {
+            this.ok = ok;
+            this.alreadyPaid = alreadyPaid;
+            this.message = message;
+            this.bill = bill;
+        }
+
+        public static BillLookupResult ok(BillDTO bill, String msg) { return new BillLookupResult(true, false, msg, bill); }
+        public static BillLookupResult alreadyPaid(BillDTO bill, String msg) { return new BillLookupResult(true, true, msg, bill); }
+        public static BillLookupResult notFound(String msg) { return new BillLookupResult(false, false, msg, null); }
+    }
+
+    public static class PayBillResult {
+        public final boolean ok;
+        public final String message;
+        public final String tableId;
+
+        private PayBillResult(boolean ok, String message, String tableId) {
+            this.ok = ok;
+            this.message = message;
+            this.tableId = tableId;
+        }
+
+        public static PayBillResult ok(String msg, String tableId) { return new PayBillResult(true, msg, tableId); }
+        public static PayBillResult fail(String msg) { return new PayBillResult(false, msg, null); }
+    }
+    
+    public static class BillReminderRow {
+        public final int billId;
+        public final String email;
+        public final String confirmationCode;
+
+        public BillReminderRow(int billId, String email, String confirmationCode) {
+            this.billId = billId;
+            this.email = email;
+            this.confirmationCode = confirmationCode;
+        }
+    }
+
+    public static List<BillReminderRow> findBillsNeedingReminder(int limit) throws Exception {
+        String sql = """
+            SELECT 
+                b.bill_id,
+                COALESCE(s.email, ua.guest_email) AS email,
+                COALESCE(r.confirmation_code, wl.confirmation_code) AS code
+            FROM bill b
+            JOIN visit v ON v.visit_id = b.visit_id
+            JOIN user_activity ua ON ua.activity_id = v.activity_id
+            LEFT JOIN subscribers s ON s.username = ua.subscriber_username
+            LEFT JOIN reservation r ON r.reservation_id = ua.reservation_id
+            LEFT JOIN waiting_list wl ON wl.waiting_id = ua.waiting_id
+            WHERE b.is_paid = 'NO'
+              AND b.reminder_sent = 'NO'
+              AND v.actual_end_time IS NULL
+              AND v.actual_start_time <= (NOW() - INTERVAL 2 HOUR)
+              AND COALESCE(s.email, ua.guest_email) IS NOT NULL
+              AND COALESCE(s.email, ua.guest_email) <> ''
+              AND COALESCE(r.confirmation_code, wl.confirmation_code) IS NOT NULL
+              AND COALESCE(r.confirmation_code, wl.confirmation_code) <> ''
+            ORDER BY v.actual_start_time ASC
+            LIMIT ?
+        """;
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, limit);
+
+            List<BillReminderRow> out = new ArrayList<>();
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    out.add(new BillReminderRow(
+                            rs.getInt("bill_id"),
+                            rs.getString("email"),
+                            rs.getString("code")
+                    ));
+                }
+            }
+            return out;
+        } finally {
+            pool.releaseConnection(pc);
+        }
+    }
+
+    public static void markReminderSent(int billId) throws Exception {
+        String sql = """
+            UPDATE bill
+            SET reminder_sent = 'YES',
+                reminder_sent_at = NOW()
+            WHERE bill_id = ?
+              AND reminder_sent = 'NO'
+        """;
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, billId);
+            ps.executeUpdate();
+        } finally {
+            pool.releaseConnection(pc);
+        }
+    }
+
 }
+

@@ -26,6 +26,7 @@ import common.dto.MakeReservationRequestDTO;
 import common.dto.MakeReservationResponseDTO;
 import common.dto.ProfileDTO;
 import DataBase.Reservation;
+import DataBase.dao.BillDAO;
 import DataBase.dao.ReservationDAO;
 import DataBase.dao.SubscriberDAO;
 import DataBase.dao.UserActivityDAO;
@@ -136,8 +137,8 @@ public class BistroServer extends AbstractServer {
                 // TODO later:
                 case REQUEST_CANCEL_RESERVATION -> handleCancelReservation(req, client);
                 case REQUEST_HISTORY_GET -> sendOk(client, OpCode.RESPONSE_HISTORY_GET, List.of());
-                case REQUEST_BILL_GET_BY_CODE -> sendOk(client, OpCode.RESPONSE_BILL_GET_BY_CODE, null);
-                case REQUEST_PAY_BILL -> sendOk(client, OpCode.RESPONSE_PAY_BILL, "NOT_IMPLEMENTED_YET");
+                case REQUEST_BILL_GET_BY_CODE -> handleBillGetByCode(req, client);
+                case REQUEST_PAY_BILL        -> handlePayBill(req, client);
                 case REQUEST_TERMINAL_CHECK_OUT -> sendOk(client, OpCode.RESPONSE_TERMINAL_CHECK_OUT, "NOT_IMPLEMENTED_YET");
                 case REQUEST_TERMINAL_NO_SHOW -> sendOk(client, OpCode.RESPONSE_TERMINAL_NO_SHOW, "NOT_IMPLEMENTED_YET");
                 
@@ -188,6 +189,53 @@ public class BistroServer extends AbstractServer {
     }
 
     /* ==================== Handlers ==================== */
+    
+    private void handleBillGetByCode(Envelope req, ConnectionToClient client) {
+        try {
+            Object payload = readEnvelopePayload(req);
+            String code = (payload instanceof String s) ? s.trim() : "";
+
+            BillDAO.BillLookupResult r = BillDAO.getBillByConfirmationCode(code);
+
+            // Object[] { ok, alreadyPaid, message, BillDTO }
+            Object[] resp = new Object[] { r.ok, r.alreadyPaid, r.message, r.bill };
+            sendOk(client, OpCode.RESPONSE_BILL_GET_BY_CODE, resp);
+
+        } catch (Exception e) {
+            try {
+                sendOk(client, OpCode.RESPONSE_BILL_GET_BY_CODE,
+                        new Object[] { false, false, "Server error: " + e.getMessage(), null });
+            } catch (Exception ignored) {}
+        }
+    }
+
+    // small helper for null-safety
+    private boolean see(boolean b) { return b; }
+
+    private void handlePayBill(Envelope req, ConnectionToClient client) {
+        try {
+            Object payload = readEnvelopePayload(req);
+
+            // Accept String code OR Object[] { code, method }
+            String code;
+            if (payload instanceof String s) code = s.trim();
+            else if (payload instanceof Object[] arr && arr.length >= 1) code = String.valueOf(arr[0]).trim();
+            else {
+                sendOk(client, OpCode.RESPONSE_PAY_BILL, new Object[] { false, "Bad payload.", null });
+                return;
+            }
+
+            BillDAO.PayBillResult r = BillDAO.payBillByConfirmationCode(code);
+
+            // Object[] { ok, message, tableId }
+            sendOk(client, OpCode.RESPONSE_PAY_BILL, new Object[] { r.ok, r.message, r.tableId });
+
+        } catch (Exception e) {
+            try {
+                sendOk(client, OpCode.RESPONSE_PAY_BILL, new Object[] { false, "Server error: " + e.getMessage(), null });
+            } catch (Exception ignored) {}
+        }
+    }
     
     private void handleGetProfile(Envelope req, ConnectionToClient client) {
         try {

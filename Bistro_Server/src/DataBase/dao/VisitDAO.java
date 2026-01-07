@@ -32,12 +32,12 @@ public class VisitDAO {
             pool.releaseConnection(pc);
         }
     }
-    
+
     public static void insertVisit(Connection conn, int activityId, String tableId) throws Exception {
 
         String sql = """
             INSERT INTO visit (activity_id, table_id, actual_start_time, actual_end_time)
-            VALUES (?, ?, NOW(), DATE_ADD(NOW(), INTERVAL 2 HOUR))
+            VALUES (?, ?, NOW(), NULL)
         """;
 
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -46,6 +46,5 @@ public class VisitDAO {
             ps.executeUpdate();
         }
     }
-
 
 }

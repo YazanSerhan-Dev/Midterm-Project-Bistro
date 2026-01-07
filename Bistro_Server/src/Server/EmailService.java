@@ -122,6 +122,22 @@ public class EmailService {
         sendEmail(toEmail, subject, body);
     }
 
+    public static void sendBillReminder(String toEmail, String confirmationCode) {
+        String subject = "Reminder: Please complete your payment";
+        String body = """
+            Hi,
+            
+            This is a friendly reminder that your visit has reached the 2-hour limit.
+            Please proceed to payment using your confirmation code:
+
+            Confirmation Code: %s
+
+            Thank you,
+            Bistro
+            """.formatted(confirmationCode);
+
+        sendEmail(toEmail, subject, body); // use your existing internal sendEmail()
+    }
 
 }
 

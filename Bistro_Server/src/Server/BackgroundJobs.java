@@ -1,5 +1,6 @@
 package Server;
 
+import DataBase.dao.BillDAO;
 import DataBase.dao.ReservationDAO;
 import DataBase.dao.RestaurantTableDAO;
 import DataBase.dao.WaitingListDAO;
@@ -44,46 +45,35 @@ public class BackgroundJobs {
             }
         }, 5, 30, TimeUnit.SECONDS);
 
-        // =========================
-        // Thread #2: Expire FINISHED reservations + free tables
-        // =========================
-        scheduler.scheduleAtFixedRate(() -> {
-            try {
-                int expired = ReservationDAO.expireFinishedArrived2Hours();
-                if (expired > 0) {
-                    System.out.println("[JOB] EXPIRED finished ARRIVED (2 hours): " + expired);
-                }
+     // =========================
+     // Thread #2: Waiting-list maintenance ONLY (NO auto-expire/free tables)
+     // =========================
+     scheduler.scheduleAtFixedRate(() -> {
+         try {
+             // ✅ Keep waiting list maintenance
+             int canceled = WaitingListDAO.cancelAssignedOver15Minutes();
+             if (canceled > 0) {
+                 System.out.println("[JOB] CANCELED assigned waiting over 15min: " + canceled);
+             }
 
-                int freed = RestaurantTableDAO.freeTablesForExpiredReservations();
-                if (freed > 0) {
-                    System.out.println("[JOB] Freed tables for EXPIRED reservations: " + freed);
-                }
-                int canceled = WaitingListDAO.cancelAssignedOver15Minutes();
-                if (canceled > 0) {
-                    System.out.println("[JOB] CANCELED assigned waiting over 15min: " + canceled);
-                }
-                
-                int oldCanceled = WaitingListDAO.cancelWaitingOlderThanHours(4);
-                if (oldCanceled > 0) {
-                    System.out.println("[JOB] CANCELED old WAITING entries (4h): " + oldCanceled);
-                }
-             // =========================
-             // Assign WAITING -> ASSIGNED + notify
-             // =========================
+             int oldCanceled = WaitingListDAO.cancelWaitingOlderThanHours(4);
+             if (oldCanceled > 0) {
+                 System.out.println("[JOB] CANCELED old WAITING entries (4h): " + oldCanceled);
+             }
+
+             // ✅ Assign WAITING -> ASSIGNED + notify (your existing logic)
              int assignedCount = 0;
 
              while (true) {
-                 // Oldest WAITING that fits any FREE table
-                 var next = WaitingListDAO.getOldestWaitingThatFits(); // you will add this DAO method
+                 var next = WaitingListDAO.getOldestWaitingThatFits();
                  if (next == null) break;
 
-                 boolean ok = WaitingListDAO.markAssignedById(next.getId()); // sets status=ASSIGNED and request_time=NOW()
+                 boolean ok = WaitingListDAO.markAssignedById(next.getId());
                  if (!ok) break;
 
                  assignedCount++;
 
-                 // Email customer that table is ready
-                 String email = WaitingListDAO.getGuestEmailForWaitingId(next.getId()); // read from user_activity by waiting_id
+                 String email = WaitingListDAO.getGuestEmailForWaitingId(next.getId());
                  if (email != null && !email.isBlank()) {
                      EmailService.sendWaitingTableReady(email, next.getConfirmationCode());
                      System.out.println("[JOB] Waiting ASSIGNED email sent to: " + email + " | Code: " + next.getConfirmationCode());
@@ -96,12 +86,11 @@ public class BackgroundJobs {
                  System.out.println("[JOB] ASSIGNED waiting entries: " + assignedCount);
              }
 
+         } catch (Exception e) {
+             System.out.println("[JOB] waiting maintenance error: " + e.getMessage());
+         }
+     }, 10, 30, TimeUnit.SECONDS);
 
-
-            } catch (Exception e) {
-                System.out.println("[JOB] expire/free error: " + e.getMessage());
-            }
-        }, 10, 30, TimeUnit.SECONDS);
 
         // =========================
         // Thread #3: 2-hour reminder (EMAIL + SMS)
@@ -191,7 +180,30 @@ public class BackgroundJobs {
                         + r.getReservationId() + ": " + e.getMessage());
             }
         }
+     // =========================
+     // Thread: Bill reminder after 2 hours (visit-based)
+     // =========================
+     scheduler.scheduleAtFixedRate(() -> {
+         try {
+             List<BillDAO.BillReminderRow> due = BillDAO.findBillsNeedingReminder(25);
+
+             for (BillDAO.BillReminderRow row : due) {
+                 try {
+                     EmailService.sendBillReminder(row.email, row.confirmationCode);
+                     BillDAO.markReminderSent(row.billId);
+                     System.out.println("[JOB] Bill reminder sent to " + row.email + " | code=" + row.confirmationCode);
+                 } catch (Exception sendErr) {
+                     System.out.println("[JOB] Bill reminder failed for billId=" + row.billId + " : " + sendErr.getMessage());
+                     // Do NOT mark sent if email failed
+                 }
+             }
+         } catch (Exception e) {
+             System.out.println("[JOB] Bill reminder job error: " + e.getMessage());
+         }
+     }, 30, 300, TimeUnit.SECONDS); // start after 30s, then every 300s (5 min)
+
     }
+    
 }
 
 

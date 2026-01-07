@@ -331,117 +331,30 @@ public class TerminalController implements ClientUI {
                     // =========================
                     // ✅ VALIDATE CODE RESPONSE
                     // =========================
-                    case RESPONSE_TERMINAL_VALIDATE_CODE -> {
-                        validateInFlight = false; // unlock on response
+                case RESPONSE_TERMINAL_VALIDATE_CODE -> {
+                    Object payload = env.getPayload();
 
-                        Object payload = env.getPayload();
+                    if (payload instanceof TerminalValidateResponseDTO dto) {
 
-                        // ✅ Server sends TerminalValidateResponseDTO (preferred)
-                        if (payload instanceof TerminalValidateResponseDTO dto) {
+                        applyTerminalInfoToUI(dto); // keep this if you already have it
 
-                            // Fill reservation details (ID / time / guests)
-                            applyTerminalInfoToUI(dto);
-
-                            if (dto.isValid()) {
-                                validated = true;
-                                lblValidationResult.setText("VALID ✅");
-
-                                boolean canCheckIn = dto.isCheckInAllowed();
-                                if (canCheckIn) {
-                                    tableAvailable = true;
-                                    lblWaitMessage.setText("");
-                                    lblTerminalStatus.setText("Code valid. Ready to check-in.");
-                                } else {
-                                    tableAvailable = false;
-
-                                    String m = safeStr(dto.getMessage());
-                                    lblWaitMessage.setText("");
-                                    lblTerminalStatus.setText(
-                                            m.isBlank()
-                                                    ? "Valid code, but check-in not allowed (time/status rule)."
-                                                    : m
-                                    );
-                                }
-
-                            } else {
-                                // ✅ INVALID DTO: could be "not found" OR "expired waiting code"
-                                validated = false;
-                                tableAvailable = false;
-
-                                String st = safeStr(dto.getStatus()).trim();
-                                boolean isWaitingCode = dto.getReservationId() == 0;
-
-                                if (isWaitingCode && "CANCELED".equalsIgnoreCase(st)) {
-                                    lblValidationResult.setText("EXPIRED ⏱");
-                                    lblTerminalStatus.setText(nonEmptyOr(dto.getMessage(),
-                                            "This waiting code has expired or was canceled."));
-                                    lblWaitMessage.setText("");
-                                    lblTableNumber.setText("-");
-                                    // IMPORTANT: do NOT resetDetailsOnly() -> keep waiting details visible if you want
-                                } else {
-                                    lblValidationResult.setText("NOT FOUND ❌");
-                                    lblTerminalStatus.setText(nonEmptyOr(dto.getMessage(), "Code not found."));
-                                    resetDetailsOnly();
-                                    lblTableNumber.setText("-");
-                                    lblWaitMessage.setText("");
-                                }
-                            }
-
-                            break;
-                        }
-
-                        // ✅ OLD: if server sends ReservationDTO
-                        if (payload instanceof ReservationDTO res) {
-                            applyReservationToUI(res);
-
-                            validated = true;
-                            lblValidationResult.setText("VALID ✅");
-
-                            String st = safeStr(getReservationStatus(res));
-                            boolean canCheckIn = "CONFIRMED".equalsIgnoreCase(st);
-
+                        if (dto.isValid()) {
+                            boolean canCheckIn = dto.isCheckInAllowed();
                             if (canCheckIn) {
-                                tableAvailable = true;
+                                setValidationState(true, true, "VALID ✅", "Code valid. Ready to check-in.");
                                 lblWaitMessage.setText("");
-                                lblTerminalStatus.setText("Code valid. Ready to check-in.");
                             } else {
-                                tableAvailable = false;
+                                setValidationState(true, false, "VALID ✅",
+                                        nonEmptyOr(dto.getMessage(), "Valid code, but check-in not allowed (time/status rule)."));
                                 lblWaitMessage.setText("");
-                                lblTerminalStatus.setText("Valid code, but status is " + st + " (check-in not allowed).");
-                            }
-
-                            break;
-                        }
-
-                        // ✅ FALLBACK: server sends String
-                        String msg = (payload == null) ? "" : payload.toString();
-
-                        if (containsIgnoreCase(msg, "VALID") || containsIgnoreCase(msg, "SUCCESS")) {
-                            validated = true;
-
-                            if (containsIgnoreCase(msg, "WAIT") || containsIgnoreCase(msg, "NO TABLE")) {
-                                tableAvailable = false;
-                                lblValidationResult.setText("VALID ✅");
-                                lblWaitMessage.setText("Please wait…");
-                                lblTableNumber.setText("-");
-                                lblTerminalStatus.setText(msg.isBlank() ? "Validated. Waiting for table." : msg);
-                            } else {
-                                tableAvailable = true;
-                                lblValidationResult.setText("VALID ✅");
-                                lblWaitMessage.setText("");
-                                lblTerminalStatus.setText(msg.isBlank() ? "Code validated." : msg);
                             }
 
                         } else {
-                            validated = false;
-                            tableAvailable = false;
-                            lblValidationResult.setText("NOT FOUND ❌");
-                            lblTerminalStatus.setText(msg.isBlank() ? "Code not found." : msg);
-                            resetDetailsOnly();
-                            lblTableNumber.setText("-");
-                            lblWaitMessage.setText("");
+                            setValidationState(false, false, "INVALID ❌",
+                                    nonEmptyOr(dto.getMessage(), "Invalid code."));
                         }
                     }
+                }
 
                     // =========================
                     // ✅ CHECK-IN RESPONSE
@@ -691,6 +604,12 @@ public class TerminalController implements ClientUI {
         } else {
             lblWaitMessage.setText("");
         }
+        
+     // Enable check-in only when code valid AND table is available
+        if (btnCheckIn != null) {
+            btnCheckIn.setDisable(!(isValid && hasTable));
+        }
+
     }
 
     private void resetAll() {
