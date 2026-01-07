@@ -151,19 +151,27 @@ public class LoginController implements ClientUI {
 
             switch (env.getOp()) {
 
-                case RESPONSE_LOGIN_SUBSCRIBER -> {
-                    LoginResponseDTO res = (LoginResponseDTO) env.getPayload();
+            case RESPONSE_LOGIN_SUBSCRIBER -> {
+                LoginResponseDTO res = (LoginResponseDTO) env.getPayload();
 
-                    if (res.isOk()) {
-                        ClientSession.setRole("SUBSCRIBER");
-                        ClientSession.setUsername(res.getUsername());
+                if (res.isOk()) {
+                    ClientSession.setRole("SUBSCRIBER");
+                    ClientSession.setUsername(res.getUsername());
 
-                        lblMsg.setText("");
-                        SceneManager.showCustomerMain();
-                    } else {
-                        lblMsg.setText(res.getMessage());
-                    }
+                    // ✅ THIS IS THE MISSING LINE
+                    ClientSession.setMemberCode(res.getMemberCode());
+
+                    // (optional but recommended debug)
+                    System.out.println("LOGIN SUBSCRIBER: username=" + res.getUsername()
+                            + " memberCode=" + res.getMemberCode());
+
+                    lblMsg.setText("");
+                    SceneManager.showCustomerMain();
+                } else {
+                    lblMsg.setText(res.getMessage());
                 }
+            }
+
 
                 case RESPONSE_LOGIN_STAFF -> {
                     LoginResponseDTO res = (LoginResponseDTO) env.getPayload();

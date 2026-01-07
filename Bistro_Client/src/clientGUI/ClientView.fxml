@@ -197,7 +197,7 @@
                             <TextField fx:id="txtMemberNumber" editable="false" GridPane.rowIndex="0" GridPane.columnIndex="1"/>
 
                             <Label text="Full Name:" GridPane.rowIndex="1" GridPane.columnIndex="0"/>
-                            <TextField fx:id="txtFullName" editable="false" GridPane.rowIndex="1" GridPane.columnIndex="1"/>
+                            <TextField fx:id="txtFullName" editable="true" GridPane.rowIndex="1" GridPane.columnIndex="1"/>
 
                             <Label text="Phone:" GridPane.rowIndex="2" GridPane.columnIndex="0"/>
                             <TextField fx:id="txtPhone" GridPane.rowIndex="2" GridPane.columnIndex="1"/>

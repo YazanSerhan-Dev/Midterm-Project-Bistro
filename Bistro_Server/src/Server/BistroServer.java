@@ -24,8 +24,7 @@ import common.dto.WaitingListDTO;
 import common.dto.LoginResponseDTO;
 import common.dto.MakeReservationRequestDTO;
 import common.dto.MakeReservationResponseDTO;
-
-
+import common.dto.ProfileDTO;
 import DataBase.Reservation;
 import DataBase.dao.ReservationDAO;
 import DataBase.dao.SubscriberDAO;
@@ -136,13 +135,14 @@ public class BistroServer extends AbstractServer {
 
                 // TODO later:
                 case REQUEST_CANCEL_RESERVATION -> handleCancelReservation(req, client);
-                case REQUEST_PROFILE_GET -> sendOk(client, OpCode.RESPONSE_PROFILE_GET, null);
-                case REQUEST_PROFILE_UPDATE_CONTACT -> sendOk(client, OpCode.RESPONSE_PROFILE_UPDATE_CONTACT, "NOT_IMPLEMENTED_YET");
                 case REQUEST_HISTORY_GET -> sendOk(client, OpCode.RESPONSE_HISTORY_GET, List.of());
                 case REQUEST_BILL_GET_BY_CODE -> sendOk(client, OpCode.RESPONSE_BILL_GET_BY_CODE, null);
                 case REQUEST_PAY_BILL -> sendOk(client, OpCode.RESPONSE_PAY_BILL, "NOT_IMPLEMENTED_YET");
                 case REQUEST_TERMINAL_CHECK_OUT -> sendOk(client, OpCode.RESPONSE_TERMINAL_CHECK_OUT, "NOT_IMPLEMENTED_YET");
                 case REQUEST_TERMINAL_NO_SHOW -> sendOk(client, OpCode.RESPONSE_TERMINAL_NO_SHOW, "NOT_IMPLEMENTED_YET");
+                
+                case REQUEST_GET_PROFILE -> handleGetProfile(req, client);
+                case REQUEST_UPDATE_PROFILE -> handleUpdateProfile(req, client);
 
                 default -> sendError(client, OpCode.ERROR, "Unknown op: " + req.getOp());
             }
@@ -188,6 +188,66 @@ public class BistroServer extends AbstractServer {
     }
 
     /* ==================== Handlers ==================== */
+    
+    private void handleGetProfile(Envelope req, ConnectionToClient client) {
+        try {
+            Object payload = readEnvelopePayload(req);
+            String memberCode = (payload instanceof String s) ? s.trim() : null;
+
+            if (memberCode == null || memberCode.isBlank()) {
+                sendOk(client, OpCode.RESPONSE_GET_PROFILE, null);
+                return;
+            }
+
+            ProfileDTO dto = SubscriberDAO.getProfileByMemberCode(memberCode);
+            sendOk(client, OpCode.RESPONSE_GET_PROFILE, dto); // dto may be null
+
+        } catch (Exception e) {
+            try {
+                sendOk(client, OpCode.RESPONSE_GET_PROFILE, null);
+            } catch (Exception ignored) {}
+        }
+    }
+
+
+    private void handleUpdateProfile(Envelope req, ConnectionToClient client) {
+        try {
+            Object payload = readEnvelopePayload(req);
+
+            if (!(payload instanceof ProfileDTO dto)) {
+                sendOk(client, OpCode.RESPONSE_UPDATE_PROFILE, "Bad payload (expected ProfileDTO).");
+                return;
+            }
+
+            // memberNumber is the primary key (unchangeable)
+            String memberNumber = dto.getMemberNumber() == null ? "" : dto.getMemberNumber().trim();
+            if (memberNumber.isBlank()) {
+                sendOk(client, OpCode.RESPONSE_UPDATE_PROFILE, "Missing member number.");
+                return;
+            }
+
+            // basic validation
+            String fullName = dto.getFullName() == null ? "" : dto.getFullName().trim();
+            String phone    = dto.getPhone() == null ? "" : dto.getPhone().trim();
+            String email    = dto.getEmail() == null ? "" : dto.getEmail().trim();
+
+            if (fullName.isBlank() || phone.isBlank() || email.isBlank()) {
+                sendOk(client, OpCode.RESPONSE_UPDATE_PROFILE, "Full name / phone / email are required.");
+                return;
+            }
+
+            boolean ok = SubscriberDAO.updateProfileByMemberCode(dto);
+
+            sendOk(client, OpCode.RESPONSE_UPDATE_PROFILE,
+                    ok ? "✅ Profile updated." : "❌ Update failed.");
+
+        } catch (Exception e) {
+            try {
+                sendOk(client, OpCode.RESPONSE_UPDATE_PROFILE, "Server error: " + e.getMessage());
+            } catch (Exception ignored) {}
+        }
+    }
+
     
     private void handleLeaveWaitingList(Envelope req, ConnectionToClient client) {
         try {
@@ -735,21 +795,61 @@ public class BistroServer extends AbstractServer {
     private void handleLoginSubscriber(Envelope env, ConnectionToClient client) {
         try {
             var req = (common.dto.LoginRequestDTO) env.getPayload();
+
             boolean ok = DataBase.dao.SubscriberDAO.checkLogin(req.getUsername(), req.getPassword());
-            LoginResponseDTO res = ok
-                    ? new common.dto.LoginResponseDTO(true, "Login success", req.getUsername(), null, "SUBSCRIBER")
-                    : new common.dto.LoginResponseDTO(false, "Invalid username or password", null, null, null);
+
+            LoginResponseDTO res;
+
+            if (ok) {
+                // member_code ONLY flow -> must fetch it and send it back
+                String memberCode = DataBase.dao.SubscriberDAO.getMemberCodeByUsername(req.getUsername());
+
+                if (memberCode == null || memberCode.isBlank()) {
+                    // If member_code missing -> fail (because profile uses member_code)
+                    res = new common.dto.LoginResponseDTO(
+                            false,
+                            "Login failed: member code not found for this user.",
+                            null,
+                            null,
+                            null
+                    );
+                } else {
+                    res = new common.dto.LoginResponseDTO(
+                            true,
+                            "Login success",
+                            req.getUsername(),
+                            "SUBSCRIBER",
+                            memberCode.trim()
+                    );
+                }
+            } else {
+                res = new common.dto.LoginResponseDTO(
+                        false,
+                        "Invalid username or password",
+                        null,
+                        null,
+                        null
+                );
+            }
 
             Envelope reply = Envelope.ok(OpCode.RESPONSE_LOGIN_SUBSCRIBER, res);
             client.sendToClient(new KryoMessage("ENVELOPE", KryoUtil.toBytes(reply)));
+
         } catch (Exception e) {
             try {
-                LoginResponseDTO res = new common.dto.LoginResponseDTO(false, "Server error: " + e.getMessage(), null, null, null);
+                LoginResponseDTO res = new common.dto.LoginResponseDTO(
+                        false,
+                        "Server error: " + e.getMessage(),
+                        null,
+                        null,
+                        null
+                );
                 Envelope reply = Envelope.ok(OpCode.RESPONSE_LOGIN_SUBSCRIBER, res);
                 client.sendToClient(new KryoMessage("ENVELOPE", KryoUtil.toBytes(reply)));
             } catch (Exception ignored) {}
         }
     }
+
 
     private void handleLoginStaff(Envelope env, ConnectionToClient client) {
         try {

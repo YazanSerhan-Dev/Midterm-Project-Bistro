@@ -13,6 +13,7 @@ import common.KryoMessage;
 import common.KryoUtil;
 import common.OpCode;
 import common.dto.MakeReservationResponseDTO;
+import common.dto.ProfileDTO;
 import common.dto.WaitingListDTO;
 import common.dto.MakeReservationRequestDTO;
 
@@ -325,6 +326,10 @@ public class ClientController implements ClientUI {
                 case RESPONSE_MAKE_RESERVATION -> handleMakeReservationResponse(env.getPayload());
                 case RESPONSE_CHECK_AVAILABILITY -> handleAvailabilityCheckResponse(env.getPayload());
                 case RESPONSE_LEAVE_WAITING_LIST -> handleLeaveWaitingListResponse(env.getPayload());
+                
+                case RESPONSE_GET_PROFILE -> handleGetProfileResponse(env.getPayload());
+                case RESPONSE_UPDATE_PROFILE -> handleUpdateProfileResponse(env.getPayload());
+
 
                 default -> lblStatus.setText("Server replied: " + env.getOp());
             }
@@ -392,6 +397,48 @@ public class ClientController implements ClientUI {
         });
 
         return dialog.showAndWait().orElse(null);
+    }
+
+    private void handleGetProfileResponse(Object payload) {
+        if (payload == null) {
+            lblStatus.setText("Profile not found for this member code.");
+            return;
+        }
+
+        if (!(payload instanceof ProfileDTO dto)) {
+            lblStatus.setText("Bad profile payload.");
+            return;
+        }
+
+        txtMemberNumber.setText(dto.getMemberNumber());
+        txtFullName.setText(dto.getFullName());
+        txtPhone.setText(dto.getPhone() == null ? "" : dto.getPhone());
+        txtEmail.setText(dto.getEmail() == null ? "" : dto.getEmail());
+
+        lblStatus.setText("Profile loaded.");
+    }
+
+    private String getValue(String s) {
+        return s == null ? "" : s;
+    }
+
+
+    private void handleUpdateProfileResponse(Object payload) {
+        // simplest: server returns String message OR ProfileDTO back
+        if (payload instanceof String msg) {
+            lblStatus.setText(msg);
+            return;
+        }
+
+        if (payload instanceof common.dto.ProfileDTO dto) {
+            txtFullName.setText(dto.getFullName() == null ? "" : dto.getFullName());
+            txtPhone.setText(dto.getPhone() == null ? "" : dto.getPhone());
+            txtEmail.setText(dto.getEmail() == null ? "" : dto.getEmail());
+            lblStatus.setText("✅ Profile updated.");
+            return;
+        }
+
+        lblStatus.setText("✅ Profile updated.");
     }
 
     
@@ -802,7 +849,35 @@ public class ClientController implements ClientUI {
         onRefreshReservations();
     }
 
-    @FXML private void onNavProfile() { if (isSubscriber) showPane(paneProfile); }
+    @FXML
+    private void onNavProfile() {
+        if (!isSubscriber) return;
+
+        showPane(paneProfile);
+
+        this.client = ClientSession.getClient();
+        if (client == null || !client.isConnected()) {
+            lblStatus.setText("Not connected.");
+            return;
+        }
+
+        try {
+            String memberCode = ClientSession.getMemberCode(); // this should store member_code
+
+            if (memberCode == null || memberCode.isBlank()) {
+                lblStatus.setText("Member code missing. Please re-login.");
+                return;
+            }
+
+            Envelope env = Envelope.request(OpCode.REQUEST_GET_PROFILE, memberCode.trim());
+            client.sendToServer(new KryoMessage("ENVELOPE", KryoUtil.toBytes(env)));
+            lblStatus.setText("Loading profile...");
+        } catch (Exception ex) {
+            lblStatus.setText("Failed to load profile: " + ex.getMessage());
+        }
+
+    }
+
     @FXML private void onNavHistory() { if (isSubscriber) showPane(paneHistory); }
 
     @FXML
@@ -832,8 +907,44 @@ public class ClientController implements ClientUI {
 
     @FXML
     private void onSaveProfile(ActionEvent e) {
-        lblStatus.setText("Profile saved (todo).");
+        if (!isSubscriber) return;
+
+        this.client = ClientSession.getClient();
+        if (client == null || !client.isConnected()) {
+            lblStatus.setText("Not connected.");
+            return;
+        }
+
+        String memberCode = txtMemberNumber.getText() == null ? "" : txtMemberNumber.getText().trim();
+        String fullName   = txtFullName.getText() == null ? "" : txtFullName.getText().trim();
+        String phone      = txtPhone.getText() == null ? "" : txtPhone.getText().trim();
+        String email      = txtEmail.getText() == null ? "" : txtEmail.getText().trim();
+
+        if (memberCode.isBlank()) { lblStatus.setText("Member code missing."); return; }
+        if (fullName.isBlank()) { lblStatus.setText("Full name is required."); return; }
+        if (phone.isBlank()) { lblStatus.setText("Phone is required."); return; }
+        if (email.isBlank() || !email.contains("@") || !email.contains(".")) {
+            lblStatus.setText("Invalid email.");
+            return;
+        }
+
+        try {
+            ProfileDTO dto = new ProfileDTO();
+            dto.setMemberNumber(memberCode);   // member_code
+            dto.setFullName(fullName);         // name
+            dto.setPhone(phone);
+            dto.setEmail(email);
+
+            Envelope env = Envelope.request(OpCode.REQUEST_UPDATE_PROFILE, dto);
+            client.sendToServer(new KryoMessage("ENVELOPE", KryoUtil.toBytes(env)));
+
+            lblStatus.setText("Saving profile...");
+        } catch (Exception ex) {
+            lblStatus.setText("Save failed: " + ex.getMessage());
+        }
     }
+
+
     ////to refactor
     public BistroClient getClient() {
         return client;

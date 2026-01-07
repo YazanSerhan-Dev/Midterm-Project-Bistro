@@ -9,6 +9,7 @@ import java.util.List;
 
 import DataBase.MySQLConnectionPool;
 import DataBase.PooledConnection;
+import common.dto.ProfileDTO;
 import common.dto.SubscriberDTO;
 
 public class SubscriberDAO {
@@ -131,6 +132,72 @@ public class SubscriberDAO {
             try (ResultSet rs = ps.executeQuery()) {
                 if (!rs.next()) return null;
                 return rs.getString("phone");
+            }
+        } finally {
+            pool.releaseConnection(pc);
+        }
+    }
+
+    public static ProfileDTO getProfileByMemberCode(String memberCode) throws Exception {
+        String sql = "SELECT member_code, name, phone, email " +
+                     "FROM subscribers WHERE member_code = ? LIMIT 1";
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, memberCode);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) return null;
+
+                return new ProfileDTO(
+                    rs.getString("member_code"), // maps to ProfileDTO.memberNumber
+                    rs.getString("name"),        // maps to ProfileDTO.fullName
+                    rs.getString("phone"),
+                    rs.getString("email")
+                );
+            }
+        } finally {
+            pool.releaseConnection(pc);
+        }
+    }
+
+    public static boolean updateProfileByMemberCode(ProfileDTO dto) throws Exception {
+        String sql = "UPDATE subscribers SET name = ?, phone = ?, email = ? " +
+                     "WHERE member_code = ?";
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+
+            ps.setString(1, dto.getFullName());      // -> name
+            ps.setString(2, dto.getPhone());
+            ps.setString(3, dto.getEmail());
+            ps.setString(4, dto.getMemberNumber());  // -> member_code
+
+            return ps.executeUpdate() == 1;
+
+        } finally {
+            pool.releaseConnection(pc);
+        }
+    }
+
+    public static String getMemberCodeByUsername(String username) throws Exception {
+        String sql = "SELECT member_code FROM subscribers WHERE username = ? LIMIT 1";
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, username);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) return null;
+                return rs.getString("member_code");
             }
         } finally {
             pool.releaseConnection(pc);
