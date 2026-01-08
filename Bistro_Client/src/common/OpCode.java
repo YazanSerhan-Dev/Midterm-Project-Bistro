@@ -62,7 +62,7 @@ public enum OpCode {
     REQUEST_TERMINAL_NO_SHOW,
     RESPONSE_TERMINAL_NO_SHOW,
     
-    // ===== Agent Operations =====
+ // ===== Agent =====
     REQUEST_REGISTER_CUSTOMER,
     RESPONSE_REGISTER_CUSTOMER,
     
@@ -74,5 +74,17 @@ public enum OpCode {
     
     REQUEST_AGENT_RESERVATIONS_LIST,
     RESPONSE_AGENT_RESERVATIONS_LIST,
-
+    
+    
+    REQUEST_WAITING_ADD,    // Agent adds a walk-in customer
+    RESPONSE_WAITING_ADD,
+    
+    REQUEST_WAITING_REMOVE, // Agent cancels a waiting customer
+    RESPONSE_WAITING_REMOVE,
+    
+    REQUEST_WAITING_ASSIGN, // Agent assigns a table to a customer
+    RESPONSE_WAITING_ASSIGN,
+    
+    REQUEST_CURRENT_DINERS,
+    RESPONSE_CURRENT_DINERS,
 }

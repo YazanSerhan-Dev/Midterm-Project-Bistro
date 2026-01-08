@@ -26,7 +26,7 @@
             
             <Label text="Agent Actions" textFill="#bdc3c7" />
             
-            <Button maxWidth="1.7976931348623157E308" mnemonicParsing="false" onAction="#onNewReservation" style="-fx-alignment: CENTER-LEFT; -fx-background-color: #27ae60;" text="+ New Reservation" textFill="WHITE" />
+            <Button maxWidth="1.7976931348623157E308" mnemonicParsing="false" onAction="#onActAsCustomer" style="-fx-alignment: CENTER-LEFT; -fx-background-color: #27ae60;" text="Act as Customer" textFill="WHITE" />
 
             <Button maxWidth="1.7976931348623157E308" mnemonicParsing="false" onAction="#onViewReservations" style="-fx-alignment: CENTER-LEFT;" text="Reservations" />
             <Button maxWidth="1.7976931348623157E308" mnemonicParsing="false" onAction="#onViewWaitingList" style="-fx-alignment: CENTER-LEFT;" text="Waiting List" />
@@ -64,10 +64,29 @@
             <VBox VBox.vgrow="ALWAYS">
                <children>
                   <TableView fx:id="tblReservations" visible="false" managed="false" VBox.vgrow="ALWAYS" />
-                  <TableView fx:id="tblSubscribers" visible="false" managed="false" VBox.vgrow="ALWAYS" />
-                  <TableView fx:id="tblWaitingList" visible="false" managed="false" VBox.vgrow="ALWAYS" />
-                  <TableView fx:id="tblCurrentDiners" visible="false" managed="false" VBox.vgrow="ALWAYS" />
-                  
+							<TableView fx:id="tblSubscribers" visible="false" managed="false" VBox.vgrow="ALWAYS" />
+							
+							<VBox fx:id="paneWaitingList" visible="false" managed="false" spacing="10" VBox.vgrow="ALWAYS">
+							    <children>
+							    <HBox spacing="10" alignment="CENTER_LEFT">
+							        <children>
+							            <Button text="+ Add Walk-in" onAction="#onAddWaitingCustomer" 
+							            style="-fx-background-color: #27ae60; -fx-text-fill: white; -fx-font-weight: bold;"/>
+							            
+							            <Button text="Assign Table" onAction="#onAssignTable" 
+							            style="-fx-background-color: #2980b9; -fx-text-fill: white;"/>
+							            
+							            <Button text="Remove / Cancel" onAction="#onRemoveWaitingCustomer" 
+							            style="-fx-background-color: #c0392b; -fx-text-fill: white;"/>
+							        </children>
+							    </HBox>
+							    <TableView fx:id="tblWaitingList" VBox.vgrow="ALWAYS" />
+							    </children>
+							</VBox>
+							
+							<TableView fx:id="tblCurrentDiners" visible="false" managed="false" VBox.vgrow="ALWAYS" />
+							                  
+							                  
                   <VBox fx:id="paneReports" visible="false" managed="false" alignment="CENTER" spacing="10">
                        <Label text="Reports Dashboard (Under Construction)" textFill="GRAY"/>
                   </VBox>

@@ -6,6 +6,8 @@ import java.sql.Timestamp;
 import java.util.ArrayList;
 import java.util.List;
 
+import javax.sql.CommonDataSource;
+
 import ocsf.server.AbstractServer;
 import ocsf.server.ConnectionToClient;
 
@@ -18,13 +20,14 @@ import common.OpCode;
 import common.dto.RegistrationDTO;
 import common.dto.ReservationDTO;
 import common.dto.SubscriberDTO;
-
+import common.dto.WaitingListDTO;
 // Imports from MAIN (Reservation & Login)
 import common.dto.LoginResponseDTO;
 import common.dto.MakeReservationRequestDTO;
 import common.dto.MakeReservationResponseDTO;
+import common.dto.CurrentDinersDTO; // Make sure to import this
 
-
+import DataBase.dao.VisitDAO;
 import DataBase.Reservation;
 import DataBase.dao.ReservationDAO;
 import DataBase.dao.SubscriberDAO;
@@ -114,8 +117,9 @@ public class BistroServer extends AbstractServer {
             switch (req.getOp()) {
                 case REQUEST_RESERVATIONS_LIST -> handleReservationsList(req, client);
                 case REQUEST_REGISTER_CUSTOMER -> handleRegisterCustomer(req, client);
-                case REQUEST_SUBSCRIBERS_LIST -> handleSubscribersList(client);
-                case REQUEST_AGENT_RESERVATIONS_LIST -> handleAgentReservationsList(client);
+                
+                case REQUEST_SUBSCRIBERS_LIST -> handleSubscribersList(req, client);
+                case REQUEST_AGENT_RESERVATIONS_LIST -> handleAgentReservationsList(req, client);
                 
                 case REQUEST_MAKE_RESERVATION -> handleMakeReservation(req, client);
                 case REQUEST_CHECK_AVAILABILITY -> handleCheckAvailability(req, client);
@@ -125,6 +129,11 @@ public class BistroServer extends AbstractServer {
                 
                 case REQUEST_TERMINAL_VALIDATE_CODE -> handleTerminalValidateCode(req, client);
                 case REQUEST_TERMINAL_CHECK_IN -> handleTerminalCheckIn(req, client);
+                
+                case REQUEST_WAITING_LIST -> handleWaitingList(req, client);
+                case REQUEST_CURRENT_DINERS -> handleCurrentDiners(req, client);
+                
+                
 
                 // TODO later:
                 case REQUEST_CANCEL_RESERVATION -> handleCancelReservation(req, client);
@@ -254,6 +263,21 @@ public class BistroServer extends AbstractServer {
             } catch (Exception ignored) {
                 log("Also failed to send response to client: " + ignored.getMessage());
             }
+        }
+    }
+    
+    private void handleCurrentDiners(Envelope req, ConnectionToClient client) {
+        try {
+            // Log that we started the request (This helps debug!)
+            log("Received request for Current Diners from " + host(client));
+
+            List<common.dto.CurrentDinersDTO> list = DataBase.dao.VisitDAO.getActiveDiners();
+            sendOk(client, OpCode.RESPONSE_CURRENT_DINERS, list);
+            
+            log("Sent " + list.size() + " current diners.");
+        } catch (Exception e) {
+            log("Error fetching current diners: " + e.getMessage());
+            e.printStackTrace(); // Print error to console
         }
     }
 
@@ -492,7 +516,7 @@ public class BistroServer extends AbstractServer {
         sendOk(client, OpCode.RESPONSE_RESERVATIONS_LIST, dtoList);
     }
 
-    private void handleSubscribersList(ConnectionToClient client) {
+    private void handleSubscribersList(Envelope req,ConnectionToClient client) {
         try {
             List<SubscriberDTO> list = DataBase.dao.SubscriberDAO.getAllSubscribers();
             sendOk(client, OpCode.RESPONSE_SUBSCRIBERS_LIST, list);
@@ -503,7 +527,7 @@ public class BistroServer extends AbstractServer {
         }
     }
 
-    private void handleAgentReservationsList(ConnectionToClient client) {
+    private void handleAgentReservationsList(Envelope req,ConnectionToClient client) {
         try {
             List<Reservation> rows = reservationDAO.getAllReservations();
             List<ReservationDTO> dtoList = new ArrayList<>();
@@ -524,6 +548,20 @@ public class BistroServer extends AbstractServer {
             log("Sent all reservations to Agent.");
         } catch (Exception e) {
             e.printStackTrace();
+        }
+    }
+    
+    private void handleWaitingList(Envelope req,ConnectionToClient client) {
+        try {
+        	List<common.dto.WaitingListDTO> list = DataBase.dao.WaitingListDAO.getAllWaitingList();
+            sendOk(client, OpCode.RESPONSE_WAITING_LIST, list); 
+            log("Sent "+list.size()+" Waiting List items to Agent.");
+        } catch (Exception e) {
+            log("Error fetching waiting list: " + e.getMessage());
+            e.printStackTrace(); // Good for debugging
+            try { 
+                sendError(client, OpCode.ERROR, "Fetch waiting list failed: " + e.getMessage()); 
+            } catch (Exception ignored) {}
         }
     }
 
