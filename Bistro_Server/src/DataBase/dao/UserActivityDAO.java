@@ -139,5 +139,24 @@ public class UserActivityDAO {
         }
     }
 
+    public static int insertWaitingActivityReturnActivityId(Connection conn, int waitingId, String email, String phone) throws Exception {
+        String sql = """
+            INSERT INTO user_activity (guest_phone, guest_email, waiting_id, activity_date)
+            VALUES (?, ?, ?, NOW())
+        """;
+
+        try (PreparedStatement ps = conn.prepareStatement(sql, java.sql.Statement.RETURN_GENERATED_KEYS)) {
+            ps.setString(1, phone);
+            ps.setString(2, email);
+            ps.setInt(3, waitingId);
+            ps.executeUpdate();
+
+            try (var rs = ps.getGeneratedKeys()) {
+                if (rs.next()) return rs.getInt(1);
+            }
+        }
+        return -1;
+    }
+
 
 }

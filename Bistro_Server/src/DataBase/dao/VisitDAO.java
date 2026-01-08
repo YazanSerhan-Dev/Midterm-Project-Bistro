@@ -46,5 +46,78 @@ public class VisitDAO {
             ps.executeUpdate();
         }
     }
+    
+    public static boolean existsVisitForWaitingId(int waitingId) throws Exception {
+        String sql = """
+            SELECT 1
+            FROM visit v
+            JOIN user_activity ua ON ua.activity_id = v.activity_id
+            WHERE ua.waiting_id = ?
+            LIMIT 1
+        """;
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, waitingId);
+            return ps.executeQuery().next();
+        } finally {
+            pool.releaseConnection(pc);
+        }
+    }
+
+    public static boolean existsVisitForWaitingId(Connection conn, int waitingId) throws Exception {
+        String sql = """
+            SELECT 1
+            FROM visit v
+            JOIN user_activity ua ON ua.activity_id = v.activity_id
+            WHERE ua.waiting_id = ?
+            LIMIT 1
+        """;
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, waitingId);
+            return ps.executeQuery().next();
+        }
+    }
+
+    public static boolean existsVisitForReservationId(int reservationId) throws Exception {
+        String sql = """
+            SELECT 1
+            FROM visit v
+            JOIN user_activity ua ON ua.activity_id = v.activity_id
+            WHERE ua.reservation_id = ?
+            LIMIT 1
+        """;
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, reservationId);
+            return ps.executeQuery().next();
+        } finally {
+            pool.releaseConnection(pc);
+        }
+    }
+
+    public static boolean existsVisitForReservationId(Connection conn, int reservationId) throws Exception {
+        String sql = """
+            SELECT 1
+            FROM visit v
+            JOIN user_activity ua ON ua.activity_id = v.activity_id
+            WHERE ua.reservation_id = ?
+            LIMIT 1
+        """;
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, reservationId);
+            return ps.executeQuery().next();
+        }
+    }
+
 
 }

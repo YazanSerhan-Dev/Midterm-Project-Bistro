@@ -7,6 +7,7 @@ import java.sql.Timestamp;
 
 import DataBase.MySQLConnectionPool;
 import DataBase.PooledConnection;
+import common.dto.TerminalValidateResponseDTO;
 import common.dto.WaitingListDTO;
 
 public class WaitingListDAO {
@@ -277,6 +278,169 @@ public class WaitingListDAO {
             pool.releaseConnection(pc);
         }
     }
+    
+    public static WaitingListDTO getByCode(Connection conn, String code) throws Exception {
+        String sql = """
+            SELECT waiting_id, num_of_customers, request_time, status, confirmation_code
+            FROM waiting_list
+            WHERE confirmation_code = ?
+            LIMIT 1
+        """;
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, code);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) return null;
+
+                WaitingListDTO dto = new WaitingListDTO();
+                dto.setId(rs.getInt("waiting_id"));
+                dto.setPeopleCount(rs.getInt("num_of_customers"));
+                dto.setStatus(rs.getString("status"));
+                dto.setConfirmationCode(rs.getString("confirmation_code"));
+                return dto;
+            }
+        }
+    }
+
+    public static boolean updateStatusByCode(Connection conn, String code, String newStatus) throws Exception {
+        String sql = """
+            UPDATE waiting_list
+            SET status = ?
+            WHERE confirmation_code = ?
+        """;
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, newStatus);
+            ps.setString(2, code);
+            return ps.executeUpdate() > 0;
+        }
+    }
+
+    public static boolean cancelIfWaitingOrAssignedByCode(String code) {
+        String sql = """
+            UPDATE waiting_list
+            SET status = 'CANCELED'
+            WHERE confirmation_code = ?
+              AND status IN ('WAITING', 'ASSIGNED')
+        """;
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, code);
+            return ps.executeUpdate() == 1;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        } finally {
+            pool.releaseConnection(pc);
+        }
+    }
+
+    public static TerminalValidateResponseDTO checkInWaitingListByCode(String code) throws Exception {
+
+        TerminalValidateResponseDTO dto = new TerminalValidateResponseDTO();
+
+        if (code == null || code.isBlank()) {
+            dto.setValid(false);
+            dto.setMessage("Invalid confirmation code.");
+            return dto;
+        }
+
+        code = code.trim();
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try {
+            conn.setAutoCommit(false);
+
+            // load waiting row
+            WaitingListDTO w = WaitingListDAO.getByCode(conn, code);
+            if (w == null) {
+                conn.rollback();
+                dto.setValid(false);
+                dto.setMessage("Code not found.");
+                return dto;
+            }
+
+            String st = (w.getStatus() == null) ? "" : w.getStatus().trim();
+
+            // only ASSIGNED can check-in
+            if (!"ASSIGNED".equalsIgnoreCase(st)) {
+                conn.rollback();
+
+                dto.setValid(true);
+                dto.setStatus(st.isBlank() ? "WAITING" : st);
+                dto.setNumOfCustomers(w.getPeopleCount());
+                dto.setCheckInAllowed(false);
+                dto.setMessage("Check-in allowed only when status is ASSIGNED.");
+                dto.setTableId("-");
+                return dto;
+            }
+
+            // race protection: already checked-in?
+            if (VisitDAO.existsVisitForWaitingId(conn, w.getId())) {
+                conn.rollback();
+                dto.setValid(false);
+                dto.setMessage("This waiting code was already checked-in.");
+                return dto;
+            }
+
+            // allocate a real table now (best-fit) and mark it OCCUPIED
+            String tableId = RestaurantTableDAO.allocateFreeTable(conn, w.getPeopleCount());
+            if (tableId == null) {
+                conn.rollback();
+                dto.setValid(true);
+                dto.setStatus("ASSIGNED");
+                dto.setNumOfCustomers(w.getPeopleCount());
+                dto.setCheckInAllowed(false);
+                dto.setMessage("No table available right now. Please try again.");
+                dto.setTableId("-");
+                return dto;
+            }
+
+            // Create activity and get activity_id (needed for visit)
+            int activityId = UserActivityDAO.insertWaitingActivityReturnActivityId(conn, w.getId(), null, null);
+            if (activityId <= 0) {
+                conn.rollback();
+                dto.setValid(false);
+                dto.setMessage("Failed to create activity.");
+                return dto;
+            }
+
+            // Create visit
+            VisitDAO.insertVisit(conn, activityId, tableId);
+
+            // consume waiting code
+            WaitingListDAO.updateStatusByCode(conn, code, "CANCELED");
+
+            conn.commit();
+
+            dto.setValid(true);
+            dto.setStatus("ARRIVED"); // same state terminal UI already supports
+            dto.setNumOfCustomers(w.getPeopleCount());
+            dto.setCheckInAllowed(false);
+            dto.setMessage("Checked-in successfully (waiting list).");
+            dto.setTableId(tableId);
+            return dto;
+
+        } catch (Exception ex) {
+            try { conn.rollback(); } catch (Exception ignored) {}
+
+            dto.setValid(false);
+            dto.setMessage("Server error: " + ex.getMessage());
+            return dto;
+
+        } finally {
+            try { conn.setAutoCommit(true); } catch (Exception ignored) {}
+            pool.releaseConnection(pc);
+        }
+    }
+
 }
 
 

@@ -30,6 +30,7 @@ import DataBase.dao.BillDAO;
 import DataBase.dao.ReservationDAO;
 import DataBase.dao.SubscriberDAO;
 import DataBase.dao.UserActivityDAO;
+import DataBase.dao.VisitDAO;
 import DataBase.dao.WaitingListDAO;
 import DataBase.dao.RestaurantTableDAO; // From MAIN
 
@@ -311,25 +312,18 @@ public class BistroServer extends AbstractServer {
             String username = arr[1] == null ? "" : arr[1].toString();
             String code = arr[2] == null ? "" : arr[2].toString().trim();
 
-            System.out.println("[LEAVE_WAITING_LIST] code=" + code + " role=" + role + " username=" + username);
-
             if (code.isBlank()) {
                 sendOk(client, OpCode.RESPONSE_LEAVE_WAITING_LIST, "Missing waiting code.");
                 return;
             }
-            
-            System.out.println("[LEAVE_WAITING_LIST] passed code checks");
 
-            // (Optional) if SUBSCRIBER you can require username, same style as handleWaitingList
             if ("SUBSCRIBER".equalsIgnoreCase(role) && username.isBlank()) {
                 sendOk(client, OpCode.RESPONSE_LEAVE_WAITING_LIST, "Missing subscriber username.");
                 return;
             }
 
-            // Load entry by code
+            // Load entry
             WaitingListDTO w = WaitingListDAO.getByCode(code);
-            System.out.println("[LEAVE_WAITING_LIST] w=" + (w == null ? "null" : ("status=" + w.getStatus())));
-            
             if (w == null) {
                 sendOk(client, OpCode.RESPONSE_LEAVE_WAITING_LIST, "Waiting code not found.");
                 return;
@@ -337,31 +331,30 @@ public class BistroServer extends AbstractServer {
 
             String st = w.getStatus() == null ? "" : w.getStatus().trim();
 
-            // Business rules:
             if ("CANCELED".equalsIgnoreCase(st)) {
                 sendOk(client, OpCode.RESPONSE_LEAVE_WAITING_LIST, "Already canceled.");
                 return;
             }
-            if ("ASSIGNED".equalsIgnoreCase(st)) {
-                sendOk(client, OpCode.RESPONSE_LEAVE_WAITING_LIST, "Already assigned a table. Can't leave now.");
-                return;
-            }
-            if (!"WAITING".equalsIgnoreCase(st)) {
+
+            // ✅ Option A: allow cancel in WAITING or ASSIGNED
+            if (!"WAITING".equalsIgnoreCase(st) && !"ASSIGNED".equalsIgnoreCase(st)) {
                 sendOk(client, OpCode.RESPONSE_LEAVE_WAITING_LIST, "Invalid status: " + st);
                 return;
             }
 
-            // Update status -> CANCELED (only if WAITING)
-            System.out.println("[LEAVE_WAITING_LIST] about to cancel in DB");
-            boolean ok = WaitingListDAO.cancelIfWaitingByCode(code);
-            System.out.println("[LEAVE_WAITING_LIST] updated=" + ok);
-
-            if (!ok) {
-                sendOk(client, OpCode.RESPONSE_LEAVE_WAITING_LIST, "Cancel failed (already changed).");
+            // ✅ Block cancel if already checked-in (Visit exists)
+            boolean hasVisit = VisitDAO.existsVisitForWaitingId(w.getId());
+            if (hasVisit) {
+                sendOk(client, OpCode.RESPONSE_LEAVE_WAITING_LIST, "Already checked-in. Can't cancel now.");
                 return;
             }
 
-            // Return updated DTO
+            boolean ok = WaitingListDAO.cancelIfWaitingOrAssignedByCode(code);
+            if (!ok) {
+                sendOk(client, OpCode.RESPONSE_LEAVE_WAITING_LIST, "Cancel failed (status changed).");
+                return;
+            }
+
             w.setStatus("CANCELED");
             sendOk(client, OpCode.RESPONSE_LEAVE_WAITING_LIST, w);
 
@@ -371,6 +364,7 @@ public class BistroServer extends AbstractServer {
             } catch (Exception ignored) {}
         }
     }
+
 
     
     private void handleWaitingList(Envelope req, ConnectionToClient client) {
@@ -775,7 +769,6 @@ public class BistroServer extends AbstractServer {
         }
     }
 
-
     private void handleTerminalCheckIn(Envelope req, ConnectionToClient client) {
         try {
             Object payload = readEnvelopePayload(req);
@@ -789,9 +782,9 @@ public class BistroServer extends AbstractServer {
 
             code = code.trim();
 
-            // 1) If this is a RESERVATION code -> use existing behavior
+            // 1) RESERVATION check-in (keep your existing behavior)
             TerminalValidateResponseDTO info = DataBase.dao.ReservationDAO.getTerminalInfoByCode(code);
-            if (info != null && info.isValid()) {
+            if (info != null && info.isValid() && info.isCheckInAllowed()) {
                 String tableId = DataBase.dao.ReservationDAO.markArrivedByCodeReturnTableId(code);
 
                 TerminalValidateResponseDTO dto = DataBase.dao.ReservationDAO.getTerminalInfoByCode(code);
@@ -804,51 +797,21 @@ public class BistroServer extends AbstractServer {
                 return;
             }
 
-            // 2) Otherwise, try WAITING LIST code
-            WaitingListDTO w = WaitingListDAO.getByCode(code);
-            if (w == null) {
-                sendOk(client, OpCode.RESPONSE_TERMINAL_CHECK_IN,
-                        new TerminalValidateResponseDTO(false, "Code not found."));
-                return;
-            }
-
-            String st = w.getStatus() == null ? "" : w.getStatus().trim();
-
-            // only ASSIGNED can check-in
-            if (!"ASSIGNED".equalsIgnoreCase(st)) {
-                TerminalValidateResponseDTO dto = new TerminalValidateResponseDTO();
-                dto.setValid(true);
-                dto.setStatus(st.isBlank() ? "WAITING" : st);
-                dto.setNumOfCustomers(w.getPeopleCount());
-                dto.setCheckInAllowed(false);
-                dto.setMessage("Still waiting. Check-in allowed only when status is ASSIGNED.");
-                dto.setTableId("-");
-                sendOk(client, OpCode.RESPONSE_TERMINAL_CHECK_IN, dto);
-                return;
-            }
-
-            // consume / close the waiting entry (no “entered” status in your enum)
-            WaitingListDAO.updateStatusByCode(code, "CANCELED");
-
-            TerminalValidateResponseDTO dto = new TerminalValidateResponseDTO();
-            dto.setValid(true);
-            dto.setStatus("ASSIGNED");
-            dto.setNumOfCustomers(w.getPeopleCount());
-            dto.setCheckInAllowed(false);
-            dto.setMessage("Checked-in successfully (from waiting list).");
-            dto.setTableId("-");
+            // 2) WAITING LIST check-in (ALL DB WORK INSIDE DAO)
+            TerminalValidateResponseDTO dto = WaitingListDAO.checkInWaitingListByCode(code);
 
             sendOk(client, OpCode.RESPONSE_TERMINAL_CHECK_IN, dto);
 
         } catch (Exception e) {
             TerminalValidateResponseDTO err = new TerminalValidateResponseDTO();
             err.setValid(false);
-            err.setMessage(e.getMessage());
+            err.setMessage("Server error: " + e.getMessage());
             try {
                 sendOk(client, OpCode.RESPONSE_TERMINAL_CHECK_IN, err);
             } catch (Exception ignored) {}
         }
     }
+
 
 
     private void handleLoginSubscriber(Envelope env, ConnectionToClient client) {

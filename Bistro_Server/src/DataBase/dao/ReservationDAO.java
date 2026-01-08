@@ -318,6 +318,11 @@ public class ReservationDAO {
                 throw new Exception("Check-in not allowed: status is " + status);
             }
 
+            // ✅ ADD THIS
+            if (VisitDAO.existsVisitForReservationId(conn, reservationId)) {
+                throw new Exception("Already checked-in for this reservation.");
+            }
+
             // 2) Use DB clock to avoid timezone mismatch
             Timestamp dbNow;
             try (PreparedStatement ps = conn.prepareStatement(sqlGetDbNow);

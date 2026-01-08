@@ -63,6 +63,11 @@ public class TerminalController implements ClientUI {
     private volatile boolean checkInInFlight  = false;
     private volatile boolean joinWLInFlight   = false;
     private volatile boolean leaveWLInFlight  = false;
+    
+    private volatile boolean checkedIn = false;
+    private volatile String lastCheckedInCode = "";
+    private volatile String lastValidatedCode = "";
+
 
     @FXML
     private void initialize() {
@@ -190,6 +195,9 @@ public class TerminalController implements ClientUI {
         }
 
         String code = safeTrim(txtConfirmationCode.getText());
+        lastValidatedCode = code;
+        checkedIn = false;
+        lastCheckedInCode = "";
         if (code.isEmpty()) {
             setValidationState(false, false, "Enter a code.", "Validation failed: empty code.");
             return;
@@ -210,15 +218,6 @@ public class TerminalController implements ClientUI {
 
     @FXML
     private void onCheckIn() {
-        if (checkInInFlight) {
-            lblTerminalStatus.setText("Check-in already in progress...");
-            return;
-        }
-
-        if (!validated) {
-            lblTerminalStatus.setText("Check-in blocked: validate code first.");
-            return;
-        }
 
         String code = safeTrim(txtConfirmationCode.getText());
         if (code.isEmpty()) {
@@ -226,16 +225,42 @@ public class TerminalController implements ClientUI {
             return;
         }
 
-        if (!isConnected()) {
-            lblTerminalStatus.setText("Cannot check-in: not connected to server.");
+        // ✅ If already checked-in with same code, don't say "validate first"
+        if (checkedIn && code.equalsIgnoreCase(lastCheckedInCode)) {
+            lblTerminalStatus.setText("Already checked-in for this code.");
             return;
         }
 
-        checkInInFlight = true;
-        sendToServer(OpCode.REQUEST_TERMINAL_CHECK_IN, code);
+        // ✅ If code changed since validation, force validation again
+        if (!code.equalsIgnoreCase(lastValidatedCode)) {
+            validated = false;
+            tableAvailable = false;
+            lblTerminalStatus.setText("Code changed. Please validate again.");
+            return;
+        }
 
-        lblTerminalStatus.setText("Sending check-in request...");
-        // Buttons remain enabled always (no disabling)
+        // ✅ Must validate first
+        if (!validated) {
+            lblTerminalStatus.setText("Check-in blocked: validate code first.");
+            return;
+        }
+
+        // ✅ Prevent spam clicks while request is in-flight
+        if (checkInInFlight) {
+            lblTerminalStatus.setText("Check-in already in progress...");
+            return;
+        }
+
+        if (!isConnected()) {
+            lblTerminalStatus.setText("Not connected.");
+            return;
+        }
+
+        // ✅ Send check-in request to server
+        checkInInFlight = true;
+        lblTerminalStatus.setText("Checking in...");
+
+        sendToServer(OpCode.REQUEST_TERMINAL_CHECK_IN, code);
     }
 
     @FXML
@@ -332,6 +357,8 @@ public class TerminalController implements ClientUI {
                     // ✅ VALIDATE CODE RESPONSE
                     // =========================
                 case RESPONSE_TERMINAL_VALIDATE_CODE -> {
+                	validateInFlight = false;
+                	
                     Object payload = env.getPayload();
 
                     if (payload instanceof TerminalValidateResponseDTO dto) {
@@ -359,50 +386,93 @@ public class TerminalController implements ClientUI {
                     // =========================
                     // ✅ CHECK-IN RESPONSE
                     // =========================
-                    case RESPONSE_TERMINAL_CHECK_IN -> {
-                        checkInInFlight = false; // unlock on response
+                case RESPONSE_TERMINAL_CHECK_IN -> {
+                    // Always unlock on response
+                    checkInInFlight = false;
 
-                        Object payload = env.getPayload();
+                    Object payload = env.getPayload();
 
-                        // NEW: server sends DTO (recommended)
-                        if (payload instanceof TerminalValidateResponseDTO dto) {
+                    // =========================================================
+                    // NEW: server sends TerminalValidateResponseDTO (recommended)
+                    // =========================================================
+                    if (payload instanceof TerminalValidateResponseDTO dto) {
 
-                            // After check-in, tableId should be filled by server
-                            String tableId = dto.getTableId();
-                            lblTableNumber.setText((tableId == null || tableId.isBlank()) ? "-" : tableId);
+                        // After check-in, tableId should be filled by server on success
+                        String tableId = dto.getTableId();
+                        boolean hasTable = tableId != null && !tableId.isBlank() && !"-".equals(tableId);
 
-                            String msg = dto.getMessage();
-                            if (msg == null || msg.isBlank()) msg = "Checked-in successfully (ARRIVED).";
-                            lblTerminalStatus.setText(msg);
+                        lblTableNumber.setText(hasTable ? tableId : "-");
 
-                            // after check-in we reset ability to reuse same validated state (same as your original)
-                            validated = false;
-                            tableAvailable = false;
-                            break;
+                        String msg = dto.getMessage();
+                        if (msg == null || msg.isBlank()) {
+                            msg = dto.isValid()
+                                    ? (hasTable ? "Checked-in successfully." : "Check-in processed, but no table assigned.")
+                                    : "Check-in failed.";
+                        }
+                        lblTerminalStatus.setText(msg);
+
+                        // ✅ Mark checked-in only on TRUE success (valid + table assigned)
+                        checkedIn = dto.isValid() && hasTable;
+                        if (checkedIn) {
+                            lastCheckedInCode = safeTrim(txtConfirmationCode.getText());
+                            lblValidationResult.setText("CHECKED-IN ✅");
                         }
 
-                        // fallback: old server behavior (String)
-                        String msg = (payload == null) ? "" : payload.toString();
-
-                        if (containsIgnoreCase(msg, "ARRIVED") || containsIgnoreCase(msg, "SUCCESS")) {
-
-                            // Optional: parse "ARRIVED|T12"
-                            if (msg.contains("|")) {
-                                String[] parts = msg.split("\\|");
-                                if (parts.length >= 2) {
-                                    String tableId = parts[1].trim();
-                                    lblTableNumber.setText(tableId.isBlank() ? "-" : tableId);
-                                }
-                            }
-
-                            lblTerminalStatus.setText(msg.isBlank() ? "Checked-in successfully (ARRIVED)." : msg);
-                        } else {
-                            lblTerminalStatus.setText(msg.isBlank() ? "Check-in failed." : msg);
-                        }
-
+                        // Reset ability to reuse validated state (same as your original)
                         validated = false;
                         tableAvailable = false;
+
+                        break;
                     }
+
+                    // =========================================
+                    // Fallback: old server behavior (String)
+                    // =========================================
+                    String msg = (payload == null) ? "" : payload.toString();
+
+                    boolean success = containsIgnoreCase(msg, "ARRIVED") || containsIgnoreCase(msg, "SUCCESS");
+
+                    if (success) {
+
+                        // Optional parse "ARRIVED|T12"
+                        String parsedTableId = null;
+
+                        if (msg.contains("|")) {
+                            String[] parts = msg.split("\\|");
+                            if (parts.length >= 2) {
+                                parsedTableId = parts[1].trim();
+                            }
+                        }
+
+                        boolean hasTable = parsedTableId != null && !parsedTableId.isBlank();
+
+                        if (hasTable) {
+                            lblTableNumber.setText(parsedTableId);
+                        } else {
+                            // If no table in message, keep whatever is already shown or "-"
+                            if (lblTableNumber.getText() == null || lblTableNumber.getText().isBlank()) {
+                                lblTableNumber.setText("-");
+                            }
+                        }
+
+                        lblTerminalStatus.setText(msg.isBlank() ? "Checked-in successfully." : msg);
+
+                        // ✅ In old mode: consider success only if we have a table
+                        checkedIn = hasTable;
+                        if (checkedIn) {
+                            lastCheckedInCode = safeTrim(txtConfirmationCode.getText());
+                            lblValidationResult.setText("CHECKED-IN ✅");
+                        }
+
+                    } else {
+                        lblTerminalStatus.setText(msg.isBlank() ? "Check-in failed." : msg);
+                        checkedIn = false;
+                    }
+
+                    validated = false;
+                    tableAvailable = false;
+                }
+
 
                     case RESPONSE_RECOVER_CONFIRMATION_CODE -> {
                         Object payload = env.getPayload();
@@ -603,11 +673,6 @@ public class TerminalController implements ClientUI {
             lblWaitMessage.setText("Please wait…");
         } else {
             lblWaitMessage.setText("");
-        }
-        
-     // Enable check-in only when code valid AND table is available
-        if (btnCheckIn != null) {
-            btnCheckIn.setDisable(!(isValid && hasTable));
         }
 
     }
