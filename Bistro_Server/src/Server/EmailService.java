@@ -139,5 +139,25 @@ public class EmailService {
         sendEmail(toEmail, subject, body); // use your existing internal sendEmail()
     }
 
+    public static void sendReservationTableReady(String toEmail, String tableId) {
+        if (toEmail == null || toEmail.isBlank()) return;
+
+        String subject = "Bistro: Your table is ready";
+        String body =
+                "Hello,\n\n" +
+                "Your table is ready: " + tableId + ".\n" +
+                "Please go to the table now and scan your confirmation code again at the terminal within 15 minutes to confirm.\n\n" +
+                "Thank you,\n" +
+                "Bistro";
+
+        try {
+            // Use your existing low-level method here.
+            // Replace 'sendEmail' with whatever you already have (sendMail / send / sendTo...).
+            sendEmail(toEmail, subject, body);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
 }
 

@@ -98,6 +98,11 @@ public class BackgroundJobs {
         scheduler.scheduleAtFixedRate(() -> {
             try {
                 runTwoHourReminderJob();
+             // 1) try reserve for pending reservations (priority)
+                ReservationDAO.autoReserveForPendingReservations();
+
+                // 2) release tables if customer didn't confirm in time
+                ReservationDAO.releaseExpiredAutoReserved(15);
             } catch (Exception e) {
                 System.out.println("[JOB] reminder error: " + e.getMessage());
             }

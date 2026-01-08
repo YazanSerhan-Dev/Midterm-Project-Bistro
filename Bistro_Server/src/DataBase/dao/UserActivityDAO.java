@@ -2,6 +2,7 @@ package DataBase.dao;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.Timestamp;
 import java.sql.Types;
 
@@ -153,6 +154,23 @@ public class UserActivityDAO {
 
             try (var rs = ps.getGeneratedKeys()) {
                 if (rs.next()) return rs.getInt(1);
+            }
+        }
+        return -1;
+    }
+
+    public static int getLatestActivityIdByReservationId(Connection conn, int reservationId) throws Exception {
+        String sql = """
+            SELECT activity_id
+            FROM user_activity
+            WHERE reservation_id = ?
+            ORDER BY activity_date DESC
+            LIMIT 1
+        """;
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, reservationId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) return rs.getInt("activity_id");
             }
         }
         return -1;

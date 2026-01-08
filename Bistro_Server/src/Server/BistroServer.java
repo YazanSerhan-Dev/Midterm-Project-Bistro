@@ -781,20 +781,37 @@ public class BistroServer extends AbstractServer {
             }
 
             code = code.trim();
+            
+            /* ✅ (8) FIRST: try "second scan confirmation" for auto-reserved reservations */
+            TerminalValidateResponseDTO confirm = ReservationDAO.confirmAutoReservedByCode(code);
+            if (confirm != null) {
+                sendOk(client, OpCode.RESPONSE_TERMINAL_CHECK_IN, confirm);
+                return;
+            }
 
             // 1) RESERVATION check-in (keep your existing behavior)
             TerminalValidateResponseDTO info = DataBase.dao.ReservationDAO.getTerminalInfoByCode(code);
             if (info != null && info.isValid() && info.isCheckInAllowed()) {
-                String tableId = DataBase.dao.ReservationDAO.markArrivedByCodeReturnTableId(code);
+            	String tableId = ReservationDAO.markArrivedByCodeReturnTableId(code);
+            	TerminalValidateResponseDTO dto = ReservationDAO.getTerminalInfoByCode(code);
+            	dto.setValid(true);
 
-                TerminalValidateResponseDTO dto = DataBase.dao.ReservationDAO.getTerminalInfoByCode(code);
-                dto.setValid(true);
-                dto.setStatus("ARRIVED");
-                dto.setMessage("ARRIVED");
-                dto.setTableId(tableId);
+            	if (tableId == null || tableId.isBlank()) {
+            	    // no table -> the DAO should have switched it to PENDING
+            	    dto.setStatus("PENDING");
+            	    dto.setCheckInAllowed(false);
+            	    dto.setTableId("-");
+            	    dto.setMessage("No suitable table now. Please wait — you will be notified when a table is ready.");
+            	} else {
+            	    dto.setStatus("ARRIVED");
+            	    dto.setCheckInAllowed(false);
+            	    dto.setTableId(tableId);
+            	    dto.setMessage("Checked-in successfully. Table: " + tableId);
+            	}
 
-                sendOk(client, OpCode.RESPONSE_TERMINAL_CHECK_IN, dto);
-                return;
+            	sendOk(client, OpCode.RESPONSE_TERMINAL_CHECK_IN, dto);
+            	return;
+
             }
 
             // 2) WAITING LIST check-in (ALL DB WORK INSIDE DAO)

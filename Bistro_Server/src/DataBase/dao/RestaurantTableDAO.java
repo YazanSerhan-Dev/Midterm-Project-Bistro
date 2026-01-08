@@ -151,7 +151,65 @@ public class RestaurantTableDAO {
             pool.releaseConnection(pc);
         }
     }
+    
+    public static String reserveFreeTable(Connection conn, int numCustomers) throws Exception {
+        String selectSql = """
+            SELECT table_id
+            FROM restaurant_table
+            WHERE status = 'FREE' AND num_of_seats >= ?
+            ORDER BY num_of_seats ASC
+            LIMIT 1
+        """;
 
+        String updateSql = """
+            UPDATE restaurant_table
+            SET status = 'RESERVED'
+            WHERE table_id = ? AND status = 'FREE'
+        """;
+
+        String tableId = null;
+
+        try (PreparedStatement ps = conn.prepareStatement(selectSql)) {
+            ps.setInt(1, numCustomers);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) tableId = rs.getString("table_id");
+            }
+        }
+
+        if (tableId == null) return null;
+
+        try (PreparedStatement ps = conn.prepareStatement(updateSql)) {
+            ps.setString(1, tableId);
+            int updated = ps.executeUpdate();
+            if (updated == 0) return null; // race: someone took it
+        }
+
+        return tableId;
+    }
+
+    public static boolean occupyReservedTable(Connection conn, String tableId) throws Exception {
+        String sql = """
+            UPDATE restaurant_table
+            SET status = 'OCCUPIED'
+            WHERE table_id = ? AND status = 'RESERVED'
+        """;
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, tableId);
+            return ps.executeUpdate() > 0;
+        }
+    }
+
+    public static boolean freeTable(Connection conn, String tableId) throws Exception {
+        String sql = """
+            UPDATE restaurant_table
+            SET status = 'FREE'
+            WHERE table_id = ?
+        """;
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, tableId);
+            return ps.executeUpdate() > 0;
+        }
+    }
 
 
 }
