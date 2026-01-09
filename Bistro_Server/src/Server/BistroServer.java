@@ -365,8 +365,6 @@ public class BistroServer extends AbstractServer {
         }
     }
 
-
-    
     private void handleWaitingList(Envelope req, ConnectionToClient client) {
         try {
             Object payload = readEnvelopePayload(req);
@@ -384,17 +382,22 @@ public class BistroServer extends AbstractServer {
                 sendOk(client, OpCode.RESPONSE_WAITING_LIST, "People count must be > 0.");
                 return;
             }
-            int maxSeats = RestaurantTableDAO.getMaxTableSeats();
 
-            if (people > maxSeats) {
-                String msg = "No table can accommodate " + people
-                        + " guests. Maximum table size is " + maxSeats
-                        + ". Please split into two parties or contact staff.";
-
-                sendOk(client, OpCode.RESPONSE_WAITING_LIST, msg);
+            // ✅ NEW VALIDATION (Option B multi-table):
+            // Waiting list is allowed even if there is no FREE table now.
+            // We only block if the group size is larger than the restaurant TOTAL capacity.
+            int totalSeats = RestaurantTableDAO.getTotalSeats();
+            if (totalSeats <= 0) {
+                sendOk(client, OpCode.RESPONSE_WAITING_LIST, "Restaurant tables are not configured. Please contact staff.");
                 return;
             }
 
+            if (people > totalSeats) {
+                String msg = "Group size (" + people + ") exceeds restaurant capacity (" + totalSeats + " seats). "
+                        + "Please split into smaller groups or contact staff.";
+                sendOk(client, OpCode.RESPONSE_WAITING_LIST, msg);
+                return;
+            }
 
             String email;
             String phone;
@@ -480,7 +483,6 @@ public class BistroServer extends AbstractServer {
             } catch (Exception ignored) {}
         }
     }
-
     
     @SuppressWarnings("unchecked")
     private void handleCancelReservation(Envelope req, ConnectionToClient client) {

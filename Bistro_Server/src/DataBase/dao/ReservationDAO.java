@@ -913,72 +913,69 @@ public class ReservationDAO {
             FROM reservation
             WHERE status = 'PENDING'
             ORDER BY reservation_time ASC
-            LIMIT 1
+            LIMIT 20
         """;
 
         MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
         PooledConnection pc = pool.getConnection();
         Connection conn = pc.getConnection();
 
-        Integer resId = null;
-        Integer seats = null;
-
-        // NEW: we now may reserve MULTIPLE tables
-        List<String> tableIds = null;
-
         try {
             conn.setAutoCommit(false);
 
+            List<int[]> candidates = new ArrayList<>();
+
             try (PreparedStatement ps = conn.prepareStatement(pickSql);
                  ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) {
-                    resId = rs.getInt("reservation_id");
-                    seats = rs.getInt("num_of_customers");
+                while (rs.next()) {
+                    candidates.add(new int[]{
+                            rs.getInt("reservation_id"),
+                            rs.getInt("num_of_customers")
+                    });
                 }
             }
 
-            if (resId == null) {
-                conn.rollback();
-                return;
+            for (int[] c : candidates) {
+                int resId = c[0];
+                int seats = c[1];
+
+                // already reserved?
+                List<String> existing =
+                        RestaurantTableDAO.getReservedTablesForReservation(conn, resId);
+                if (existing != null && !existing.isEmpty()) {
+                    continue;
+                }
+
+                List<String> tableIds =
+                        RestaurantTableDAO.reserveFreeTablesBestFitForReservation(
+                                conn, resId, seats, 15);
+
+                if (tableIds != null && !tableIds.isEmpty()) {
+                    conn.commit();
+
+                    try {
+                        String email = getReservationEmail(resId);
+                        if (email != null && !email.isBlank()) {
+                            EmailService.sendReservationTableReady(
+                                    email, String.join(",", tableIds));
+                        }
+                    } catch (Exception ignored) {}
+
+                    return; // ✅ IMPORTANT: stop after FIRST success
+                }
             }
 
-            // ✅ Already reserved for this reservation? (multi-table aware)
-            java.util.List<String> existing = RestaurantTableDAO.getReservedTablesForReservation(conn, resId);
-            if (existing != null && !existing.isEmpty()) {
-                conn.rollback();
-                return;
-            }
-
-            // ✅ Try reserve table(s) for 15 minutes:
-            // - first tries single-table reserve (inside the method)
-            // - then falls back to best-fit multi-table reserve
-            tableIds = RestaurantTableDAO.reserveFreeTablesBestFitForReservation(conn, resId, seats, 15);
-            if (tableIds == null || tableIds.isEmpty()) {
-                conn.rollback();
-                return;
-            }
-
-            conn.commit();
+            conn.rollback(); // nothing fit
 
         } catch (Exception e) {
             try { conn.rollback(); } catch (Exception ignored) {}
             throw e;
+
         } finally {
             try { conn.setAutoCommit(true); } catch (Exception ignored) {}
             pool.releaseConnection(pc);
         }
-
-        // ✅ Send email AFTER commit
-        try {
-            String email = getReservationEmail(resId);
-            if (email != null && !email.isBlank()) {
-                // Send all reserved table ids as one string (no DTO/DB changes)
-                String tableIdsStr = String.join(",", tableIds);
-                EmailService.sendReservationTableReady(email, tableIdsStr);
-            }
-        } catch (Exception ignored) {}
     }
-
 
     public static int cancelPendingReservationsWithExpiredHold() throws Exception {
 
@@ -1003,6 +1000,71 @@ public class ReservationDAO {
             return ps.executeUpdate();
         } finally {
             pool.releaseConnection(pc);
+        }
+    }
+
+    public static boolean hasDueReservationNeedingSeats(Connection conn, int lookAheadMinutes) throws Exception {
+        // reservations that should be seated soon (CONFIRMED or PENDING)
+        // and currently they don't have enough RESERVED/OCCUPIED seats linked to them
+        String sql = """
+            SELECT r.reservation_id, r.num_of_customers
+            FROM reservation r
+            WHERE r.status IN ('CONFIRMED','PENDING')
+              AND r.reservation_time BETWEEN DATE_SUB(NOW(), INTERVAL 30 MINUTE)
+                                       AND DATE_ADD(NOW(), INTERVAL ? MINUTE)
+            ORDER BY r.reservation_time ASC
+            LIMIT 1
+            FOR UPDATE
+        """;
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, lookAheadMinutes);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next(); // if there is at least one due reservation => reserve for them first
+            }
+        }
+    }
+
+    public static boolean hasAnyPending(Connection conn) throws Exception {
+        try (PreparedStatement ps = conn.prepareStatement("""
+            SELECT 1 FROM reservation WHERE status = 'PENDING' LIMIT 1
+        """);
+             ResultSet rs = ps.executeQuery()) {
+            return rs.next();
+        }
+    }
+
+    public static int sumPendingSeats(Connection conn, int limit) throws Exception {
+        String sql = """
+            SELECT COALESCE(SUM(num_of_customers),0)
+            FROM (
+                SELECT num_of_customers
+                FROM reservation
+                WHERE status = 'PENDING'
+                ORDER BY reservation_time ASC
+                LIMIT ?
+            ) x
+        """;
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, limit);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getInt(1) : 0;
+            }
+        }
+    }
+
+    public static int sumConfirmedDueSoonSeats(Connection conn, int lookAheadMinutes) throws Exception {
+        String sql = """
+            SELECT COALESCE(SUM(num_of_customers),0)
+            FROM reservation
+            WHERE status = 'CONFIRMED'
+              AND reservation_time <= DATE_ADD(NOW(), INTERVAL ? MINUTE)
+        """;
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, lookAheadMinutes);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getInt(1) : 0;
+            }
         }
     }
 

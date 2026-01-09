@@ -254,8 +254,7 @@ public class BillDAO {
             }
 
             // =========================================================
-            // ✅ OPTION B FIX #2: Free ALL tables used by the reservation
-            //     (We rely on reserved_for_reservation_id that we set on OCCUPIED)
+            // ✅ OPTION B FIX #2: Free ALL tables used by the reservation OR waiting list
             // =========================================================
             String releasedTablesInfo;
 
@@ -267,20 +266,13 @@ public class BillDAO {
                 }
                 releasedTablesInfo = "Released " + freed + " table(s)";
             } else {
-                // Waiting list (keep old single-table behavior for now)
-                try (PreparedStatement ps = conn.prepareStatement("""
-                    UPDATE restaurant_table
-                    SET status = 'FREE'
-                    WHERE table_id = ? AND status = 'OCCUPIED'
-                """)) {
-                    ps.setString(1, v.tableId);
-                    int updated = ps.executeUpdate();
-                    if (updated != 1) {
-                        conn.rollback();
-                        return PayBillResult.fail("Pay failed (table status changed).");
-                    }
+                // ✅ Waiting list Option B: free ALL occupied tables for waitingId
+                int freed = RestaurantTableDAO.freeOccupiedTablesForWaiting(conn, waitingId);
+                if (freed <= 0) {
+                    conn.rollback();
+                    return PayBillResult.fail("Pay failed (no occupied tables found for waiting list).");
                 }
-                releasedTablesInfo = "Released table " + v.tableId;
+                releasedTablesInfo = "Released " + freed + " table(s)";
             }
 
             // 4) Finish reservation after payment: ARRIVED -> EXPIRED
@@ -320,6 +312,7 @@ public class BillDAO {
             conn.commit();
 
             // Keep compatibility with UI (tableId still returned, though multi-table exists)
+            // For multi-table, we still return the main table from the active visit.
             return PayBillResult.ok("Payment successful ✅ — " + releasedTablesInfo, v.tableId);
 
         } catch (Exception e) {

@@ -494,7 +494,7 @@ public class RestaurantTableDAO {
      * Marks them OCCUPIED and sets reserved_for_reservation_id = reservationId
      */
     public static List<String> allocateFreeTablesBestFit(Connection conn, int reservationId, int numCustomers) throws Exception {
-        // 1) try single-table fast path first (your current method)
+        // 1) try single-table fast path first
         String single = allocateFreeTable(conn, numCustomers);
         if (single != null) {
             // store linkage so we can free all later by reservationId
@@ -505,7 +505,11 @@ public class RestaurantTableDAO {
             """)) {
                 ps.setInt(1, reservationId);
                 ps.setString(2, single);
-                ps.executeUpdate();
+                int updated = ps.executeUpdate();
+                if (updated != 1) {
+                    // This should not happen, but if it does we must fail to force rollback
+                    throw new Exception("Failed to link occupied table to reservation: " + single);
+                }
             }
             return List.of(single);
         }
@@ -515,8 +519,9 @@ public class RestaurantTableDAO {
         List<TableCandidate> chosen = chooseBestFit(free, numCustomers);
         if (chosen == null || chosen.isEmpty()) return null;
 
-        // Occupy them atomically (if any fails -> return null and let caller rollback)
         List<String> tableIds = new ArrayList<>();
+
+        // ✅ Atomic: if any update fails -> throw -> caller will rollback
         try (PreparedStatement ps = conn.prepareStatement("""
             UPDATE restaurant_table
             SET status = 'OCCUPIED',
@@ -527,8 +532,11 @@ public class RestaurantTableDAO {
             for (TableCandidate t : chosen) {
                 ps.setInt(1, reservationId);
                 ps.setString(2, t.tableId);
+
                 int updated = ps.executeUpdate();
-                if (updated != 1) return null; // someone took it
+                if (updated != 1) {
+                    throw new Exception("Allocation failed, table was taken: " + t.tableId);
+                }
                 tableIds.add(t.tableId);
             }
         }
@@ -542,7 +550,7 @@ public class RestaurantTableDAO {
      */
     public static List<String> reserveFreeTablesBestFitForReservation(Connection conn, int reservationId, int numCustomers, int holdMinutes) throws Exception {
         // 1) try existing single-table reserve logic if possible
-        String one = reserveFreeTableForReservation(conn, reservationId, numCustomers, holdMinutes);
+        String one = reserveFreeTableForReservation(conn, numCustomers, reservationId, holdMinutes);
         if (one != null) return List.of(one);
 
         // 2) DP best-fit
@@ -551,6 +559,8 @@ public class RestaurantTableDAO {
         if (chosen == null || chosen.isEmpty()) return null;
 
         List<String> tableIds = new ArrayList<>();
+
+        // ✅ Atomic: if any update fails -> throw -> caller will rollback
         try (PreparedStatement ps = conn.prepareStatement("""
             UPDATE restaurant_table
             SET status = 'RESERVED',
@@ -562,8 +572,11 @@ public class RestaurantTableDAO {
                 ps.setInt(1, reservationId);
                 ps.setInt(2, holdMinutes);
                 ps.setString(3, t.tableId);
+
                 int updated = ps.executeUpdate();
-                if (updated != 1) return null;
+                if (updated != 1) {
+                    throw new Exception("Reserve failed, table was taken: " + t.tableId);
+                }
                 tableIds.add(t.tableId);
             }
         }
@@ -620,5 +633,118 @@ public class RestaurantTableDAO {
             return ps.executeUpdate();
         }
     }
+    
+ // ==============================
+ // Waiting List - Option B (multi-table)
+ // ==============================
+
+ /**
+  * Reserve MULTIPLE tables for a waiting-list entry (hold).
+  * Marks them RESERVED, sets reserved_for_waiting_id and reserved_until.
+  */
+ public static List<String> reserveFreeTablesBestFitForWaiting(Connection conn, int waitingId, int people, int holdMinutes) throws Exception {
+
+     // 1) try your existing single-table waiting reserve first
+     String one = reserveFreeTableForWaitingReturnTableId(conn, waitingId, people);
+     if (one != null) return List.of(one);
+
+     // 2) DP best-fit on all FREE tables
+     List<TableCandidate> free = getFreeTables(conn);
+     List<TableCandidate> chosen = chooseBestFit(free, people);
+     if (chosen == null || chosen.isEmpty()) return null;
+
+     List<String> tableIds = new ArrayList<>();
+
+     // IMPORTANT: atomic behavior - throw if any table was taken so caller can rollback
+     try (PreparedStatement ps = conn.prepareStatement("""
+         UPDATE restaurant_table
+         SET status = 'RESERVED',
+             reserved_for_waiting_id = ?,
+             reserved_until = DATE_ADD(NOW(), INTERVAL ? MINUTE)
+         WHERE table_id = ?
+           AND status = 'FREE'
+           AND reserved_for_reservation_id IS NULL
+           AND reserved_for_waiting_id IS NULL
+     """)) {
+         for (TableCandidate t : chosen) {
+             ps.setInt(1, waitingId);
+             ps.setInt(2, holdMinutes);
+             ps.setString(3, t.tableId);
+
+             int updated = ps.executeUpdate();
+             if (updated != 1) {
+                 throw new Exception("Waiting reserve failed, table was taken: " + t.tableId);
+             }
+             tableIds.add(t.tableId);
+         }
+     }
+
+     return tableIds;
+ }
+
+ /**
+  * Get ALL reserved tables for waitingId (still within reserved_until window).
+  */
+ public static List<String> getReservedTablesForWaiting(Connection conn, int waitingId) throws Exception {
+     String sql = """
+         SELECT table_id
+         FROM restaurant_table
+         WHERE status = 'RESERVED'
+           AND reserved_for_waiting_id = ?
+           AND reserved_until IS NOT NULL
+           AND reserved_until >= NOW()
+         ORDER BY num_of_seats DESC
+     """;
+
+     List<String> out = new ArrayList<>();
+     try (PreparedStatement ps = conn.prepareStatement(sql)) {
+         ps.setInt(1, waitingId);
+         try (ResultSet rs = ps.executeQuery()) {
+             while (rs.next()) out.add(rs.getString("table_id"));
+         }
+     }
+     return out;
+ }
+
+ /**
+  * Occupy ALL reserved tables for waitingId (customer arrived / checked-in).
+  * NOTE: we KEEP reserved_for_waiting_id so we can free all tables on pay.
+  */
+ public static int occupyReservedTablesForWaiting(Connection conn, int waitingId) throws Exception {
+     String sql = """
+         UPDATE restaurant_table
+         SET status = 'OCCUPIED',
+             reserved_until = NULL
+         WHERE status = 'RESERVED'
+           AND reserved_for_waiting_id = ?
+           AND reserved_until IS NOT NULL
+           AND reserved_until >= NOW()
+     """;
+
+     try (PreparedStatement ps = conn.prepareStatement(sql)) {
+         ps.setInt(1, waitingId);
+         return ps.executeUpdate();
+     }
+ }
+
+ /**
+  * Free ALL occupied tables for waitingId (after payment).
+  */
+ public static int freeOccupiedTablesForWaiting(Connection conn, int waitingId) throws Exception {
+     String sql = """
+         UPDATE restaurant_table
+         SET status = 'FREE',
+             reserved_for_waiting_id = NULL,
+             reserved_until = NULL
+         WHERE status = 'OCCUPIED'
+           AND reserved_for_waiting_id = ?
+     """;
+
+     try (PreparedStatement ps = conn.prepareStatement(sql)) {
+         ps.setInt(1, waitingId);
+         return ps.executeUpdate();
+     }
+ }
+
 
 }

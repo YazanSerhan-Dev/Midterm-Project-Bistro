@@ -17,6 +17,7 @@ public class BackgroundJobs {
 
     private static ScheduledExecutorService scheduler;
     private static final AtomicBoolean started = new AtomicBoolean(false);
+    private static final Object TABLE_ASSIGN_LOCK = new Object();
 
     // ✅ In-memory protection: reminder sent once per server run (reservation reminder only)
     private static final Set<Integer> reminderSent = ConcurrentHashMap.newKeySet();
@@ -46,77 +47,68 @@ public class BackgroundJobs {
             }
         }, 5, 30, TimeUnit.SECONDS);
 
-        // =========================
-        // Thread #2: Waiting-list maintenance (WAITING/ASSIGNED)
-        // =========================
-        scheduler.scheduleAtFixedRate(() -> {
-            try {
-                int canceled = WaitingListDAO.cancelAssignedOver15Minutes();
-                if (canceled > 0) {
-                    System.out.println("[JOB] CANCELED assigned waiting over 15min: " + canceled);
-                }
+     // =========================
+     // Thread #2 (combined): Pending reservations FIRST, then waiting list
+     // =========================
+     scheduler.scheduleAtFixedRate(() -> {
+         synchronized (TABLE_ASSIGN_LOCK) {
+             try {
+            	 
 
-                int oldCanceled = WaitingListDAO.cancelWaitingOlderThanHours(4);
-                if (oldCanceled > 0) {
-                    System.out.println("[JOB] CANCELED old WAITING entries (4h): " + oldCanceled);
-                }
+                 // (0) ✅ Release expired RESERVED holds for waiting list FIRST
+                 int released = RestaurantTableDAO.releaseExpiredReservedTablesForWaiting();
+                 if (released > 0) {
+                     System.out.println("[JOB] Released expired RESERVED tables for waiting: " + released);
+                 }
 
-             // ✅ Assign WAITING -> ASSIGNED + reserve a table + notify
-                int assignedCount = 0;
+                 // (1) Waiting-list maintenance (also frees reserved tables by canceling ASSIGNED no-show)
+                 int canceled = WaitingListDAO.cancelAssignedOver15Minutes();
+                 if (canceled > 0) {
+                     System.out.println("[JOB] CANCELED assigned waiting over 15min: " + canceled);
+                 }
 
-                while (true) {
-                    var next = WaitingListDAO.assignNextWaitingByReservingTable();
-                    if (next == null) break; // either no WAITING, or no free table
+                 int oldCanceled = WaitingListDAO.cancelWaitingOlderThanHours(4);
+                 if (oldCanceled > 0) {
+                     System.out.println("[JOB] CANCELED old WAITING entries (4h): " + oldCanceled);
+                 }
 
-                    assignedCount++;
+                 // (2) ✅ Reservations have priority (pending reserve)
+                 ReservationDAO.autoReserveForPendingReservations();
 
-                    String email = WaitingListDAO.getGuestEmailForWaitingId(next.getId());
+                 int canceledPending = ReservationDAO.cancelPendingReservationsWithExpiredHold();
+                 if (canceledPending > 0) {
+                     System.out.println("[JOB] CANCELED pending reservations after reserved timeout: " + canceledPending);
+                 }
 
-                    if (email != null && !email.isBlank()) {
-                        EmailService.sendWaitingTableReady(email, next.getConfirmationCode());
-                        System.out.println("[JOB] Waiting ASSIGNED email sent to: " + email +
-                                " | Code: " + next.getConfirmationCode());
-                    } else {
-                        System.out.println("[JOB] Waiting ASSIGNED but email not found | Code: " +
-                                next.getConfirmationCode());
-                    }
-                }
+                 // (3) Assign waiting list (after reservations had their chance)
+                 int assignedCount = 0;
 
-                if (assignedCount > 0) {
-                    System.out.println("[JOB] ASSIGNED waiting entries: " + assignedCount);
-                }
+                 while (true) {
+                     var next = WaitingListDAO.assignNextWaitingByReservingTable();
+                     if (next == null) break;
 
-                // also release expired reserved tables for waiting list (optional but recommended)
-                int released = RestaurantTableDAO.releaseExpiredReservedTablesForWaiting();
-                if (released > 0) {
-                    System.out.println("[JOB] Released expired RESERVED tables for waiting: " + released);
-                }
+                     assignedCount++;
 
-            } catch (Exception e) {
-                System.out.println("[JOB] waiting maintenance error: " + e.getMessage());
-            }
-        }, 10, 30, TimeUnit.SECONDS);
+                     String email = WaitingListDAO.getGuestEmailForWaitingId(next.getId());
+                     String code = next.getConfirmationCode();
 
-        // =========================
-        // Thread #3: Pending reservations -> reserve a table (Option 1)
-        // + release expired RESERVED holds
-        // =========================
-        scheduler.scheduleAtFixedRate(() -> {
-            try {
-                // 1) Try reserve for pending reservations (priority)
-                ReservationDAO.autoReserveForPendingReservations();
+                     if (email != null && !email.isBlank() && code != null && !code.isBlank()) {
+                         EmailService.sendWaitingTableReady(email, code);
+                         System.out.println("[JOB] Waiting ASSIGNED email sent to: " + email + " | Code: " + code);
+                     } else {
+                         System.out.println("[JOB] Waiting ASSIGNED but email/code missing | id=" + next.getId());
+                     }
+                 }
 
-                // 2) Release RESERVED tables if customer didn't confirm in time
-                // NOTE: this must be the NEW DB-based reserved tables release method
-                int canceled = ReservationDAO.cancelPendingReservationsWithExpiredHold();
-                if (canceled > 0) {
-                    System.out.println("[JOB] CANCELED pending reservations after reserved timeout: " + canceled);
-                }
+                 if (assignedCount > 0) {
+                     System.out.println("[JOB] ASSIGNED waiting entries: " + assignedCount);
+                 }
 
-            } catch (Exception e) {
-                System.out.println("[JOB] pending reserve/release error: " + e.getMessage());
-            }
-        }, 10, 20, TimeUnit.SECONDS);
+             } catch (Exception e) {
+                 System.out.println("[JOB] assignment cycle error: " + e.getMessage());
+             }
+         }
+     }, 10, 20, TimeUnit.SECONDS);
 
         // =========================
         // Thread #4: Bill reminder after 2 hours (visit-based)
