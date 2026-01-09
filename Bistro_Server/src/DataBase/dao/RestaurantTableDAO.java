@@ -3,6 +3,9 @@ package DataBase.dao;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 import DataBase.MySQLConnectionPool;
 import DataBase.PooledConnection;
@@ -382,5 +385,240 @@ public class RestaurantTableDAO {
         }
     }
 
+    private static class TableCandidate {
+        final String tableId;
+        final int seats;
+        TableCandidate(String tableId, int seats) {
+            this.tableId = tableId;
+            this.seats = seats;
+        }
+    }
+
+    private static List<TableCandidate> getFreeTables(Connection conn) throws Exception {
+        String sql = """
+            SELECT table_id, num_of_seats
+            FROM restaurant_table
+            WHERE status = 'FREE'
+            ORDER BY num_of_seats DESC
+        """;
+        List<TableCandidate> out = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                out.add(new TableCandidate(rs.getString(1), rs.getInt(2)));
+            }
+        }
+        return out;
+    }
+
+    /**
+     * DP: choose a subset with totalSeats >= needed and minimal waste (totalSeats - needed).
+     * Tie-break: fewer tables.
+     */
+    private static List<TableCandidate> chooseBestFit(List<TableCandidate> free, int needed) {
+        if (needed <= 0) return Collections.emptyList();
+        if (free.isEmpty()) return null;
+
+        int maxSum = 0;
+        for (TableCandidate t : free) maxSum += Math.max(0, t.seats);
+        if (maxSum < needed) return null;
+
+        final int INF = 1_000_000;
+
+        boolean[] dp = new boolean[maxSum + 1];
+        int[] count = new int[maxSum + 1];
+        int[] prevSum = new int[maxSum + 1];
+        int[] prevIdx = new int[maxSum + 1];
+
+        for (int s = 0; s <= maxSum; s++) {
+            count[s] = INF;
+            prevSum[s] = -1;
+            prevIdx[s] = -1;
+        }
+
+        dp[0] = true;
+        count[0] = 0;
+
+        for (int i = 0; i < free.size(); i++) {
+            int w = free.get(i).seats;
+            if (w <= 0) continue;
+
+            for (int s = maxSum - w; s >= 0; s--) {
+                if (!dp[s]) continue;
+
+                int ns = s + w;
+                int newCount = count[s] + 1;
+
+                // Update if ns not reachable or we found fewer tables for same sum
+                if (!dp[ns] || newCount < count[ns]) {
+                    dp[ns] = true;
+                    count[ns] = newCount;
+                    prevSum[ns] = s;
+                    prevIdx[ns] = i;
+                }
+            }
+        }
+
+        // find best sum >= needed with minimal waste; tie-break fewer tables
+        int bestSum = -1;
+        for (int s = needed; s <= maxSum; s++) {
+            if (!dp[s]) continue;
+            if (bestSum == -1) {
+                bestSum = s;
+                continue;
+            }
+            int waste = s - needed;
+            int bestWaste = bestSum - needed;
+            if (waste < bestWaste) bestSum = s;
+            else if (waste == bestWaste && count[s] < count[bestSum]) bestSum = s;
+        }
+
+        if (bestSum == -1) return null;
+
+        // reconstruct
+        List<TableCandidate> chosen = new ArrayList<>();
+        int cur = bestSum;
+        while (cur > 0) {
+            int i = prevIdx[cur];
+            int ps = prevSum[cur];
+            if (i < 0 || ps < 0) break;
+            chosen.add(free.get(i));
+            cur = ps;
+        }
+
+        return chosen;
+    }
+
+    /**
+     * Allocate MULTIPLE tables for a CONFIRMED reservation at check-in time.
+     * Marks them OCCUPIED and sets reserved_for_reservation_id = reservationId
+     */
+    public static List<String> allocateFreeTablesBestFit(Connection conn, int reservationId, int numCustomers) throws Exception {
+        // 1) try single-table fast path first (your current method)
+        String single = allocateFreeTable(conn, numCustomers);
+        if (single != null) {
+            // store linkage so we can free all later by reservationId
+            try (PreparedStatement ps = conn.prepareStatement("""
+                UPDATE restaurant_table
+                SET reserved_for_reservation_id = ?
+                WHERE table_id = ?
+            """)) {
+                ps.setInt(1, reservationId);
+                ps.setString(2, single);
+                ps.executeUpdate();
+            }
+            return List.of(single);
+        }
+
+        // 2) DP best-fit on all free tables
+        List<TableCandidate> free = getFreeTables(conn);
+        List<TableCandidate> chosen = chooseBestFit(free, numCustomers);
+        if (chosen == null || chosen.isEmpty()) return null;
+
+        // Occupy them atomically (if any fails -> return null and let caller rollback)
+        List<String> tableIds = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement("""
+            UPDATE restaurant_table
+            SET status = 'OCCUPIED',
+                reserved_for_reservation_id = ?,
+                reserved_until = NULL
+            WHERE table_id = ? AND status = 'FREE'
+        """)) {
+            for (TableCandidate t : chosen) {
+                ps.setInt(1, reservationId);
+                ps.setString(2, t.tableId);
+                int updated = ps.executeUpdate();
+                if (updated != 1) return null; // someone took it
+                tableIds.add(t.tableId);
+            }
+        }
+
+        return tableIds;
+    }
+
+    /**
+     * Reserve MULTIPLE tables for a PENDING reservation (hold).
+     * Marks them RESERVED, sets reserved_for_reservation_id and reserved_until.
+     */
+    public static List<String> reserveFreeTablesBestFitForReservation(Connection conn, int reservationId, int numCustomers, int holdMinutes) throws Exception {
+        // 1) try existing single-table reserve logic if possible
+        String one = reserveFreeTableForReservation(conn, reservationId, numCustomers, holdMinutes);
+        if (one != null) return List.of(one);
+
+        // 2) DP best-fit
+        List<TableCandidate> free = getFreeTables(conn);
+        List<TableCandidate> chosen = chooseBestFit(free, numCustomers);
+        if (chosen == null || chosen.isEmpty()) return null;
+
+        List<String> tableIds = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement("""
+            UPDATE restaurant_table
+            SET status = 'RESERVED',
+                reserved_for_reservation_id = ?,
+                reserved_until = DATE_ADD(NOW(), INTERVAL ? MINUTE)
+            WHERE table_id = ? AND status = 'FREE'
+        """)) {
+            for (TableCandidate t : chosen) {
+                ps.setInt(1, reservationId);
+                ps.setInt(2, holdMinutes);
+                ps.setString(3, t.tableId);
+                int updated = ps.executeUpdate();
+                if (updated != 1) return null;
+                tableIds.add(t.tableId);
+            }
+        }
+
+        return tableIds;
+    }
+
+    public static List<String> getReservedTablesForReservation(Connection conn, int reservationId) throws Exception {
+        String sql = """
+            SELECT table_id
+            FROM restaurant_table
+            WHERE status = 'RESERVED'
+              AND reserved_for_reservation_id = ?
+              AND reserved_until > NOW()
+            ORDER BY num_of_seats DESC
+        """;
+        List<String> out = new ArrayList<>();
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, reservationId);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) out.add(rs.getString(1));
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Convert all RESERVED tables (for reservation) into OCCUPIED on check-in.
+     * Keep reserved_for_reservation_id so we can free all after payment.
+     */
+    public static int occupyReservedTablesForReservation(Connection conn, int reservationId) throws Exception {
+        try (PreparedStatement ps = conn.prepareStatement("""
+            UPDATE restaurant_table
+            SET status = 'OCCUPIED',
+                reserved_until = NULL
+            WHERE reserved_for_reservation_id = ?
+              AND status = 'RESERVED'
+        """)) {
+            ps.setInt(1, reservationId);
+            return ps.executeUpdate();
+        }
+    }
+
+    public static int freeOccupiedTablesForReservation(Connection conn, int reservationId) throws Exception {
+        try (PreparedStatement ps = conn.prepareStatement("""
+            UPDATE restaurant_table
+            SET status = 'FREE',
+                reserved_for_reservation_id = NULL,
+                reserved_until = NULL
+            WHERE reserved_for_reservation_id = ?
+              AND status = 'OCCUPIED'
+        """)) {
+            ps.setInt(1, reservationId);
+            return ps.executeUpdate();
+        }
+    }
 
 }

@@ -378,40 +378,44 @@ public class ReservationDAO {
 
             // 4) Allocate/Occupy table
             String tableId = null;
+            List<String> tableIds = null;
 
-            // CONFIRMED -> allocate FREE
+            // CONFIRMED -> allocate FREE (single first, then multi-table best-fit)
             if ("CONFIRMED".equalsIgnoreCase(status)) {
-                tableId = RestaurantTableDAO.allocateFreeTable(conn, numCustomers);
 
-                if (tableId == null) {
-                    // Tables full -> move to PENDING (Option 1 first scan)
-                    boolean changed = markPendingByCode(conn, code);
-                    conn.commit(); // commit the PENDING status
-                    throw new Exception(changed
-                            ? "No suitable table free. Reservation moved to PENDING — you will be emailed when a table is reserved."
-                            : "No suitable table free. Could not move to PENDING.");
-                }
-            }
+            	tableIds = RestaurantTableDAO.allocateFreeTablesBestFit(conn, reservationId, numCustomers);
+
+             	if (tableIds == null || tableIds.isEmpty()) {
+                 // Tables full -> move to PENDING (Option 1 first scan)
+             		boolean changed = markPendingByCode(conn, code);
+             		conn.commit(); // commit the PENDING status
+             		throw new Exception(changed
+                         ? "No suitable tables free. Reservation moved to PENDING — you will be emailed when tables are reserved."
+                         : "No suitable tables free. Could not move to PENDING.");
+             }
+
+             tableId = tableIds.get(0); // keep old behavior for returning a single "main" table
+         }
 
             // PENDING -> second scan: must have RESERVED table for this reservation
             else { // PENDING
-                String reserved = RestaurantTableDAO.getReservedTableForReservation(conn, reservationId);
 
-                if (reserved == null || reserved.isBlank()) {
-                    // ✅ Do NOT cancel. Just keep waiting.
-                    conn.commit(); // nothing changed, but safe
-                    throw new Exception("Still waiting for a reserved table. Please wait for the email.");
-                }
+                tableIds = RestaurantTableDAO.getReservedTablesForReservation(conn, reservationId);
 
-                // This should enforce reserved_until > NOW() internally
-                boolean ok = RestaurantTableDAO.occupyReservedTableForReservation(conn, reserved, reservationId);
-                if (!ok) {
+                if (tableIds == null || tableIds.isEmpty()) {
                     conn.commit();
-                    throw new Exception("Reserved table is no longer available (or 15-min window expired). Please wait for a new table.");
+                    throw new Exception("Still waiting for reserved tables. Please wait for the email.");
                 }
 
-                tableId = reserved;
+                int changed = RestaurantTableDAO.occupyReservedTablesForReservation(conn, reservationId);
+                if (changed <= 0) {
+                    conn.commit();
+                    throw new Exception("Reserved tables are not available (or 15-min window expired). Please wait for new tables.");
+                }
+
+                tableId = tableIds.get(0); // main table for UI/return
             }
+
 
             // 5) Set ARRIVED (works for CONFIRMED and PENDING now)
             int updated;
@@ -425,7 +429,14 @@ public class ReservationDAO {
             }
 
             // 6) Insert visit
-            DataBase.dao.VisitDAO.insertVisit(conn, activityId, tableId);
+            if (tableIds == null || tableIds.isEmpty()) {
+                // fallback safety (should not happen)
+                VisitDAO.insertVisit(conn, activityId, tableId);
+            } else {
+                for (String t : tableIds) {
+                    VisitDAO.insertVisit(conn, activityId, t);
+                }
+            }
 
             conn.commit();
             return tableId;
@@ -911,7 +922,9 @@ public class ReservationDAO {
 
         Integer resId = null;
         Integer seats = null;
-        String tableId = null;
+
+        // NEW: we now may reserve MULTIPLE tables
+        List<String> tableIds = null;
 
         try {
             conn.setAutoCommit(false);
@@ -929,16 +942,18 @@ public class ReservationDAO {
                 return;
             }
 
-            // already reserved for this reservation?
-            String existing = RestaurantTableDAO.getReservedTableForReservation(conn, resId);
-            if (existing != null) {
+            // ✅ Already reserved for this reservation? (multi-table aware)
+            java.util.List<String> existing = RestaurantTableDAO.getReservedTablesForReservation(conn, resId);
+            if (existing != null && !existing.isEmpty()) {
                 conn.rollback();
                 return;
             }
 
-            // try reserve a table for 15 minutes
-            tableId = RestaurantTableDAO.reserveFreeTableForReservation(conn, seats, resId, 15);
-            if (tableId == null) {
+            // ✅ Try reserve table(s) for 15 minutes:
+            // - first tries single-table reserve (inside the method)
+            // - then falls back to best-fit multi-table reserve
+            tableIds = RestaurantTableDAO.reserveFreeTablesBestFitForReservation(conn, resId, seats, 15);
+            if (tableIds == null || tableIds.isEmpty()) {
                 conn.rollback();
                 return;
             }
@@ -953,14 +968,17 @@ public class ReservationDAO {
             pool.releaseConnection(pc);
         }
 
-        // send email AFTER commit
+        // ✅ Send email AFTER commit
         try {
             String email = getReservationEmail(resId);
             if (email != null && !email.isBlank()) {
-                EmailService.sendReservationTableReady(email, tableId);
+                // Send all reserved table ids as one string (no DTO/DB changes)
+                String tableIdsStr = String.join(",", tableIds);
+                EmailService.sendReservationTableReady(email, tableIdsStr);
             }
         } catch (Exception ignored) {}
     }
+
 
     public static int cancelPendingReservationsWithExpiredHold() throws Exception {
 

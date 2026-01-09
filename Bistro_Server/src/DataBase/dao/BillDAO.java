@@ -157,7 +157,9 @@ public class BillDAO {
                         String st = rs.getString(1);
                         if (!"ARRIVED".equalsIgnoreCase(st)) {
                             conn.rollback();
-                            return PayBillResult.fail("Pay allowed only after check-in (reservation must be ARRIVED). Current: " + st);
+                            return PayBillResult.fail(
+                                    "Pay allowed only after check-in (reservation must be ARRIVED). Current: " + st
+                            );
                         }
                     }
                 }
@@ -176,7 +178,9 @@ public class BillDAO {
                         String st = rs.getString(1);
                         if (!"ARRIVED".equalsIgnoreCase(st)) {
                             conn.rollback();
-                            return PayBillResult.fail("Pay allowed only after check-in (waiting list must be ARRIVED). Current: " + st);
+                            return PayBillResult.fail(
+                                    "Pay allowed only after check-in (waiting list must be ARRIVED). Current: " + st
+                            );
                         }
                     }
                 }
@@ -188,16 +192,18 @@ public class BillDAO {
                 return PayBillResult.fail("No activity found for this code.");
             }
 
+            // find any active visit (there may be MANY in Option B)
             VisitRow v = findActiveVisit(conn, ua.activityId);
             if (v == null) {
                 conn.rollback();
                 return PayBillResult.fail("No active visit found for this code.");
             }
 
-            BillRow b = findBillByVisit(conn, v.visitId);
+            // ✅ OPTION B SAFE: bill must be found by ACTIVITY, not by a random visit_id
+            BillRow b = findLatestBillByActivity(conn, ua.activityId);
             if (b == null) {
                 conn.rollback();
-                return PayBillResult.fail("Bill not created yet for this visit.");
+                return PayBillResult.fail("Bill not created yet for this activity. Please click 'Find Bill' first.");
             }
 
             if ("YES".equalsIgnoreCase(b.isPaid)) {
@@ -229,32 +235,52 @@ public class BillDAO {
                 }
             }
 
-            // 2) End visit
+            // =========================================================
+            // ✅ OPTION B FIX #1: End ALL active visits of this activity
+            // =========================================================
+            int endedVisits;
             try (PreparedStatement ps = conn.prepareStatement("""
                 UPDATE visit
                 SET actual_end_time = NOW()
-                WHERE visit_id = ? AND actual_end_time IS NULL
+                WHERE activity_id = ?
+                  AND actual_end_time IS NULL
             """)) {
-                ps.setInt(1, v.visitId);
-                int updated = ps.executeUpdate();
-                if (updated != 1) {
+                ps.setInt(1, ua.activityId);
+                endedVisits = ps.executeUpdate();
+                if (endedVisits <= 0) {
                     conn.rollback();
-                    return PayBillResult.fail("Pay failed (visit already ended).");
+                    return PayBillResult.fail("Pay failed (no active visits to end).");
                 }
             }
 
-            // 3) Free table
-            try (PreparedStatement ps = conn.prepareStatement("""
-                UPDATE restaurant_table
-                SET status = 'FREE'
-                WHERE table_id = ? AND status = 'OCCUPIED'
-            """)) {
-                ps.setString(1, v.tableId);
-                int updated = ps.executeUpdate();
-                if (updated != 1) {
+            // =========================================================
+            // ✅ OPTION B FIX #2: Free ALL tables used by the reservation
+            //     (We rely on reserved_for_reservation_id that we set on OCCUPIED)
+            // =========================================================
+            String releasedTablesInfo;
+
+            if (reservationId != null) {
+                int freed = RestaurantTableDAO.freeOccupiedTablesForReservation(conn, reservationId);
+                if (freed <= 0) {
                     conn.rollback();
-                    return PayBillResult.fail("Pay failed (table status changed).");
+                    return PayBillResult.fail("Pay failed (no occupied tables found for reservation).");
                 }
+                releasedTablesInfo = "Released " + freed + " table(s)";
+            } else {
+                // Waiting list (keep old single-table behavior for now)
+                try (PreparedStatement ps = conn.prepareStatement("""
+                    UPDATE restaurant_table
+                    SET status = 'FREE'
+                    WHERE table_id = ? AND status = 'OCCUPIED'
+                """)) {
+                    ps.setString(1, v.tableId);
+                    int updated = ps.executeUpdate();
+                    if (updated != 1) {
+                        conn.rollback();
+                        return PayBillResult.fail("Pay failed (table status changed).");
+                    }
+                }
+                releasedTablesInfo = "Released table " + v.tableId;
             }
 
             // 4) Finish reservation after payment: ARRIVED -> EXPIRED
@@ -292,7 +318,9 @@ public class BillDAO {
             }
 
             conn.commit();
-            return PayBillResult.ok("Payment successful ✅ — table released", v.tableId);
+
+            // Keep compatibility with UI (tableId still returned, though multi-table exists)
+            return PayBillResult.ok("Payment successful ✅ — " + releasedTablesInfo, v.tableId);
 
         } catch (Exception e) {
             try { conn.rollback(); } catch (Exception ignored) {}
@@ -303,10 +331,33 @@ public class BillDAO {
         }
     }
 
-
     // =========================
     // Helpers (private)
     // =========================
+    
+    private static BillRow findLatestBillByActivity(Connection conn, int activityId) throws Exception {
+        try (PreparedStatement ps = conn.prepareStatement("""
+            SELECT b.bill_id, b.visit_id, b.total_amount, b.is_subscriber_discount, b.is_paid
+            FROM bill b
+            JOIN visit v ON v.visit_id = b.visit_id
+            WHERE v.activity_id = ?
+            ORDER BY b.bill_id DESC
+            LIMIT 1
+        """)) {
+            ps.setInt(1, activityId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) return null;
+                return new BillRow(
+                        rs.getInt("bill_id"),
+                        rs.getInt("visit_id"),
+                        rs.getDouble("total_amount"),
+                        rs.getString("is_subscriber_discount"),
+                        rs.getString("is_paid")
+                );
+            }
+        }
+    }
+
 
     private static Integer findReservationIdByCode(Connection conn, String code) throws Exception {
         try (PreparedStatement ps = conn.prepareStatement("""
