@@ -143,6 +143,45 @@ public class BillDAO {
                 return PayBillResult.fail("Code not found.");
             }
 
+            // ✅ Enforce correct "can pay" status before doing anything
+            if (reservationId != null) {
+                try (PreparedStatement ps = conn.prepareStatement("""
+                    SELECT status FROM reservation WHERE reservation_id = ? LIMIT 1
+                """)) {
+                    ps.setInt(1, reservationId);
+                    try (ResultSet rs = ps.executeQuery()) {
+                        if (!rs.next()) {
+                            conn.rollback();
+                            return PayBillResult.fail("Reservation not found.");
+                        }
+                        String st = rs.getString(1);
+                        if (!"ARRIVED".equalsIgnoreCase(st)) {
+                            conn.rollback();
+                            return PayBillResult.fail("Pay allowed only after check-in (reservation must be ARRIVED). Current: " + st);
+                        }
+                    }
+                }
+            }
+
+            if (waitingId != null) {
+                try (PreparedStatement ps = conn.prepareStatement("""
+                    SELECT status FROM waiting_list WHERE waiting_id = ? LIMIT 1
+                """)) {
+                    ps.setInt(1, waitingId);
+                    try (ResultSet rs = ps.executeQuery()) {
+                        if (!rs.next()) {
+                            conn.rollback();
+                            return PayBillResult.fail("Waiting list not found.");
+                        }
+                        String st = rs.getString(1);
+                        if (!"ARRIVED".equalsIgnoreCase(st)) {
+                            conn.rollback();
+                            return PayBillResult.fail("Pay allowed only after check-in (waiting list must be ARRIVED). Current: " + st);
+                        }
+                    }
+                }
+            }
+
             UserActivityRow ua = findUserActivity(conn, reservationId, waitingId);
             if (ua == null) {
                 conn.rollback();
@@ -172,7 +211,7 @@ public class BillDAO {
             double discount = subscriber ? subtotal * 0.10 : 0.0;
             double total = subtotal - discount;
 
-            // 1) Update bill: mark paid + store final amount + discount flag
+            // 1) Update bill
             try (PreparedStatement ps = conn.prepareStatement("""
                 UPDATE bill
                 SET is_paid = 'YES',
@@ -190,7 +229,7 @@ public class BillDAO {
                 }
             }
 
-            // 2) End visit (Option A): actual_end_time becomes real checkout time
+            // 2) End visit
             try (PreparedStatement ps = conn.prepareStatement("""
                 UPDATE visit
                 SET actual_end_time = NOW()
@@ -204,7 +243,7 @@ public class BillDAO {
                 }
             }
 
-            // 3) Free table (ONLY after successful payment)
+            // 3) Free table
             try (PreparedStatement ps = conn.prepareStatement("""
                 UPDATE restaurant_table
                 SET status = 'FREE'
@@ -218,7 +257,7 @@ public class BillDAO {
                 }
             }
 
-            // 4) Finish reservation ONLY after payment: ARRIVED -> EXPIRED (your "finished" state)
+            // 4) Finish reservation after payment: ARRIVED -> EXPIRED
             if (reservationId != null) {
                 try (PreparedStatement ps = conn.prepareStatement("""
                     UPDATE reservation
@@ -234,26 +273,23 @@ public class BillDAO {
                     }
                 }
             }
-            
-         // ✅ Finish waiting list ONLY after payment: ASSIGNED -> EXPIRED
+
+            // 5) Finish waiting list after payment: ARRIVED -> EXPIRED
             if (waitingId != null) {
                 try (PreparedStatement ps = conn.prepareStatement("""
                     UPDATE waiting_list
                     SET status = 'EXPIRED'
                     WHERE waiting_id = ?
-                      AND status = 'ASSIGNED'
+                      AND status = 'ARRIVED'
                 """)) {
                     ps.setInt(1, waitingId);
                     int updated = ps.executeUpdate();
                     if (updated != 1) {
                         conn.rollback();
-                        return PayBillResult.fail("Pay failed (waiting list not ASSIGNED / already finished).");
+                        return PayBillResult.fail("Pay failed (waiting list not ARRIVED / already finished).");
                     }
                 }
             }
-
-            // (Optional) If you later confirm waiting_list enum supports 'EXPIRED' or another final state,
-            // add a similar UPDATE here for waitingId.
 
             conn.commit();
             return PayBillResult.ok("Payment successful ✅ — table released", v.tableId);

@@ -135,7 +135,7 @@ public class ClientController implements ClientUI {
                     "10:00","10:30","11:00","11:30","12:00","12:30",
                     "13:00","13:30","14:00","14:30","15:00","15:30",
                     "16:00","16:30","17:00","17:30","18:00","18:30",
-                    "19:00","19:30","20:00","20:30","21:00","21:30","11:17"
+                    "19:00","19:30","20:00","20:30","21:00","21:30","22:00","02:00","23:15","01:15","04:30","04:43","06:43"
             );
             cbReservationTime.getSelectionModel().select("18:00");
         }
@@ -603,7 +603,7 @@ public class ClientController implements ClientUI {
         // CONFIRMED -> future upcoming
         // ARRIVED -> already came, still active until finished/closed
         // (add more if your DB uses them)
-        return s.equals("CONFIRMED") || s.equals("ARRIVED");
+        return s.equals("CONFIRMED") || s.equals("ARRIVED") || s.equals("PENDING");
     }
 
     
@@ -950,10 +950,6 @@ public class ClientController implements ClientUI {
         return client;
     }
  
-    // temp to delete after login is available
-    public void setClient(BistroClient client) {
-        this.client = client;
-    }
 
 
     @FXML

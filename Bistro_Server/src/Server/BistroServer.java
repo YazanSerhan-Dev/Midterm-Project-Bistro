@@ -782,16 +782,9 @@ public class BistroServer extends AbstractServer {
 
             code = code.trim();
             
-            /* ✅ (8) FIRST: try "second scan confirmation" for auto-reserved reservations */
-            TerminalValidateResponseDTO confirm = ReservationDAO.confirmAutoReservedByCode(code);
-            if (confirm != null) {
-                sendOk(client, OpCode.RESPONSE_TERMINAL_CHECK_IN, confirm);
-                return;
-            }
-
             // 1) RESERVATION check-in (keep your existing behavior)
             TerminalValidateResponseDTO info = DataBase.dao.ReservationDAO.getTerminalInfoByCode(code);
-            if (info != null && info.isValid() && info.isCheckInAllowed()) {
+            if (info != null && info.isValid()) {
             	String tableId = ReservationDAO.markArrivedByCodeReturnTableId(code);
             	TerminalValidateResponseDTO dto = ReservationDAO.getTerminalInfoByCode(code);
             	dto.setValid(true);

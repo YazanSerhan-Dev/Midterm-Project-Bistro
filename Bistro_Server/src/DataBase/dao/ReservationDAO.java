@@ -231,11 +231,13 @@ public class ReservationDAO {
 
     
     public static int cancelNoShows15Min() throws Exception {
+
         String sql = """
-            UPDATE reservation
-            SET status = 'CANCELED'
-            WHERE status = 'CONFIRMED'
-              AND reservation_time < (NOW() - INTERVAL 15 MINUTE)
+        	UPDATE reservation
+        		SET status = 'CANCELED'
+        		WHERE status = 'CONFIRMED'
+        		AND reservation_time <= NOW()
+        		AND TIMESTAMPDIFF(MINUTE, reservation_time, NOW()) > 15;
         """;
 
         MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
@@ -250,6 +252,7 @@ public class ReservationDAO {
     }
 
 
+
  // inside DataBase.dao.ReservationDAO
     public static String markArrivedByCodeReturnTableId(String code) throws Exception {
 
@@ -262,14 +265,16 @@ public class ReservationDAO {
 
         String sqlGetDbNow = "SELECT NOW() AS db_now";
 
+        // ✅ allow ARRIVED from CONFIRMED OR PENDING (second scan)
         String sqlSetArrived = """
             UPDATE reservation
             SET status = 'ARRIVED',
                 expiry_time = DATE_ADD(reservation_time, INTERVAL 2 HOUR)
             WHERE reservation_id = ?
-              AND status = 'CONFIRMED'
+              AND status IN ('CONFIRMED','PENDING')
         """;
 
+        // ✅ cancel “late no-show” only for CONFIRMED (never for PENDING)
         String sqlCancelLate = """
             UPDATE reservation
             SET status = 'CANCELED'
@@ -315,11 +320,11 @@ public class ReservationDAO {
                 }
             }
 
-            if (!"CONFIRMED".equalsIgnoreCase(status)) {
+            if (!"CONFIRMED".equalsIgnoreCase(status) && !"PENDING".equalsIgnoreCase(status)) {
                 throw new Exception("Check-in not allowed: status is " + status);
             }
 
-            // ✅ ADD THIS
+            // Already checked-in?
             if (VisitDAO.existsVisitForReservationId(conn, reservationId)) {
                 throw new Exception("Already checked-in for this reservation.");
             }
@@ -337,21 +342,25 @@ public class ReservationDAO {
             }
 
             long nowMs = dbNow.getTime();
-            long startMs = reservationTime.getTime();
-            long endMs = startMs + 15L * 60L * 1000L;
 
-            if (nowMs < startMs) {
-                throw new Exception("Too early. Check-in starts at reservation time.");
-            }
+            // ✅ TIME WINDOW applies ONLY for CONFIRMED
+            if ("CONFIRMED".equalsIgnoreCase(status)) {
+                long startMs = reservationTime.getTime();
+                long endMs = startMs + 15L * 60L * 1000L;
 
-            if (nowMs > endMs) {
-                // cancel late no-show immediately
-                try (PreparedStatement ps = conn.prepareStatement(sqlCancelLate)) {
-                    ps.setInt(1, reservationId);
-                    ps.executeUpdate();
+                if (nowMs < startMs) {
+                    throw new Exception("Too early. Check-in starts at reservation time.");
                 }
-                conn.commit();
-                throw new Exception("Too late. Reservation was canceled (no-show).");
+
+                if (nowMs > endMs) {
+                    // cancel late no-show immediately (CONFIRMED only)
+                    try (PreparedStatement ps = conn.prepareStatement(sqlCancelLate)) {
+                        ps.setInt(1, reservationId);
+                        ps.executeUpdate();
+                    }
+                    conn.commit();
+                    throw new Exception("Too late. Reservation was canceled (no-show).");
+                }
             }
 
             // 3) Find activity_id (must exist for Visit)
@@ -367,13 +376,44 @@ public class ReservationDAO {
                 throw new Exception("Missing user_activity row for this reservation. (Fix make-reservation flow)");
             }
 
-            // 4) Allocate table
-            String tableId = DataBase.dao.RestaurantTableDAO.allocateFreeTable(conn, numCustomers);
-            if (tableId == null) {
-                throw new Exception("No suitable FREE table available right now.");
+            // 4) Allocate/Occupy table
+            String tableId = null;
+
+            // CONFIRMED -> allocate FREE
+            if ("CONFIRMED".equalsIgnoreCase(status)) {
+                tableId = RestaurantTableDAO.allocateFreeTable(conn, numCustomers);
+
+                if (tableId == null) {
+                    // Tables full -> move to PENDING (Option 1 first scan)
+                    boolean changed = markPendingByCode(conn, code);
+                    conn.commit(); // commit the PENDING status
+                    throw new Exception(changed
+                            ? "No suitable table free. Reservation moved to PENDING — you will be emailed when a table is reserved."
+                            : "No suitable table free. Could not move to PENDING.");
+                }
             }
 
-            // 5) Set ARRIVED
+            // PENDING -> second scan: must have RESERVED table for this reservation
+            else { // PENDING
+                String reserved = RestaurantTableDAO.getReservedTableForReservation(conn, reservationId);
+
+                if (reserved == null || reserved.isBlank()) {
+                    // ✅ Do NOT cancel. Just keep waiting.
+                    conn.commit(); // nothing changed, but safe
+                    throw new Exception("Still waiting for a reserved table. Please wait for the email.");
+                }
+
+                // This should enforce reserved_until > NOW() internally
+                boolean ok = RestaurantTableDAO.occupyReservedTableForReservation(conn, reserved, reservationId);
+                if (!ok) {
+                    conn.commit();
+                    throw new Exception("Reserved table is no longer available (or 15-min window expired). Please wait for a new table.");
+                }
+
+                tableId = reserved;
+            }
+
+            // 5) Set ARRIVED (works for CONFIRMED and PENDING now)
             int updated;
             try (PreparedStatement ps = conn.prepareStatement(sqlSetArrived)) {
                 ps.setInt(1, reservationId);
@@ -517,21 +557,23 @@ public class ReservationDAO {
                 // Case 1: normal confirmed window
                 if ("CONFIRMED".equalsIgnoreCase(status)) {
                     dto.setCheckInAllowed(canCheckIn);
-                    dto.setMessage(canCheckIn ? "Code valid. Ready to check-in." : "Too early/late for check-in (allowed from reservation time until +15 minutes).");
+                    dto.setMessage(canCheckIn
+                            ? "Code valid. Ready to check-in."
+                            : "Too early/late for check-in (allowed from reservation time until +15 minutes).");
                     return dto;
                 }
 
                 // Case 2: waiting-for-table (PENDING)
                 if ("PENDING".equalsIgnoreCase(status)) {
-                    // If auto-reserved happened, show table + allow confirm scan
-                    Integer visitId = VisitDAO.getLatestVisitIdForReservation(conn, reservationId);
-                    String tableId = VisitDAO.getLatestTableIdForReservation(conn, reservationId);
 
-                    if (visitId != null && tableId != null && PerformanceLogDAO.isAutoReservedNotConfirmed(conn, visitId)) {
-                        dto.setTableId(tableId);
+                    String reservedTable = RestaurantTableDAO.getReservedTableForReservation(conn, reservationId);
+
+                    if (reservedTable != null && !reservedTable.isBlank()) {
+                        dto.setTableId(reservedTable);
                         dto.setCheckInAllowed(true);
-                        dto.setMessage("Table is ready: " + tableId + ". Press Check-in to confirm within 15 minutes.");
+                        dto.setMessage("Table is ready: " + reservedTable + ". Press Check-in to confirm within 15 minutes.");
                     } else {
+                        dto.setTableId("-");
                         dto.setCheckInAllowed(false);
                         dto.setMessage("No suitable table right now. Please wait — you will be notified when a table is ready.");
                     }
@@ -854,6 +896,7 @@ public class ReservationDAO {
     }
 
     public static void autoReserveForPendingReservations() throws Exception {
+
         String pickSql = """
             SELECT reservation_id, num_of_customers
             FROM reservation
@@ -866,11 +909,12 @@ public class ReservationDAO {
         PooledConnection pc = pool.getConnection();
         Connection conn = pc.getConnection();
 
+        Integer resId = null;
+        Integer seats = null;
+        String tableId = null;
+
         try {
             conn.setAutoCommit(false);
-
-            Integer resId = null;
-            Integer seats = null;
 
             try (PreparedStatement ps = conn.prepareStatement(pickSql);
                  ResultSet rs = ps.executeQuery()) {
@@ -885,47 +929,21 @@ public class ReservationDAO {
                 return;
             }
 
-            // Do we already have a RESERVED table for this reservation? (avoid duplicates)
-            String existingReserved = VisitDAO.getLatestTableIdForReservation(conn, resId);
-            if (existingReserved != null) {
-                // if table currently RESERVED, don’t create another one
+            // already reserved for this reservation?
+            String existing = RestaurantTableDAO.getReservedTableForReservation(conn, resId);
+            if (existing != null) {
                 conn.rollback();
                 return;
             }
 
-            String tableId = RestaurantTableDAO.reserveFreeTable(conn, seats);
+            // try reserve a table for 15 minutes
+            tableId = RestaurantTableDAO.reserveFreeTableForReservation(conn, seats, resId, 15);
             if (tableId == null) {
                 conn.rollback();
                 return;
             }
 
-            int activityId = UserActivityDAO.getLatestActivityIdByReservationId(conn, resId);
-            if (activityId <= 0) {
-                // no activity found -> revert table reserve
-                RestaurantTableDAO.freeTable(conn, tableId);
-                conn.rollback();
-                return;
-            }
-
-            int visitId = VisitDAO.insertVisitReturnVisitId(conn, activityId, tableId);
-            if (visitId <= 0) {
-                RestaurantTableDAO.freeTable(conn, tableId);
-                conn.rollback();
-                return;
-            }
-
-            PerformanceLogDAO.insertAutoReservedNotConfirmed(conn, visitId);
-
             conn.commit();
-
-            // After commit -> send notification (email/sms)
-            try {
-                String email = getReservationEmail(resId); // you already have this method in ReservationDAO
-                if (email != null && !email.isBlank()) {
-                    EmailService.sendReservationTableReady(email, tableId);
-                }
-                // if you have phone method, also send SMS
-            } catch (Exception ignored) {}
 
         } catch (Exception e) {
             try { conn.rollback(); } catch (Exception ignored) {}
@@ -934,131 +952,38 @@ public class ReservationDAO {
             try { conn.setAutoCommit(true); } catch (Exception ignored) {}
             pool.releaseConnection(pc);
         }
-    }
 
-    public static common.dto.TerminalValidateResponseDTO confirmAutoReservedByCode(String code) throws Exception {
-
-        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
-        PooledConnection pc = pool.getConnection();
-        Connection conn = pc.getConnection();
-
+        // send email AFTER commit
         try {
-            conn.setAutoCommit(false);
-
-            ResMini r = getReservationMiniByCode(conn, code);
-            if (r == null) {
-                conn.rollback();
-                return new common.dto.TerminalValidateResponseDTO(false, "Invalid code.");
+            String email = getReservationEmail(resId);
+            if (email != null && !email.isBlank()) {
+                EmailService.sendReservationTableReady(email, tableId);
             }
-
-            // Only for PENDING reservations
-            if (!"PENDING".equalsIgnoreCase(r.status)) {
-                conn.rollback();
-                return null; // let normal check-in flow handle it
-            }
-
-            Integer visitId = VisitDAO.getLatestVisitIdForReservation(conn, r.reservationId);
-            String tableId = VisitDAO.getLatestTableIdForReservation(conn, r.reservationId);
-
-            if (visitId == null || tableId == null) {
-                conn.rollback();
-                return null;
-            }
-
-            // Must be auto-reserved-not-confirmed
-            if (!PerformanceLogDAO.isAutoReservedNotConfirmed(conn, visitId)) {
-                conn.rollback();
-                return null;
-            }
-
-            // Table must be RESERVED
-            boolean occupied = RestaurantTableDAO.occupyReservedTable(conn, tableId);
-            if (!occupied) {
-                conn.rollback();
-                return new common.dto.TerminalValidateResponseDTO(false, "Reserved table is no longer available.");
-            }
-
-            // Reservation -> ARRIVED
-            try (PreparedStatement ps = conn.prepareStatement("""
-                UPDATE reservation
-                SET status = 'ARRIVED'
-                WHERE reservation_id = ? AND status = 'PENDING'
-            """)) {
-                ps.setInt(1, r.reservationId);
-                ps.executeUpdate();
-            }
-
-            PerformanceLogDAO.confirmAutoReserved(conn, visitId);
-
-            conn.commit();
-
-            common.dto.TerminalValidateResponseDTO dto = new common.dto.TerminalValidateResponseDTO(true, "Confirmed. Enjoy your meal ✅");
-            dto.setReservationId(r.reservationId);
-            dto.setNumOfCustomers(r.numCustomers);
-            dto.setStatus("ARRIVED");
-            dto.setCheckInAllowed(false);
-            dto.setTableId(tableId);
-            return dto;
-
-        } catch (Exception e) {
-            try { conn.rollback(); } catch (Exception ignored) {}
-            throw e;
-        } finally {
-            try { conn.setAutoCommit(true); } catch (Exception ignored) {}
-            pool.releaseConnection(pc);
-        }
+        } catch (Exception ignored) {}
     }
 
-    public static void releaseExpiredAutoReserved(int minutes) throws Exception {
+    public static int cancelPendingReservationsWithExpiredHold() throws Exception {
 
         String sql = """
-            SELECT v.visit_id, v.table_id, r.reservation_id
-            FROM visit v
-            JOIN performance_log pl ON pl.visit_id = v.visit_id
-            JOIN user_activity ua ON ua.activity_id = v.activity_id
-            JOIN reservation r ON r.reservation_id = ua.reservation_id
-            JOIN restaurant_table t ON t.table_id = v.table_id
-            WHERE t.status = 'RESERVED'
-              AND pl.late_minutes = -999
-              AND v.actual_start_time < (NOW() - INTERVAL ? MINUTE)
+            UPDATE reservation r
+            JOIN restaurant_table t
+              ON t.reserved_for_reservation_id = r.reservation_id
+            SET r.status = 'CANCELED',
+                t.status = 'FREE',
+                t.reserved_for_reservation_id = NULL,
+                t.reserved_until = NULL
+            WHERE r.status = 'PENDING'
+              AND t.status = 'RESERVED'
+              AND t.reserved_until < NOW()
         """;
 
         MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
         PooledConnection pc = pool.getConnection();
         Connection conn = pc.getConnection();
 
-        try {
-            conn.setAutoCommit(false);
-
-            try (PreparedStatement ps = conn.prepareStatement(sql)) {
-                ps.setInt(1, minutes);
-
-                try (ResultSet rs = ps.executeQuery()) {
-                    while (rs.next()) {
-                        int visitId = rs.getInt("visit_id");
-                        String tableId = rs.getString("table_id");
-                        int reservationId = rs.getInt("reservation_id");
-
-                        // free table
-                        RestaurantTableDAO.freeTable(conn, tableId);
-
-                        // delete marker + visit
-                        PerformanceLogDAO.deleteByVisitId(conn, visitId);
-                        VisitDAO.deleteVisitById(conn, visitId);
-
-                        // reservation stays PENDING (still waiting)
-                        // (no update needed)
-                    }
-                }
-            }
-
-            conn.commit();
-
-        } catch (Exception e) {
-            try { conn.rollback(); } catch (Exception ignored) {}
-            throw e;
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            return ps.executeUpdate();
         } finally {
-            try { conn.setAutoCommit(true); } catch (Exception ignored) {}
             pool.releaseConnection(pc);
         }
     }
