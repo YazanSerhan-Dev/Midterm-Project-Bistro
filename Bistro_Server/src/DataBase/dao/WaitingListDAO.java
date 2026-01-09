@@ -3,6 +3,7 @@ package DataBase.dao;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.Savepoint;
 import java.sql.Timestamp;
 import java.util.List;
 
@@ -530,29 +531,25 @@ public class WaitingListDAO {
         try {
             conn.setAutoCommit(false);
 
-            // =========================================================
-            // ✅ Capacity-aware reservation priority (real-life rule):
-            // Allow waiting-list ONLY if we can still keep enough FREE seats
-            // to satisfy PENDING reservations + CONFIRMED due soon reservations.
-            //
-            // Example:
-            //   freeSeats=30, pendingNeed=15, waiting=6 -> 30-6 >= 15 => allow.
-            // =========================================================
-
-            int freeSeatsNow = RestaurantTableDAO.getTotalSeatsAvailable();   // FREE seats only
-            int pendingNeed = ReservationDAO.sumPendingSeats(conn, 20);       // top 20 oldest pending
-            int confirmedNeed = ReservationDAO.sumConfirmedDueSoonSeats(conn, RESERVATION_LOOKAHEAD_MINUTES);
-
-            int protectedNeed = pendingNeed + confirmedNeed;
-
-            // If there are 0 free seats, no point assigning.
+            // ✅ FREE seats using SAME connection
+            int freeSeatsNow = RestaurantTableDAO.getTotalSeatsAvailable(conn);
             if (freeSeatsNow <= 0) {
                 conn.rollback();
                 return null;
             }
 
+            // Seats requested by reservations we must protect
+            int pendingNeed = ReservationDAO.sumPendingSeats(conn, 20);
+            int confirmedNeed = ReservationDAO.sumConfirmedDueSoonSeats(conn, RESERVATION_LOOKAHEAD_MINUTES);
+
+            // ✅ Key fix: seats already RESERVED for pending are already protected
+            int pendingReservedSeats = RestaurantTableDAO.sumReservedSeatsForPendingReservations(conn);
+
+            int effectivePendingNeed = Math.max(0, pendingNeed - pendingReservedSeats);
+            int protectedNeed = effectivePendingNeed + confirmedNeed;
+
             String pick = """
-                SELECT waiting_id, num_of_customers, status, confirmation_code
+                SELECT waiting_id, num_of_customers, confirmation_code
                 FROM waiting_list
                 WHERE status = 'WAITING'
                 ORDER BY request_time ASC
@@ -564,33 +561,41 @@ public class WaitingListDAO {
                  ResultSet rs = ps.executeQuery()) {
 
                 while (rs.next()) {
-                    int id = rs.getInt("waiting_id");
+
+                    int waitingId = rs.getInt("waiting_id");
                     int people = rs.getInt("num_of_customers");
                     String code = rs.getString("confirmation_code");
 
                     // ✅ If already reserved somehow, skip (safety)
-                    List<String> existing = RestaurantTableDAO.getReservedTablesForWaiting(conn, id);
+                    List<String> existing = RestaurantTableDAO.getReservedTablesForWaiting(conn, waitingId);
                     if (existing != null && !existing.isEmpty()) {
                         continue;
                     }
 
-                    // ✅ Reservation protection:
-                    // Only assign this waiting entry if after seating them we still keep enough
-                    // FREE seats to satisfy reservation demand.
-                    if ((freeSeatsNow - people) < protectedNeed) {
-                        // try a smaller waiting party (since we scan 20)
+                    // Savepoint so we can revert only this attempt
+                    Savepoint sp = conn.setSavepoint("WL_TRY_" + waitingId);
+
+                    // Reserve tables for waiting entry
+                    List<String> tableIds = RestaurantTableDAO.reserveFreeTablesBestFitForWaiting(
+                            conn, waitingId, people, HOLD_MINUTES);
+
+                    if (tableIds == null || tableIds.isEmpty()) {
+                        conn.rollback(sp);
                         continue;
                     }
 
-                    // 2) reserve TABLE(S) for this waiting entry (15-min hold)
-                    List<String> tableIds = RestaurantTableDAO.reserveFreeTablesBestFitForWaiting(
-                            conn, id, people, HOLD_MINUTES);
+                    // ✅ Real seats consumed (tables might exceed people count)
+                    int consumedSeats = RestaurantTableDAO.sumSeatsForTables(conn, tableIds);
 
-                    if (tableIds == null || tableIds.isEmpty()) {
-                        continue; // try next waiting entry
+                    // ✅ Reservation protection check (AFTER reserving)
+                    // remaining FREE seats must still cover protectedNeed
+                    int freeAfter = RestaurantTableDAO.getTotalSeatsAvailable(conn);
+                    if (freeAfter < protectedNeed) {
+                        conn.rollback(sp);
+                        continue;
                     }
 
-                    // 3) mark WAITING -> ASSIGNED
+                    // Mark WAITING -> ASSIGNED
                     int updated;
                     try (PreparedStatement up = conn.prepareStatement("""
                         UPDATE waiting_list
@@ -599,17 +604,17 @@ public class WaitingListDAO {
                         WHERE waiting_id = ?
                           AND status = 'WAITING'
                     """)) {
-                        up.setInt(1, id);
+                        up.setInt(1, waitingId);
                         updated = up.executeUpdate();
                     }
 
-                    if (updated == 1) {
-                        conn.commit();
-                        return new WaitingListDTO(id, null, null, null, people, "ASSIGNED", code);
-                    } else {
-                        // state changed; force rollback of table reservation safely
-                        throw new Exception("Waiting list state changed during assignment (id=" + id + ")");
+                    if (updated != 1) {
+                        conn.rollback(sp);
+                        continue;
                     }
+
+                    conn.commit();
+                    return new WaitingListDTO(waitingId, null, null, null, people, "ASSIGNED", code);
                 }
             }
 

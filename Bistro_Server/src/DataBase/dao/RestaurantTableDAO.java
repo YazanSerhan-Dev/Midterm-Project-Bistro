@@ -745,6 +745,58 @@ public class RestaurantTableDAO {
          return ps.executeUpdate();
      }
  }
+ 
+ public static int getTotalSeatsAvailable(Connection conn) throws Exception {
+	    String sql = """
+	        SELECT COALESCE(SUM(num_of_seats),0) AS total
+	        FROM restaurant_table
+	        WHERE status = 'FREE'
+	    """;
+
+	    try (PreparedStatement ps = conn.prepareStatement(sql);
+	         ResultSet rs = ps.executeQuery()) {
+	        return rs.next() ? rs.getInt("total") : 0;
+	    }
+	}
+
+	public static int sumSeatsForTables(Connection conn, List<String> tableIds) throws Exception {
+	    if (tableIds == null || tableIds.isEmpty()) return 0;
+
+	    // Build: IN (?,?,?,...)
+	    String placeholders = String.join(",", Collections.nCopies(tableIds.size(), "?"));
+
+	    String sql = """
+	        SELECT COALESCE(SUM(num_of_seats),0) AS total
+	        FROM restaurant_table
+	        WHERE table_id IN (""" + placeholders + ")";
+
+	    try (PreparedStatement ps = conn.prepareStatement(sql)) {
+	        for (int i = 0; i < tableIds.size(); i++) {
+	            ps.setString(i + 1, tableIds.get(i));
+	        }
+	        try (ResultSet rs = ps.executeQuery()) {
+	            return rs.next() ? rs.getInt("total") : 0;
+	        }
+	    }
+	}
+
+	public static int sumReservedSeatsForPendingReservations(Connection conn) throws Exception {
+	    String sql = """
+	        SELECT COALESCE(SUM(t.num_of_seats), 0) AS total
+	        FROM restaurant_table t
+	        JOIN reservation r ON r.reservation_id = t.reserved_for_reservation_id
+	        WHERE t.status = 'RESERVED'
+	          AND t.reserved_until IS NOT NULL
+	          AND t.reserved_until >= NOW()
+	          AND r.status = 'PENDING'
+	    """;
+
+	    try (PreparedStatement ps = conn.prepareStatement(sql);
+	         ResultSet rs = ps.executeQuery()) {
+	        return rs.next() ? rs.getInt("total") : 0;
+	    }
+	}
+
 
 
 }
