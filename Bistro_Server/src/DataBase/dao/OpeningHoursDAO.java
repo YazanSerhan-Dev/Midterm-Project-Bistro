@@ -176,7 +176,7 @@ public class OpeningHoursDAO {
 
      if (date.equals(today)) {
          // ✅ 1 hour from now (truncate seconds/nanos)
-         LocalTime nowPlus1h = java.time.LocalTime.now()
+         LocalTime nowPlus1h = LocalTime.now()
                  .withSecond(0).withNano(0)
                  .plusHours(1);
 
