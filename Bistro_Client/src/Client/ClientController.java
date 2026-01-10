@@ -948,16 +948,6 @@ public class ClientController implements ClientUI {
     }
 
     @FXML
-    private void onViewReservationDetails(ActionEvent e) {
-        ReservationRow r = tblReservations.getSelectionModel().getSelectedItem();
-        if (r == null) {
-            lblStatus.setText("Select a reservation first.");
-            return;
-        }
-        lblStatus.setText("Selected: " + r.getConfirmationCode());
-    }
-
-    @FXML
     private void onSaveProfile(ActionEvent e) {
         if (!isSubscriber) return;
 

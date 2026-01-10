@@ -22,7 +22,7 @@ public class LoginController implements ClientUI {
 
     @FXML
     public void initialize() {
-        lblConn.setText("Connecting...");
+    	onConnected();
         lblMsg.setText("");
 
         try {
