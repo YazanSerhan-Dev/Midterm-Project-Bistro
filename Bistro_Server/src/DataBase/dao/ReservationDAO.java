@@ -1067,6 +1067,121 @@ public class ReservationDAO {
             }
         }
     }
+    
+ // ReservationDAO.java (add inside class)
+    public static class CancelByCodeResult {
+        public final boolean ok;
+        public final String message;
+
+        public CancelByCodeResult(boolean ok, String message) {
+            this.ok = ok;
+            this.message = message;
+        }
+    }
+
+    /**
+     * Cancel reservation by confirmation code (Terminal flow).
+     * Allowed statuses: CONFIRMED, PENDING
+     * Not allowed: ARRIVED, CANCELED, EXPIRED, COMPLETED...
+     * Also releases RESERVED tables linked to this reservation.
+     */
+    public static CancelByCodeResult cancelReservationByCode(String confirmationCode) throws Exception {
+        if (confirmationCode == null || confirmationCode.trim().isEmpty()) {
+            return new CancelByCodeResult(false, "Missing confirmation code.");
+        }
+
+        String code = confirmationCode.trim();
+
+        String sqlGet = """
+            SELECT reservation_id, status
+            FROM reservation
+            WHERE confirmation_code = ?
+            LIMIT 1
+            FOR UPDATE
+        """;
+
+        String sqlCancel = """
+            UPDATE reservation
+            SET status = 'CANCELED'
+            WHERE reservation_id = ?
+              AND status IN ('CONFIRMED','PENDING')
+        """;
+
+        String sqlReleaseTables = """
+            UPDATE restaurant_table
+            SET status = 'FREE',
+                reserved_for_reservation_id = NULL,
+                reserved_until = NULL
+            WHERE reserved_for_reservation_id = ?
+              AND status = 'RESERVED'
+        """;
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try {
+            conn.setAutoCommit(false);
+
+            Integer resId = null;
+            String status = null;
+
+            try (PreparedStatement ps = conn.prepareStatement(sqlGet)) {
+                ps.setString(1, code);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (!rs.next()) {
+                        conn.rollback();
+                        return new CancelByCodeResult(false, "Code not found.");
+                    }
+                    resId = rs.getInt("reservation_id");
+                    status = rs.getString("status");
+                }
+            }
+
+            if (status == null) status = "";
+
+            // Block if already arrived / not cancelable
+            if (!status.equalsIgnoreCase("CONFIRMED") && !status.equalsIgnoreCase("PENDING")) {
+                conn.rollback();
+                return new CancelByCodeResult(false, "Cannot cancel. Status is: " + status);
+            }
+
+            // If there is a visit already -> don’t allow cancel (extra safety)
+            if (VisitDAO.existsVisitForReservationId(conn, resId)) {
+                conn.rollback();
+                return new CancelByCodeResult(false, "Already checked-in. Cannot cancel now.");
+            }
+
+            int updated;
+            try (PreparedStatement ps = conn.prepareStatement(sqlCancel)) {
+                ps.setInt(1, resId);
+                updated = ps.executeUpdate();
+            }
+
+            if (updated != 1) {
+                conn.rollback();
+                return new CancelByCodeResult(false, "Cancel failed (status changed).");
+            }
+
+            // Release reserved tables (important for PENDING)
+            try (PreparedStatement ps = conn.prepareStatement(sqlReleaseTables)) {
+                ps.setInt(1, resId);
+                ps.executeUpdate();
+            }
+
+            conn.commit();
+            return new CancelByCodeResult(true, "✅ Reservation canceled.");
+
+        } catch (Exception e) {
+            try { conn.rollback(); } catch (Exception ignored) {}
+            throw e;
+
+        } finally {
+            try { conn.setAutoCommit(true); } catch (Exception ignored) {}
+            pool.releaseConnection(pc);
+        }
+    }
+
 
 
 }

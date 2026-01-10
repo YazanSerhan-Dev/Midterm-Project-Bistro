@@ -20,7 +20,6 @@
                 <Label text="Terminal" style="-fx-font-size: 18px; -fx-font-weight: bold;"/>
                 <Region HBox.hgrow="ALWAYS"/>
                 <Label fx:id="lblConnectionStatus" text="Status: Not connected (UI demo)"/>
-                <Button text="Pay Bill" onAction="#onGoToPayBill"/>
                 <Button text="Back" onAction="#onBack"/>
                 <Button text="Logout" onAction="#onLogout"/>
             </children>
@@ -47,8 +46,9 @@
         			text="Leave Waiting List"
         			onAction="#onLeaveWaitingList"
         			maxWidth="Infinity"/>
-                        
-
+        		<Button text="Cancel Reservation" onAction="#onCancelReservation" maxWidth="Infinity"/>
+        		<Button text="Pay Bill" onAction="#onGoToPayBill" maxWidth="Infinity" />
+        			
                 <Separator/>
 
                 <Label text="I lost my confirmation code" style="-fx-font-weight: bold;"/>

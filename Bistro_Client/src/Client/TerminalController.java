@@ -65,6 +65,8 @@ public class TerminalController implements ClientUI {
     private volatile boolean leaveWLInFlight  = false;
     
     private volatile boolean checkedIn = false;
+    private volatile boolean cancelResInFlight = false;
+    private volatile boolean lastValidatedIsReservation = false;
     private volatile String lastCheckedInCode = "";
     private volatile String lastValidatedCode = "";
 
@@ -84,6 +86,66 @@ public class TerminalController implements ClientUI {
     // =========================
     // UI Actions
     // =========================
+    
+    @FXML
+    private void onCancelReservation() {
+
+        if (cancelResInFlight) {
+            lblTerminalStatus.setText("Cancel request already in progress...");
+            return;
+        }
+
+        String code = safeTrim(txtConfirmationCode.getText());
+        if (code.isEmpty()) {
+            lblTerminalStatus.setText("Enter reservation code first.");
+            return;
+        }
+
+        if (!isConnected()) {
+            lblTerminalStatus.setText("Not connected.");
+            return;
+        }
+
+        // ✅ Strong safety: only allow cancel after validation AND only if it was a reservation
+        if (!code.equalsIgnoreCase(lastValidatedCode) || !validated) {
+            lblTerminalStatus.setText("Please validate the code first.");
+            return;
+        }
+
+        if (!lastValidatedIsReservation) {
+            lblTerminalStatus.setText("This is not a reservation code.");
+            return;
+        }
+
+        // Optional: block if already checked-in
+        if (checkedIn && code.equalsIgnoreCase(lastCheckedInCode)) {
+            lblTerminalStatus.setText("Already checked-in. Cannot cancel.");
+            return;
+        }
+
+        // Optional confirm dialog
+        Alert a = new Alert(Alert.AlertType.CONFIRMATION);
+        a.setTitle("Cancel Reservation");
+        a.setHeaderText("Are you sure you want to cancel this reservation?");
+        a.setContentText("Code: " + code);
+
+        ButtonType yes = new ButtonType("Yes, cancel");
+        ButtonType no = new ButtonType("No", ButtonBar.ButtonData.CANCEL_CLOSE);
+        a.getButtonTypes().setAll(yes, no);
+
+        if (a.showAndWait().orElse(no) != yes) {
+            lblTerminalStatus.setText("Cancelled.");
+            return;
+        }
+
+        cancelResInFlight = true;
+        lblTerminalStatus.setText("Canceling reservation...");
+
+        // ✅ Uses your existing helper pattern
+        sendToServer(OpCode.REQUEST_TERMINAL_CANCEL_RESERVATION, code);
+    }
+
+    
 
     @FXML
     private void onJoinWaitingList() {
@@ -285,17 +347,37 @@ public class TerminalController implements ClientUI {
 
     @FXML
     private void onClear() {
-        txtConfirmationCode.clear();
-        lblValidationResult.setText("");
-        resetAll();
-        lblTerminalStatus.setText("Cleared.");
-        refreshConnectionLabel();
 
-        // also clear any in-flight flags (safe)
+        // clear inputs
+        if (txtConfirmationCode != null) txtConfirmationCode.clear();
+        if (txtRecoverPhoneOrEmail != null) txtRecoverPhoneOrEmail.clear();
+
+        // clear labels/results
+        if (lblValidationResult != null) lblValidationResult.setText("");
+        if (lblRecoverResult != null) lblRecoverResult.setText("");
+
+        // clear all UI blocks
+        resetAll();              // reservation + table + wait message
+        resetWaitingDetails();   // waiting list box
+
+        // reset business state
+        validated = false;
+        tableAvailable = false;
+        checkedIn = false;
+
+        lastValidatedIsReservation = false;
+        lastValidatedCode = "";
+        lastCheckedInCode = "";
+
+        // unlock in-flight flags (safe)
         validateInFlight = false;
         checkInInFlight = false;
         joinWLInFlight = false;
         leaveWLInFlight = false;
+        cancelResInFlight = false;
+
+        lblTerminalStatus.setText("Cleared.");
+        refreshConnectionLabel();
     }
 
     // Navigation
@@ -326,6 +408,7 @@ public class TerminalController implements ClientUI {
             checkInInFlight = false;
             joinWLInFlight = false;
             leaveWLInFlight = false;
+            cancelResInFlight = false;
         });
     }
 
@@ -340,6 +423,7 @@ public class TerminalController implements ClientUI {
             checkInInFlight = false;
             joinWLInFlight = false;
             leaveWLInFlight = false;
+            cancelResInFlight = false;
         });
     }
 
@@ -362,6 +446,10 @@ public class TerminalController implements ClientUI {
                     Object payload = env.getPayload();
 
                     if (payload instanceof TerminalValidateResponseDTO dto) {
+
+                    	int rid = 0;
+                    	try { rid = dto.getReservationId(); } catch (Throwable ignored) {}
+                    	lastValidatedIsReservation = rid > 0;
 
                         applyTerminalInfoToUI(dto); // keep this if you already have it
 
@@ -531,6 +619,29 @@ public class TerminalController implements ClientUI {
                             resetWaitingDetails();
                         }
                     }
+                    
+                    case RESPONSE_TERMINAL_CANCEL_RESERVATION -> {
+                        cancelResInFlight = false;
+
+                        Object payload = env.getPayload();
+                        String msg = (payload == null) ? "" : payload.toString();
+
+                        lblTerminalStatus.setText(msg.isBlank() ? "Cancel response received." : msg);
+
+                        // ✅ Reset UI after cancel (recommended)
+                        validated = false;
+                        tableAvailable = false;
+                        checkedIn = false;
+                        lastCheckedInCode = "";
+                        lastValidatedCode = "";
+
+                        lblValidationResult.setText("");
+                        resetAll();
+                        resetWaitingDetails();
+                        lblRecoverResult.setText("");
+                        
+                        txtConfirmationCode.clear();
+                    }
 
                     default -> {
                         // ignore
@@ -563,11 +674,11 @@ public class TerminalController implements ClientUI {
             var client = ClientSession.getClient();
             if (client == null) {
                 lblTerminalStatus.setText("ClientSession client is null.");
-                // unlock in-flight if this send was part of one
                 validateInFlight = false;
                 checkInInFlight = false;
                 joinWLInFlight = false;
                 leaveWLInFlight = false;
+                cancelResInFlight = false;   // ✅ ADD THIS
                 return;
             }
 
@@ -578,11 +689,11 @@ public class TerminalController implements ClientUI {
             lblTerminalStatus.setText("Send failed: " + e.getMessage());
             e.printStackTrace();
 
-            // unlock so user can retry
             validateInFlight = false;
             checkInInFlight = false;
             joinWLInFlight = false;
             leaveWLInFlight = false;
+            cancelResInFlight = false;   // ✅ ADD THIS
         }
     }
 

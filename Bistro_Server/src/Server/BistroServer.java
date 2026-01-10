@@ -140,12 +140,11 @@ public class BistroServer extends AbstractServer {
                 case REQUEST_HISTORY_GET -> sendOk(client, OpCode.RESPONSE_HISTORY_GET, List.of());
                 case REQUEST_BILL_GET_BY_CODE -> handleBillGetByCode(req, client);
                 case REQUEST_PAY_BILL        -> handlePayBill(req, client);
-                case REQUEST_TERMINAL_CHECK_OUT -> sendOk(client, OpCode.RESPONSE_TERMINAL_CHECK_OUT, "NOT_IMPLEMENTED_YET");
-                case REQUEST_TERMINAL_NO_SHOW -> sendOk(client, OpCode.RESPONSE_TERMINAL_NO_SHOW, "NOT_IMPLEMENTED_YET");
                 
                 case REQUEST_GET_PROFILE -> handleGetProfile(req, client);
                 case REQUEST_UPDATE_PROFILE -> handleUpdateProfile(req, client);
                 case REQUEST_RECOVER_CONFIRMATION_CODE -> handleRecoverConfirmationCode(req, client);
+                case REQUEST_TERMINAL_CANCEL_RESERVATION -> handleTerminalCancelReservation(req, client);
 
                 default -> sendError(client, OpCode.ERROR, "Unknown op: " + req.getOp());
             }
@@ -191,6 +190,28 @@ public class BistroServer extends AbstractServer {
     }
 
     /* ==================== Handlers ==================== */
+    
+    private void handleTerminalCancelReservation(Envelope req, ConnectionToClient client) {
+        try {
+            Object payload = readEnvelopePayload(req);
+            String code = (payload instanceof String s) ? s.trim() : "";
+
+            if (code.isBlank()) {
+                sendOk(client, OpCode.RESPONSE_TERMINAL_CANCEL_RESERVATION, "Missing confirmation code.");
+                return;
+            }
+
+            ReservationDAO.CancelByCodeResult r = ReservationDAO.cancelReservationByCode(code);
+
+            sendOk(client, OpCode.RESPONSE_TERMINAL_CANCEL_RESERVATION, r.message);
+
+        } catch (Exception e) {
+            try {
+                sendOk(client, OpCode.RESPONSE_TERMINAL_CANCEL_RESERVATION,
+                        "Server error: " + e.getMessage());
+            } catch (Exception ignored) {}
+        }
+    }
     
     private void handleRecoverConfirmationCode(Envelope req, ConnectionToClient client) {
         try {
