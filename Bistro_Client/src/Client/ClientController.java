@@ -129,20 +129,19 @@ public class ClientController implements ClientUI {
                 btnCancelReservation.setDisable(newV == null)
         );
 
-        // init New Reservation controls
-        if (cbReservationTime != null) {
-            cbReservationTime.getItems().setAll(
-                    "10:00","10:30","11:00","11:30","12:00","12:30",
-                    "13:00","13:30","14:00","14:30","15:00","15:30",
-                    "16:00","16:30","17:00","17:30","18:00","18:30",
-                    "19:00","19:30","20:00","20:30","21:00","21:30","22:00","02:00","23:15","01:15","04:30","04:43","06:43","22:30"
-            );
-            cbReservationTime.getSelectionModel().select("18:00");
-        }
-
         if (dpReservationDate != null) {
             dpReservationDate.setValue(LocalDate.now());
+
+            dpReservationDate.valueProperty().addListener((obs, oldV, newV) -> {
+                hideSuggestedTimesUI();
+                requestAvailableTimesForSelectedDate();
+            });
         }
+
+        if (cbReservationTime != null) {
+            cbReservationTime.getItems().clear();
+        }
+
 
         if (lblReservationFormMsg != null) {
             lblReservationFormMsg.setText("");
@@ -184,6 +183,7 @@ public class ClientController implements ClientUI {
                 onRefreshReservations();
             }
         });
+        Platform.runLater(this::requestAvailableTimesForSelectedDate);
     }
 
     private void setupReservationsTable() {
@@ -329,7 +329,7 @@ public class ClientController implements ClientUI {
                 
                 case RESPONSE_GET_PROFILE -> handleGetProfileResponse(env.getPayload());
                 case RESPONSE_UPDATE_PROFILE -> handleUpdateProfileResponse(env.getPayload());
-
+                case RESPONSE_GET_AVAILABLE_TIMES -> handleAvailableTimesResponse(env.getPayload());
 
                 default -> lblStatus.setText("Server replied: " + env.getOp());
             }
@@ -398,6 +398,36 @@ public class ClientController implements ClientUI {
 
         return dialog.showAndWait().orElse(null);
     }
+    
+    @SuppressWarnings("unchecked")
+    private void handleAvailableTimesResponse(Object payload) {
+        if (cbReservationTime == null) return;
+
+        cbReservationTime.setPromptText("Select time");
+
+        // ✅ IMPORTANT: reset selection/value so it doesn't stick to old value (like 19:30)
+        cbReservationTime.getSelectionModel().clearSelection();
+        cbReservationTime.setValue(null);
+        cbReservationTime.getItems().clear();
+
+        if (!(payload instanceof java.util.List<?> list)) {
+            if (lblReservationFormMsg != null) lblReservationFormMsg.setText("Bad times payload.");
+            return;
+        }
+
+        for (Object o : list) {
+            if (o != null) cbReservationTime.getItems().add(o.toString());
+        }
+
+        if (cbReservationTime.getItems().isEmpty()) {
+            if (lblReservationFormMsg != null) lblReservationFormMsg.setText("Restaurant is closed on selected date.");
+        } else {
+            cbReservationTime.getSelectionModel().selectFirst(); // ✅ now it will be 09:00/whatever first
+            if (lblReservationFormMsg != null) lblReservationFormMsg.setText("");
+        }
+    }
+
+
 
     private void handleGetProfileResponse(Object payload) {
         if (payload == null) {
@@ -416,10 +446,6 @@ public class ClientController implements ClientUI {
         txtEmail.setText(dto.getEmail() == null ? "" : dto.getEmail());
 
         lblStatus.setText("Profile loaded.");
-    }
-
-    private String getValue(String s) {
-        return s == null ? "" : s;
     }
 
 
@@ -559,7 +585,6 @@ public class ClientController implements ClientUI {
 
         int activeCount = 0;
         int totalCount = 0;
-        int historyCount = 0; // optional counter
 
         for (Object dto : list) {
             ReservationRow row = dtoToRow(dto);
@@ -579,7 +604,6 @@ public class ClientController implements ClientUI {
                 } else {
                     // ✅ Inactive -> History
                     history.add(row);
-                    historyCount++;
                 }
             } else {
                 // customer/guest: show all in My Reservations (no History page)
@@ -656,6 +680,31 @@ public class ClientController implements ClientUI {
         // If server sends string messages for errors, show them
         lblStatus.setText(payload == null ? "✅ Left waiting list." : payload.toString());
     }
+    
+    private void requestAvailableTimesForSelectedDate() {
+        this.client = ClientSession.getClient();
+
+        if (client == null || !client.isConnected()) {
+            if (lblReservationFormMsg != null) lblReservationFormMsg.setText("Not connected to server.");
+            return;
+        }
+
+        if (dpReservationDate == null || cbReservationTime == null) return;
+
+        LocalDate date = dpReservationDate.getValue();
+        if (date == null) return;
+
+        try {
+            Envelope env = Envelope.request(OpCode.REQUEST_GET_AVAILABLE_TIMES, date.toString());
+            client.sendToServer(new KryoMessage("ENVELOPE", KryoUtil.toBytes(env)));
+
+            cbReservationTime.getItems().clear();
+            cbReservationTime.setPromptText("Loading times...");
+        } catch (Exception ex) {
+            if (lblReservationFormMsg != null) lblReservationFormMsg.setText("Failed to load times: " + ex.getMessage());
+        }
+    }
+
 
 
     // ===== UI actions =====
@@ -806,6 +855,8 @@ public class ClientController implements ClientUI {
             client.sendToServer(new KryoMessage("ENVELOPE", KryoUtil.toBytes(env)));
 
             lblStatus.setText("Cancelling reservation...");
+            
+            onRefreshReservations();
 
         } catch (Exception ex) {
             lblStatus.setText("Cancel failed: " + ex.getMessage());
@@ -889,6 +940,7 @@ public class ClientController implements ClientUI {
     @FXML
     private void onNewReservation(ActionEvent e) {
         showPane(paneNewReservation);
+        requestAvailableTimesForSelectedDate();
         lblStatus.setText("Fill the form and click Create Reservation.");
 
         if (lblReservationFormMsg != null) lblReservationFormMsg.setText("");
@@ -998,9 +1050,9 @@ public class ClientController implements ClientUI {
     private void onClearReservationForm(ActionEvent e) {
         if (txtNumCustomers != null) txtNumCustomers.clear();
         if (dpReservationDate != null) dpReservationDate.setValue(LocalDate.now());
-        if (cbReservationTime != null) cbReservationTime.getSelectionModel().select("18:00");
         if (lblReservationFormMsg != null) lblReservationFormMsg.setText("");
 
         hideSuggestedTimesUI();
+        requestAvailableTimesForSelectedDate();
     }
 }

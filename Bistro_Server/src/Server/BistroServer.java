@@ -3,6 +3,7 @@ package Server;
 import java.io.IOException;
 import java.sql.Date; // From HEAD
 import java.sql.Timestamp;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -27,6 +28,7 @@ import common.dto.MakeReservationResponseDTO;
 import common.dto.ProfileDTO;
 import DataBase.Reservation;
 import DataBase.dao.BillDAO;
+import DataBase.dao.OpeningHoursDAO;
 import DataBase.dao.ReservationDAO;
 import DataBase.dao.SubscriberDAO;
 import DataBase.dao.UserActivityDAO;
@@ -145,6 +147,7 @@ public class BistroServer extends AbstractServer {
                 case REQUEST_UPDATE_PROFILE -> handleUpdateProfile(req, client);
                 case REQUEST_RECOVER_CONFIRMATION_CODE -> handleRecoverConfirmationCode(req, client);
                 case REQUEST_TERMINAL_CANCEL_RESERVATION -> handleTerminalCancelReservation(req, client);
+                case REQUEST_GET_AVAILABLE_TIMES -> handleGetAvailableTimes(req, client);
 
                 default -> sendError(client, OpCode.ERROR, "Unknown op: " + req.getOp());
             }
@@ -190,6 +193,37 @@ public class BistroServer extends AbstractServer {
     }
 
     /* ==================== Handlers ==================== */
+    
+    private void handleGetAvailableTimes(Envelope req, ConnectionToClient client) {
+        try {
+            Object payload = readEnvelopePayload(req);
+
+            // payload is expected: String "YYYY-MM-DD"
+            String dateStr = (payload instanceof String s) ? s.trim() : "";
+            if (dateStr.isBlank()) {
+                sendOk(client, OpCode.RESPONSE_GET_AVAILABLE_TIMES, List.of());
+                return;
+            }
+
+            LocalDate date;
+            try {
+                date = LocalDate.parse(dateStr);
+            } catch (Exception ex) {
+                sendOk(client, OpCode.RESPONSE_GET_AVAILABLE_TIMES, List.of());
+                return;
+            }
+
+            // Slot interval = 30 minutes, dining window = 120 minutes
+            List<String> times = OpeningHoursDAO.getAvailableTimeSlots(date, 30, 120);
+
+            sendOk(client, OpCode.RESPONSE_GET_AVAILABLE_TIMES, times);
+
+        } catch (Exception e) {
+            try {
+                sendOk(client, OpCode.RESPONSE_GET_AVAILABLE_TIMES, List.of());
+            } catch (Exception ignored) {}
+        }
+    }
     
     private void handleTerminalCancelReservation(Envelope req, ConnectionToClient client) {
         try {
@@ -271,9 +305,6 @@ public class BistroServer extends AbstractServer {
             } catch (Exception ignored) {}
         }
     }
-
-    // small helper for null-safety
-    private boolean see(boolean b) { return b; }
 
     private void handlePayBill(Envelope req, ConnectionToClient client) {
         try {
@@ -695,12 +726,12 @@ public class BistroServer extends AbstractServer {
         java.time.LocalDateTime nowPlus1Hour = java.time.LocalDateTime.now().plusHours(1);
         Timestamp minAllowed = Timestamp.valueOf(nowPlus1Hour);
 
-        //if (dto.getReservationTime().before(minAllowed)) {
-            //sendOk(client, OpCode.RESPONSE_MAKE_RESERVATION,
-                 //   new MakeReservationResponseDTO(false, -1, null,
-                        //    "Reservation must be at least 1 hour from now."));
-           // return;
-        //}
+        if (dto.getReservationTime().before(minAllowed)) {
+            sendOk(client, OpCode.RESPONSE_MAKE_RESERVATION,
+                   new MakeReservationResponseDTO(false, -1, null,
+                           "Reservation must be at least 1 hour from now."));
+            return;
+        }
 
 
         boolean canFit = ReservationDAO.canFitAtTime(dto.getReservationTime(), dto.getNumOfCustomers());
@@ -1088,8 +1119,12 @@ public class BistroServer extends AbstractServer {
             
             int m = candidate.toLocalDateTime().getMinute();
             if (m != 0 && m != 30) continue;
+            
+            if (candidate.before(new Timestamp(System.currentTimeMillis()))) continue;
 
             if (candidate.after(Timestamp.valueOf(java.time.LocalDateTime.now().plusMonths(1)))) continue;
+            
+            if (!OpeningHoursDAO.isOpenForReservation(candidate, 120)) continue;
 
             if (ReservationDAO.canFitAtTime(candidate, numCustomers)) {
                 alternatives.add(candidate);

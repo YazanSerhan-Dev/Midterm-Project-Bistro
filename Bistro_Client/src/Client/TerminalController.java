@@ -4,7 +4,6 @@ import common.Envelope;
 import common.KryoMessage;
 import common.KryoUtil;
 import common.OpCode;
-import common.dto.ReservationDTO;
 import common.dto.TerminalValidateResponseDTO;
 import common.dto.WaitingListDTO;
 import javafx.application.Platform;
@@ -823,40 +822,6 @@ public class TerminalController implements ClientUI {
 
         lblWaitMessage.setText("");
     }
-
-    // =========================
-    // Existing ReservationDTO UI filler (kept, but only fills the 3 fields we show)
-    // =========================
-    private void applyReservationToUI(ReservationDTO res) {
-        // ReservationDTO may not have reservationId; keep "-"
-        lblResId.setText("-");
-
-        lblResDateTime.setText(nonEmptyOrDash(getReservationTime(res)));
-        lblResGuests.setText(nonEmptyOrDash(getGuests(res)));
-
-        String tableId = safeStr(getTableId(res));
-        lblTableNumber.setText(tableId.isBlank() ? "-" : tableId);
-
-        lblWaitMessage.setText("");
-    }
-
-    // ---- DTO getter adapters (ReservationDTO) ----
-    private String getReservationTime(ReservationDTO r) {
-        try { return safeStr(r.getReservationTime()); } catch (Throwable ignored) {}
-        return "-";
-    }
-
-    private String getGuests(ReservationDTO r) {
-        try { return String.valueOf(r.getNumOfCustomers()); } catch (Throwable ignored) {}
-        return "-";
-    }
-
-    private String getReservationStatus(ReservationDTO r) {
-        try { return safeStr(r.getStatus()); } catch (Throwable ignored) {}
-        return "-";
-    }
-
-    private String getTableId(ReservationDTO r) { return "-"; }
 
     // =========================
     // Small helpers

@@ -31,6 +31,9 @@ public enum OpCode {
     // Pre-check reservation availability (no email/phone prompt)
     REQUEST_CHECK_AVAILABILITY,
     RESPONSE_CHECK_AVAILABILITY,
+    
+    REQUEST_GET_AVAILABLE_TIMES,
+    RESPONSE_GET_AVAILABLE_TIMES,
 
     REQUEST_HISTORY_GET,
     RESPONSE_HISTORY_GET,
