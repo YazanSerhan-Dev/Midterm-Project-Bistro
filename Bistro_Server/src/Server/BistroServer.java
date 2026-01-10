@@ -145,6 +145,7 @@ public class BistroServer extends AbstractServer {
                 
                 case REQUEST_GET_PROFILE -> handleGetProfile(req, client);
                 case REQUEST_UPDATE_PROFILE -> handleUpdateProfile(req, client);
+                case REQUEST_RECOVER_CONFIRMATION_CODE -> handleRecoverConfirmationCode(req, client);
 
                 default -> sendError(client, OpCode.ERROR, "Unknown op: " + req.getOp());
             }
@@ -190,6 +191,46 @@ public class BistroServer extends AbstractServer {
     }
 
     /* ==================== Handlers ==================== */
+    
+    private void handleRecoverConfirmationCode(Envelope req, ConnectionToClient client) {
+        try {
+            Object payload = req.getPayload();
+            String contact = (payload instanceof String s) ? s.trim() : "";
+
+            if (contact.isBlank()) {
+                sendOk(client, OpCode.RESPONSE_RECOVER_CONFIRMATION_CODE,
+                        "Email or phone is required.");
+                return;
+            }
+
+            UserActivityDAO.LostCodeResult r =
+                    UserActivityDAO.findActiveCodeByContact(contact);
+
+            if (r == null) {
+                sendOk(client, OpCode.RESPONSE_RECOVER_CONFIRMATION_CODE,
+                        "No active reservation or waiting list found.");
+                return;
+            }
+
+            if (r.email != null && !r.email.isBlank()) {
+                if ("RESERVATION".equals(r.type)) {
+                    EmailService.sendReservationConfirmation(r.email, r.code);
+                } else {
+                    EmailService.sendWaitingTableReady(r.email, r.code);
+                }
+            }
+
+            sendOk(client, OpCode.RESPONSE_RECOVER_CONFIRMATION_CODE,
+                    "Confirmation code sent to your email.");
+
+        } catch (Exception e) {
+            try {
+                sendOk(client, OpCode.RESPONSE_RECOVER_CONFIRMATION_CODE,
+                        "Server error: " + e.getMessage());
+            } catch (Exception ignored) {}
+        }
+    }
+
     
     private void handleBillGetByCode(Envelope req, ConnectionToClient client) {
         try {
