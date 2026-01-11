@@ -68,6 +68,8 @@
     -fx-border-color: rgba(255,255,255,0.12);
     -fx-padding: 9 12;
     -fx-cursor: hand;
+    -fx-alignment: CENTER_LEFT;
+    -fx-graphic-text-gap: 10;
 }
 
 .nav-button:hover {

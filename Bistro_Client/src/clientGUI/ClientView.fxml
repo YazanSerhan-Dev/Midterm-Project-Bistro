@@ -133,31 +133,61 @@
             <VBox fx:id="paneDashboard" spacing="12" styleClass="content">
                 <children>
 
-                    <!-- SUMMARY CARDS -->
-                    <HBox spacing="12">
-                        <children>
-                            <VBox spacing="6" styleClass="stat-card">
-                                <children>
-                                    <Label text="Active Reservations" styleClass="stat-title"/>
-                                    <Label fx:id="lblActiveReservations" text="0" styleClass="stat-value"/>
-                                </children>
-                            </VBox>
+						<!-- SUMMARY CARDS -->
+						<HBox spacing="12">
+						    <children>
+						
+						        <!-- Active Reservations -->
+						        <VBox spacing="6" styleClass="stat-card">
+						            <children>
+						                <HBox spacing="8" alignment="CENTER_LEFT">
+						                    <ImageView fitWidth="16" fitHeight="16" preserveRatio="true" opacity="0.90">
+						                        <image>
+						                            <Image url="@/logos/check.png"/>
+						                        </image>
+						                    </ImageView>
+						                    <Label text="Active Reservations" styleClass="stat-title"/>
+						                </HBox>
+						
+						                <Label fx:id="lblActiveReservations" text="0" styleClass="stat-value"/>
+						            </children>
+						        </VBox>
+						
+						        <!-- Balance Due -->
+						        <VBox spacing="6" styleClass="stat-card">
+						            <children>
+						                <HBox spacing="8" alignment="CENTER_LEFT">
+						                    <ImageView fitWidth="16" fitHeight="16" preserveRatio="true" opacity="0.90">
+						                        <image>
+						                            <Image url="@/logos/wallet.png"/>
+						                        </image>
+						                    </ImageView>
+						                    <Label text="Balance Due" styleClass="stat-title"/>
+						                </HBox>
+						
+						                <Label fx:id="lblBalanceDue" text="₪0.00" styleClass="stat-value"/>
+						            </children>
+						        </VBox>
+						
+						        <!-- Subscription -->
+						        <VBox spacing="6" styleClass="stat-card">
+						            <children>
+						                <HBox spacing="8" alignment="CENTER_LEFT">
+						                    <ImageView fitWidth="16" fitHeight="16" preserveRatio="true" opacity="0.90">
+						                        <image>
+						                            <Image url="@/logos/badge-percent.png"/>
+						                        </image>
+						                    </ImageView>
+						                    <Label text="Subscription" styleClass="stat-title"/>
+						                </HBox>
+						
+						                <Label fx:id="lblSubscriptionStatus" text="Not Subscribed" styleClass="stat-value"/>
+						            </children>
+						        </VBox>
+						
+						    </children>
+						</HBox>
 
-                            <VBox spacing="6" styleClass="stat-card">
-                                <children>
-                                    <Label text="Balance Due" styleClass="stat-title"/>
-                                    <Label fx:id="lblBalanceDue" text="₪0.00" styleClass="stat-value"/>
-                                </children>
-                            </VBox>
-
-                            <VBox spacing="6" styleClass="stat-card">
-                                <children>
-                                    <Label text="Subscription" styleClass="stat-title"/>
-                                    <Label fx:id="lblSubscriptionStatus" text="Not Subscribed" styleClass="stat-value"/>
-                                </children>
-                            </VBox>
-                        </children>
-                    </HBox>
 
                     <Label text="My Reservations" styleClass="section-title"/>
 
