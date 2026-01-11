@@ -241,6 +241,30 @@ public class WaitingListDAO {
             pool.releaseConnection(pc);
         }
     }
+    
+    public static String getGuestPhoneForWaitingId(int waitingId) throws Exception {
+        String sql = """
+            SELECT guest_phone
+            FROM user_activity
+            WHERE waiting_id = ?
+            ORDER BY activity_id DESC
+            LIMIT 1
+        """;
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, waitingId);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getString(1) : null;
+            }
+        } finally {
+            pool.releaseConnection(pc);
+        }
+    }
+
 
     public static int insertWaitingReturnId(
             int numOfCustomers,

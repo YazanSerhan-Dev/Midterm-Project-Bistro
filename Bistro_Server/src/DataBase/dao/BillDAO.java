@@ -588,38 +588,42 @@ public class BillDAO {
     public static class BillReminderRow {
         public final int billId;
         public final String email;
+        public final String phone;
         public final String confirmationCode;
 
-        public BillReminderRow(int billId, String email, String confirmationCode) {
+        public BillReminderRow(int billId, String email, String phone, String confirmationCode) {
             this.billId = billId;
             this.email = email;
+            this.phone = phone;
             this.confirmationCode = confirmationCode;
         }
     }
 
     public static List<BillReminderRow> findBillsNeedingReminder(int limit) throws Exception {
-        String sql = """
-            SELECT 
-                b.bill_id,
-                COALESCE(s.email, ua.guest_email) AS email,
-                COALESCE(r.confirmation_code, wl.confirmation_code) AS code
-            FROM bill b
-            JOIN visit v ON v.visit_id = b.visit_id
-            JOIN user_activity ua ON ua.activity_id = v.activity_id
-            LEFT JOIN subscribers s ON s.username = ua.subscriber_username
-            LEFT JOIN reservation r ON r.reservation_id = ua.reservation_id
-            LEFT JOIN waiting_list wl ON wl.waiting_id = ua.waiting_id
-            WHERE b.is_paid = 'NO'
-              AND b.reminder_sent = 'NO'
-              AND v.actual_end_time IS NULL
-              AND v.actual_start_time <= (NOW() - INTERVAL 2 HOUR)
-              AND COALESCE(s.email, ua.guest_email) IS NOT NULL
-              AND COALESCE(s.email, ua.guest_email) <> ''
-              AND COALESCE(r.confirmation_code, wl.confirmation_code) IS NOT NULL
-              AND COALESCE(r.confirmation_code, wl.confirmation_code) <> ''
-            ORDER BY v.actual_start_time ASC
-            LIMIT ?
-        """;
+    	String sql = """
+    		    SELECT 
+    		        b.bill_id,
+    		        COALESCE(s.email, ua.guest_email) AS email,
+    		        COALESCE(s.phone, ua.guest_phone) AS phone,
+    		        COALESCE(r.confirmation_code, wl.confirmation_code) AS code
+    		    FROM bill b
+    		    JOIN visit v ON v.visit_id = b.visit_id
+    		    JOIN user_activity ua ON ua.activity_id = v.activity_id
+    		    LEFT JOIN subscribers s ON s.username = ua.subscriber_username
+    		    LEFT JOIN reservation r ON r.reservation_id = ua.reservation_id
+    		    LEFT JOIN waiting_list wl ON wl.waiting_id = ua.waiting_id
+    		    WHERE b.is_paid = 'NO'
+    		      AND b.reminder_sent = 'NO'
+    		      AND v.actual_end_time IS NULL
+    		      AND v.actual_start_time <= (NOW() - INTERVAL 2 HOUR)
+    		      AND COALESCE(s.email, ua.guest_email) IS NOT NULL
+    		      AND COALESCE(s.email, ua.guest_email) <> ''
+    		      AND COALESCE(r.confirmation_code, wl.confirmation_code) IS NOT NULL
+    		      AND COALESCE(r.confirmation_code, wl.confirmation_code) <> ''
+    		    ORDER BY v.actual_start_time ASC
+    		    LIMIT ?
+    		""";
+
 
         MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
         PooledConnection pc = pool.getConnection();
@@ -631,11 +635,12 @@ public class BillDAO {
             List<BillReminderRow> out = new ArrayList<>();
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    out.add(new BillReminderRow(
-                            rs.getInt("bill_id"),
-                            rs.getString("email"),
-                            rs.getString("code")
-                    ));
+                	out.add(new BillReminderRow(
+                	        rs.getInt("bill_id"),
+                	        rs.getString("email"),
+                	        rs.getString("phone"),
+                	        rs.getString("code")
+                	));
                 }
             }
             return out;

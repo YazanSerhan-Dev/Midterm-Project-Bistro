@@ -90,13 +90,14 @@ public class BackgroundJobs {
                      assignedCount++;
 
                      String email = WaitingListDAO.getGuestEmailForWaitingId(next.getId());
+                     String phone = WaitingListDAO.getGuestPhoneForWaitingId(next.getId());
                      String code = next.getConfirmationCode();
 
                      if (email != null && !email.isBlank() && code != null && !code.isBlank()) {
                          EmailService.sendWaitingTableReady(email, code);
+                         EmailService.smsStub(phone,"[SMS] Waiting assigned to | Code: "+ code);
+
                          System.out.println("[JOB] Waiting ASSIGNED email sent to: " + email + " | Code: " + code);
-                     } else {
-                         System.out.println("[JOB] Waiting ASSIGNED but email/code missing | id=" + next.getId());
                      }
                  }
 
@@ -162,6 +163,7 @@ public class BackgroundJobs {
         for (BillDAO.BillReminderRow row : due) {
             try {
                 EmailService.sendBillReminder(row.email, row.confirmationCode);
+                EmailService.smsStub(row.phone,"[SMS] Bill reminder to | Code: "+ row.confirmationCode);
                 BillDAO.markReminderSent(row.billId);
 
                 System.out.println("[JOB] Bill reminder sent to " + row.email +
@@ -176,8 +178,7 @@ public class BackgroundJobs {
     }
 
     // =========================================================
-    // OPTIONAL: Upcoming reservation reminder (~2 hours before reservation_time)
-    // This is NOT the bill reminder. If you don't want it, remove it.
+    //  Upcoming reservation reminder (~2 hours before reservation_time)
     // =========================================================
     private static void runUpcomingReservationReminderOnce() throws Exception {
 
@@ -221,10 +222,7 @@ public class BackgroundJobs {
 
                 // SMS stub (optional)
                 String phone = ReservationDAO.getReservationPhone(r.getReservationId());
-                if (phone != null && !phone.isBlank()) {
-                    System.out.println("[SMS] Reminder to " + phone +
-                            " | Code: " + r.getConfirmationCode());
-                }
+                EmailService.smsStub(phone, "Reservation reminder in 2 hours | Code: " + r.getConfirmationCode());
 
                 reminderSent.add(r.getReservationId());
 
@@ -234,6 +232,7 @@ public class BackgroundJobs {
             }
         }
     }
+
 }
 
 

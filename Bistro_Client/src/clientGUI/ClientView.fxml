@@ -3,6 +3,8 @@
 <?import javafx.geometry.Insets?>
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
+<?import javafx.scene.image.Image?>
+<?import javafx.scene.image.ImageView?>
 
 <BorderPane xmlns="http://javafx.com/javafx/21"
             xmlns:fx="http://javafx.com/fxml/1"
@@ -35,8 +37,24 @@
             <children>
                 <Label text="Menu" styleClass="sidebar-subtitle"/>
 
-                <Button text="My Reservations" maxWidth="Infinity" onAction="#onNavReservations" styleClass="nav-button nav-active"/>
-                <Button text="New Reservation" maxWidth="Infinity" onAction="#onNewReservation" styleClass="nav-button"/>
+                <Button text="My Reservations" maxWidth="Infinity" onAction="#onNavReservations" styleClass="nav-button nav-active">
+                   <graphic>
+        				<ImageView fitWidth="16" fitHeight="16" preserveRatio="true" opacity="0.90">
+            				<image>
+                				<Image url="@/logos/calendar-check.png"/>
+            				</image>
+        				</ImageView>
+    				</graphic>
+    			</Button>
+                <Button text="New Reservation" maxWidth="Infinity" onAction="#onNewReservation" styleClass="nav-button">
+                    <graphic>
+						<ImageView fitWidth="16" fitHeight="16" preserveRatio="true" opacity="0.90">
+            				<image>
+                				<Image url="@/logos/calendar-plus-2.png"/>
+            				</image>
+        				</ImageView>
+    				</graphic>
+    			</Button>
 
                 <!-- Story rules (UI hint only) -->
                 <Label wrapText="true"
@@ -45,8 +63,25 @@
 
                 <Separator/>
 
-                <Button fx:id="btnMyProfile" text="My Profile" maxWidth="Infinity" onAction="#onNavProfile" styleClass="nav-button"/>
-                <Button fx:id="btnHistory" text="History" maxWidth="Infinity" onAction="#onNavHistory" styleClass="nav-button"/>
+                <Button fx:id="btnMyProfile" text="My Profile" maxWidth="Infinity" onAction="#onNavProfile" styleClass="nav-button">
+                    <graphic>
+						<ImageView fitWidth="16" fitHeight="16" preserveRatio="true" opacity="0.90">
+            				<image>
+                				<Image url="@/logos/user.png"/>
+            				</image>
+        				</ImageView>
+    				</graphic>
+                </Button>
+                <Button fx:id="btnHistory" text="History" maxWidth="Infinity" onAction="#onNavHistory" styleClass="nav-button">
+                    <graphic>
+						<ImageView fitWidth="16" fitHeight="16" preserveRatio="true" opacity="0.90">
+            				<image>
+                				<Image url="@/logos/clipboard-clock.png"/>
+            				</image>
+        				</ImageView>
+    				</graphic>
+                </Button>
+                
                 
                 <Button
         			fx:id="btnLeaveWaitingList"
@@ -54,14 +89,38 @@
         			onAction="#onLeaveWaitingList"
         			visible="true"
         			managed="true"
-        			maxWidth="Infinity" styleClass="nav-button"/>              
+        			maxWidth="Infinity" styleClass="nav-button">   
+        			<graphic>
+        				<ImageView fitWidth="16" fitHeight="16" preserveRatio="true" opacity="0.90">
+            				<image>
+                				<Image url="@/logos/log-out.png"/>
+            				</image>
+        				</ImageView>
+    				</graphic>
+                </Button>           
 
                 <Separator/>
 
-                <Button text="Pay Bill" maxWidth="Infinity" onAction="#onPayBill" styleClass="nav-button"/>
-                <Button text="Terminal" maxWidth="Infinity" onAction="#onGoToTerminal" styleClass="nav-button"/>
+                <Button text="Pay Bill" maxWidth="Infinity" onAction="#onPayBill" styleClass="nav-button">
+                    <graphic>
+        				<ImageView fitWidth="16" fitHeight="16" preserveRatio="true" opacity="0.90">
+            				<image>
+                				<Image url="@/logos/receipt.png"/>
+            				</image>
+        				</ImageView>
+    				</graphic>
+                </Button>
+                
+                <Button text="Terminal" maxWidth="Infinity" onAction="#onGoToTerminal" styleClass="nav-button">
+                    <graphic>
+        				<ImageView fitWidth="16" fitHeight="16" preserveRatio="true" opacity="0.90">
+            				<image>
+                				<Image url="@/logos/square-terminal.png"/>
+            				</image>
+        				</ImageView>
+    				</graphic>
+                </Button>
 
-                <!-- Removed "Lost confirmation code" section -->
             </children>
         </VBox>
     </left>

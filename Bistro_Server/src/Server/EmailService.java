@@ -158,6 +158,12 @@ public class EmailService {
             e.printStackTrace();
         }
     }
+    
+    public static void smsStub(String phone, String msg) {
+        if (phone == null || phone.isBlank()) return;
+        System.out.println("[SMS] phone=" + phone + " | " + msg);
+    }
+
 
 }
 
