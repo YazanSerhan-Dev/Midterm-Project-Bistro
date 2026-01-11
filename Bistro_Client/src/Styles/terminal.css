@@ -1,0 +1,183 @@
+/* =========================
+   Bistro - Terminal (Modern)
+   ========================= */
+
+.root, .root-bg {
+    -fx-font-family: "Segoe UI", "Inter", Arial;
+    -fx-font-size: 13px;
+    -fx-background-color: linear-gradient(to bottom right, #f3f5f9, #eef2f7);
+}
+
+/* ---------- Top bar ---------- */
+.top-bar {
+    -fx-padding: 12 14;
+    -fx-background-color: rgba(255,255,255,0.75);
+    -fx-background-radius: 14;
+    -fx-border-radius: 14;
+    -fx-border-color: rgba(0,0,0,0.07);
+}
+
+.page-title {
+    -fx-font-size: 20px;
+    -fx-font-weight: 900;
+    -fx-text-fill: #1f2a3a;
+}
+
+.status-text {
+    -fx-text-fill: #3b4658;
+    -fx-font-weight: 700;
+}
+
+/* ---------- Sidebar ---------- */
+.sidebar {
+    -fx-padding: 16;
+    -fx-background-radius: 18;
+    -fx-background-color: linear-gradient(to bottom, #2f3a4d, #3d4b66);
+    -fx-border-radius: 18;
+    -fx-border-color: rgba(255,255,255,0.10);
+}
+
+.sidebar-title {
+    -fx-font-size: 15px;
+    -fx-font-weight: 900;
+    -fx-text-fill: rgba(255,255,255,0.95);
+}
+
+.sidebar-subtitle {
+    -fx-font-size: 13px;
+    -fx-font-weight: 800;
+    -fx-text-fill: rgba(255,255,255,0.92);
+}
+
+.sidebar-hint, .hint-text {
+    -fx-font-size: 11px;
+    -fx-text-fill: rgba(255,255,255,0.65);
+}
+
+.sidebar .separator .line {
+    -fx-border-color: rgba(255,255,255,0.14);
+}
+
+/* Sidebar buttons (same system as Main) */
+.nav-button {
+    -fx-background-color: rgba(255,255,255,0.08);
+    -fx-text-fill: rgba(255,255,255,0.93);
+    -fx-background-radius: 12;
+    -fx-border-radius: 12;
+    -fx-border-color: rgba(255,255,255,0.12);
+    -fx-padding: 10 12;
+    -fx-alignment: CENTER_LEFT;
+    -fx-graphic-text-gap: 10;
+    -fx-cursor: hand;
+}
+
+.nav-button:hover {
+    -fx-background-color: rgba(255,255,255,0.14);
+}
+
+.nav-button:pressed {
+    -fx-background-color: rgba(255,255,255,0.18);
+}
+
+.nav-active {
+    -fx-background-color: rgba(84, 140, 255, 0.35);
+    -fx-border-color: rgba(84, 140, 255, 0.55);
+}
+
+/* ---------- Content area ---------- */
+.content {
+    -fx-padding: 2 2 2 8;
+}
+
+/* ---------- Cards ---------- */
+.card {
+    -fx-background-color: rgba(255,255,255,0.78);
+    -fx-background-radius: 16;
+    -fx-border-radius: 16;
+    -fx-border-color: rgba(0,0,0,0.08);
+    -fx-padding: 14 16;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.12), 20, 0.15, 0, 6);
+}
+
+.highlight-card {
+    -fx-background-color: linear-gradient(to right, rgba(248,251,255,0.95), rgba(238,245,255,0.95));
+}
+
+.card-title {
+    -fx-font-size: 14px;
+    -fx-font-weight: 900;
+    -fx-text-fill: #1f2a3a;
+}
+
+.field-label {
+    -fx-font-weight: 800;
+    -fx-text-fill: #445268;
+}
+
+.field-value {
+    -fx-text-fill: #1f2a3a;
+    -fx-font-weight: 700;
+}
+
+.muted-value {
+    -fx-text-fill: #6d788c;
+}
+
+/* ---------- Inputs ---------- */
+.text-field {
+    -fx-background-color: rgba(255,255,255,0.92);
+    -fx-background-radius: 10;
+    -fx-border-radius: 10;
+    -fx-border-color: rgba(0,0,0,0.12);
+    -fx-padding: 8 10;
+}
+
+.text-field:focused {
+    -fx-border-color: rgba(84, 140, 255, 0.80);
+    -fx-effect: dropshadow(gaussian, rgba(84,140,255,0.25), 16, 0.15, 0, 3);
+}
+
+/* ---------- Buttons ---------- */
+.button {
+    -fx-background-radius: 10;
+    -fx-border-radius: 10;
+    -fx-padding: 8 12;
+    -fx-cursor: hand;
+}
+
+/* Primary (Validate / Check-in when enabled) */
+.primary-button {
+    -fx-background-color: rgba(84, 140, 255, 0.95);
+    -fx-text-fill: white;
+    -fx-font-weight: 900;
+}
+
+.primary-button:hover {
+    -fx-background-color: rgba(84, 140, 255, 0.85);
+}
+
+/* Secondary (Clear / Back) */
+.secondary-button {
+    -fx-background-color: rgba(255,255,255,0.80);
+    -fx-text-fill: #1f2a3a;
+    -fx-border-color: rgba(0,0,0,0.10);
+}
+
+.secondary-button:hover {
+    -fx-background-color: rgba(255,255,255,0.95);
+}
+
+/* Danger (Cancel Reservation / Logout optional) */
+.danger-button {
+    -fx-background-color: rgba(255, 84, 84, 0.92);
+    -fx-text-fill: white;
+    -fx-font-weight: 900;
+}
+
+.danger-button:hover {
+    -fx-background-color: rgba(255, 84, 84, 0.82);
+}
+
+.button:disabled,
+.primary-button:disabled,
+.secondary-button:

@@ -4,10 +4,11 @@ import common.Envelope;
 import common.KryoMessage;
 import common.KryoUtil;
 import common.OpCode;
-import common.dto.ReservationDTO;
 import common.dto.TerminalValidateResponseDTO;
+import common.dto.WaitingListDTO;
 import javafx.application.Platform;
 import javafx.fxml.FXML;
+import javafx.scene.Node;
 import javafx.scene.control.*;
 
 import java.lang.reflect.Field;
@@ -42,13 +43,32 @@ public class TerminalController implements ClientUI {
     // Lost code
     @FXML private TextField txtRecoverPhoneOrEmail;
     @FXML private Label lblRecoverResult;
-    
+
     @FXML private Button btnJoinWaitingList;
     @FXML private Button btnLeaveWaitingList;
 
+    @FXML private Label lblWaitCode;
+    @FXML private Label lblWaitStatus;
+    @FXML private Label lblWaitPeople;
+    @FXML private Label lblWaitEmail;
+    @FXML private Label lblWaitPhone;
 
+    // Logic flags (business state)
     private volatile boolean validated = false;
     private volatile boolean tableAvailable = false;
+
+    // UI stays enabled always, but these prevent double-click spam while request is in-flight
+    private volatile boolean validateInFlight = false;
+    private volatile boolean checkInInFlight  = false;
+    private volatile boolean joinWLInFlight   = false;
+    private volatile boolean leaveWLInFlight  = false;
+    
+    private volatile boolean checkedIn = false;
+    private volatile boolean cancelResInFlight = false;
+    private volatile boolean lastValidatedIsReservation = false;
+    private volatile String lastCheckedInCode = "";
+    private volatile String lastValidatedCode = "";
+
 
     @FXML
     private void initialize() {
@@ -58,6 +78,8 @@ public class TerminalController implements ClientUI {
 
         // Register this screen as the current UI receiver
         ClientSession.bindUI(this);
+
+        // Buttons stay enabled always by design (no setDisable calls here)
     }
 
     // =========================
@@ -65,19 +87,178 @@ public class TerminalController implements ClientUI {
     // =========================
     
     @FXML
+    private void onCancelReservation() {
+
+        if (cancelResInFlight) {
+            lblTerminalStatus.setText("Cancel request already in progress...");
+            return;
+        }
+
+        String code = safeTrim(txtConfirmationCode.getText());
+        if (code.isEmpty()) {
+            lblTerminalStatus.setText("Enter reservation code first.");
+            return;
+        }
+
+        if (!isConnected()) {
+            lblTerminalStatus.setText("Not connected.");
+            return;
+        }
+
+        // ✅ Strong safety: only allow cancel after validation AND only if it was a reservation
+        if (!code.equalsIgnoreCase(lastValidatedCode) || !validated) {
+            lblTerminalStatus.setText("Please validate the code first.");
+            return;
+        }
+
+        if (!lastValidatedIsReservation) {
+            lblTerminalStatus.setText("This is not a reservation code.");
+            return;
+        }
+
+        // Optional: block if already checked-in
+        if (checkedIn && code.equalsIgnoreCase(lastCheckedInCode)) {
+            lblTerminalStatus.setText("Already checked-in. Cannot cancel.");
+            return;
+        }
+
+        // Optional confirm dialog
+        Alert a = new Alert(Alert.AlertType.CONFIRMATION);
+        a.setTitle("Cancel Reservation");
+        a.setHeaderText("Are you sure you want to cancel this reservation?");
+        a.setContentText("Code: " + code);
+
+        ButtonType yes = new ButtonType("Yes, cancel");
+        ButtonType no = new ButtonType("No", ButtonBar.ButtonData.CANCEL_CLOSE);
+        a.getButtonTypes().setAll(yes, no);
+
+        if (a.showAndWait().orElse(no) != yes) {
+            lblTerminalStatus.setText("Cancelled.");
+            return;
+        }
+
+        cancelResInFlight = true;
+        lblTerminalStatus.setText("Canceling reservation...");
+
+        // ✅ Uses your existing helper pattern
+        sendToServer(OpCode.REQUEST_TERMINAL_CANCEL_RESERVATION, code);
+    }
+
+    
+
+    @FXML
     private void onJoinWaitingList() {
-        lblTerminalStatus.setText("Join waiting list (UI only – not implemented yet).");
+        if (joinWLInFlight) {
+            lblTerminalStatus.setText("Join request already in progress...");
+            return;
+        }
+
+        if (!isConnected()) {
+            lblTerminalStatus.setText("Not connected.");
+            return;
+        }
+
+        String role = ClientSession.getRole();         // SUBSCRIBER / CUSTOMER
+        String username = ClientSession.getUsername(); // subscriber only
+
+        try {
+            WaitingListDTO dto = new WaitingListDTO();
+
+            if ("SUBSCRIBER".equalsIgnoreCase(role)) {
+
+                Integer people = askPeopleCountOnly(); // simple dialog
+                if (people == null) {
+                    lblTerminalStatus.setText("Cancelled.");
+                    return;
+                }
+                dto.setPeopleCount(people);
+
+                // subscriber doesn't enter contact info
+                dto.setEmail("");
+                dto.setPhone("");
+
+            } else {
+                JoinWaitingInput in = askJoinWaitingListData(); // dialog
+                if (in == null) {
+                    lblTerminalStatus.setText("Cancelled.");
+                    return;
+                }
+
+                // CUSTOMER: email + phone REQUIRED (your dialog enforces email + people; phone optional)
+                dto.setPeopleCount(in.people);
+                dto.setEmail(in.email);
+                dto.setPhone(in.phone);
+            }
+
+            Object[] payload = new Object[] { role, username, dto };
+
+            Envelope env = Envelope.request(OpCode.REQUEST_WAITING_LIST, payload);
+            ClientSession.getClient().sendToServer(new KryoMessage("ENVELOPE", KryoUtil.toBytes(env)));
+
+            joinWLInFlight = true;
+            lblTerminalStatus.setText("Joining waiting list...");
+
+        } catch (Exception e) {
+            joinWLInFlight = false;
+            lblTerminalStatus.setText("Failed: " + e.getMessage());
+        }
     }
 
     @FXML
     private void onLeaveWaitingList() {
-        lblTerminalStatus.setText("Leave waiting list (UI only – not implemented yet).");
+
+        if (leaveWLInFlight) {
+            lblTerminalStatus.setText("Leave request already in progress...");
+            return;
+        }
+
+        if (!isConnected()) {
+            lblTerminalStatus.setText("Not connected.");
+            return;
+        }
+
+        // ✅ ALWAYS cancel by the code typed by the user
+        String code = (txtConfirmationCode.getText() == null) ? "" : txtConfirmationCode.getText().trim();
+
+        if (code.isEmpty()) {
+            lblTerminalStatus.setText("Enter a waiting list code first.");
+            return;
+        }
+
+        // Optional: if you want to ensure it looks like a waiting code
+        // if (!code.startsWith("W")) { ... }  // only if your codes are like W1234
+
+        String role = ClientSession.getRole();         // SUBSCRIBER / CUSTOMER
+        String username = ClientSession.getUsername(); // may be empty for CUSTOMER
+
+        Object[] payload = new Object[] { role, username, code };
+
+        Envelope env = Envelope.request(OpCode.REQUEST_LEAVE_WAITING_LIST, payload);
+
+        try {
+            ClientSession.getClient().sendToServer(new KryoMessage("ENVELOPE", KryoUtil.toBytes(env)));
+
+            leaveWLInFlight = true;
+            lblTerminalStatus.setText("Leaving waiting list for code: " + code);
+
+        } catch (Exception e) {
+            leaveWLInFlight = false;
+            lblTerminalStatus.setText("Failed: " + e.getMessage());
+        }
     }
 
 
     @FXML
     private void onValidateCode() {
+        if (validateInFlight) {
+            lblTerminalStatus.setText("Validation already in progress...");
+            return;
+        }
+
         String code = safeTrim(txtConfirmationCode.getText());
+        lastValidatedCode = code;
+        checkedIn = false;
+        lastCheckedInCode = "";
         if (code.isEmpty()) {
             setValidationState(false, false, "Enter a code.", "Validation failed: empty code.");
             return;
@@ -88,19 +269,16 @@ public class TerminalController implements ClientUI {
             return;
         }
 
+        validateInFlight = true;
         sendToServer(OpCode.REQUEST_TERMINAL_VALIDATE_CODE, code);
 
         lblValidationResult.setText("Checking...");
         lblTerminalStatus.setText("Validating code...");
-        btnCheckIn.setDisable(true);
+        // Buttons remain enabled always (no disabling)
     }
 
     @FXML
     private void onCheckIn() {
-        if (!validated) {
-            lblTerminalStatus.setText("Check-in blocked: validate code first.");
-            return;
-        }
 
         String code = safeTrim(txtConfirmationCode.getText());
         if (code.isEmpty()) {
@@ -108,15 +286,42 @@ public class TerminalController implements ClientUI {
             return;
         }
 
-        if (!isConnected()) {
-            lblTerminalStatus.setText("Cannot check-in: not connected to server.");
+        // ✅ If already checked-in with same code, don't say "validate first"
+        if (checkedIn && code.equalsIgnoreCase(lastCheckedInCode)) {
+            lblTerminalStatus.setText("Already checked-in for this code.");
             return;
         }
 
-        sendToServer(OpCode.REQUEST_TERMINAL_CHECK_IN, code);
+        // ✅ If code changed since validation, force validation again
+        if (!code.equalsIgnoreCase(lastValidatedCode)) {
+            validated = false;
+            tableAvailable = false;
+            lblTerminalStatus.setText("Code changed. Please validate again.");
+            return;
+        }
 
-        lblTerminalStatus.setText("Sending check-in request...");
-        btnCheckIn.setDisable(true);
+        // ✅ Must validate first
+        if (!validated) {
+            lblTerminalStatus.setText("Check-in blocked: validate code first.");
+            return;
+        }
+
+        // ✅ Prevent spam clicks while request is in-flight
+        if (checkInInFlight) {
+            lblTerminalStatus.setText("Check-in already in progress...");
+            return;
+        }
+
+        if (!isConnected()) {
+            lblTerminalStatus.setText("Not connected.");
+            return;
+        }
+
+        // ✅ Send check-in request to server
+        checkInInFlight = true;
+        lblTerminalStatus.setText("Checking in...");
+
+        sendToServer(OpCode.REQUEST_TERMINAL_CHECK_IN, code);
     }
 
     @FXML
@@ -141,9 +346,35 @@ public class TerminalController implements ClientUI {
 
     @FXML
     private void onClear() {
-        txtConfirmationCode.clear();
-        lblValidationResult.setText("");
-        resetAll();
+
+        // clear inputs
+        if (txtConfirmationCode != null) txtConfirmationCode.clear();
+        if (txtRecoverPhoneOrEmail != null) txtRecoverPhoneOrEmail.clear();
+
+        // clear labels/results
+        if (lblValidationResult != null) lblValidationResult.setText("");
+        if (lblRecoverResult != null) lblRecoverResult.setText("");
+
+        // clear all UI blocks
+        resetAll();              // reservation + table + wait message
+        resetWaitingDetails();   // waiting list box
+
+        // reset business state
+        validated = false;
+        tableAvailable = false;
+        checkedIn = false;
+
+        lastValidatedIsReservation = false;
+        lastValidatedCode = "";
+        lastCheckedInCode = "";
+
+        // unlock in-flight flags (safe)
+        validateInFlight = false;
+        checkInInFlight = false;
+        joinWLInFlight = false;
+        leaveWLInFlight = false;
+        cancelResInFlight = false;
+
         lblTerminalStatus.setText("Cleared.");
         refreshConnectionLabel();
     }
@@ -170,7 +401,13 @@ public class TerminalController implements ClientUI {
         Platform.runLater(() -> {
             refreshConnectionLabel();
             lblTerminalStatus.setText("Disconnected.");
-            btnCheckIn.setDisable(true);
+            // Buttons remain enabled always.
+            // We also stop any in-flight lock so user can retry after reconnect.
+            validateInFlight = false;
+            checkInInFlight = false;
+            joinWLInFlight = false;
+            leaveWLInFlight = false;
+            cancelResInFlight = false;
         });
     }
 
@@ -179,7 +416,13 @@ public class TerminalController implements ClientUI {
         Platform.runLater(() -> {
             refreshConnectionLabel();
             lblTerminalStatus.setText("Connection error: " + (e == null ? "" : e.getMessage()));
-            btnCheckIn.setDisable(true);
+            // Buttons remain enabled always.
+            // Unlock to allow retry.
+            validateInFlight = false;
+            checkInInFlight = false;
+            joinWLInFlight = false;
+            leaveWLInFlight = false;
+            cancelResInFlight = false;
         });
     }
 
@@ -196,162 +439,207 @@ public class TerminalController implements ClientUI {
                     // =========================
                     // ✅ VALIDATE CODE RESPONSE
                     // =========================
-                    case RESPONSE_TERMINAL_VALIDATE_CODE -> {
-                        Object payload = env.getPayload();
+                case RESPONSE_TERMINAL_VALIDATE_CODE -> {
+                	validateInFlight = false;
+                	
+                    Object payload = env.getPayload();
 
-                        // Server sends TerminalValidateResponseDTO
-                        if (payload instanceof TerminalValidateResponseDTO dto) {
+                    if (payload instanceof TerminalValidateResponseDTO dto) {
 
-                            // Fill reservation details (ID / time / guests)
-                            applyTerminalInfoToUI(dto);
+                    	int rid = 0;
+                    	try { rid = dto.getReservationId(); } catch (Throwable ignored) {}
+                    	lastValidatedIsReservation = rid > 0;
 
-                            if (dto.isValid()) {
-                                validated = true;
-                                lblValidationResult.setText("VALID ✅");
+                        applyTerminalInfoToUI(dto); // keep this if you already have it
 
-                                boolean canCheckIn = dto.isCheckInAllowed();
-                                if (canCheckIn) {
-                                    tableAvailable = true;
-                                    lblWaitMessage.setText("");
-                                    btnCheckIn.setDisable(false);
-                                    lblTerminalStatus.setText("Code valid. Ready to check-in.");
-                                } else {
-                                    tableAvailable = false;
-                                    btnCheckIn.setDisable(true);
-
-                                    String msg = safeStr(dto.getMessage());
-                                    lblWaitMessage.setText("");
-                                    lblTerminalStatus.setText(
-                                            msg.isBlank()
-                                                    ? "Valid code, but check-in not allowed (time/status rule)."
-                                                    : msg
-                                    );
-                                }
-
-                            } else {
-                                validated = false;
-                                tableAvailable = false;
-                                lblValidationResult.setText("NOT FOUND ❌");
-                                lblTerminalStatus.setText(nonEmptyOr(dto.getMessage(), "Code not found."));
-                                resetDetailsOnly();
-                                lblTableNumber.setText("-");
-                                lblWaitMessage.setText("");
-                                btnCheckIn.setDisable(true);
-                            }
-
-                            break;
-                        }
-
-                        // OLD: if server sends ReservationDTO
-                        if (payload instanceof ReservationDTO res) {
-                            applyReservationToUI(res);
-
-                            validated = true;
-                            lblValidationResult.setText("VALID ✅");
-
-                            String st = safeStr(getReservationStatus(res));
-                            boolean canCheckIn = "CONFIRMED".equalsIgnoreCase(st);
-
+                        if (dto.isValid()) {
+                            boolean canCheckIn = dto.isCheckInAllowed();
                             if (canCheckIn) {
-                                tableAvailable = true;
+                                setValidationState(true, true, "VALID ✅", "Code valid. Ready to check-in.");
                                 lblWaitMessage.setText("");
-                                btnCheckIn.setDisable(false);
-                                lblTerminalStatus.setText("Code valid. Ready to check-in.");
                             } else {
-                                tableAvailable = false;
-                                btnCheckIn.setDisable(true);
+                                setValidationState(true, false, "VALID ✅",
+                                        nonEmptyOr(dto.getMessage(), "Valid code, but check-in not allowed (time/status rule)."));
                                 lblWaitMessage.setText("");
-                                lblTerminalStatus.setText("Valid code, but status is " + st + " (check-in not allowed).");
                             }
-
-                            break;
-                        }
-
-                        // FALLBACK: server sends String
-                        String msg = (payload == null) ? "" : payload.toString();
-
-                        if (containsIgnoreCase(msg, "VALID") || containsIgnoreCase(msg, "SUCCESS")) {
-                            validated = true;
-
-                            if (containsIgnoreCase(msg, "WAIT") || containsIgnoreCase(msg, "NO TABLE")) {
-                                tableAvailable = false;
-                                lblValidationResult.setText("VALID ✅");
-                                lblWaitMessage.setText("Please wait…");
-                                lblTableNumber.setText("-");
-                                btnCheckIn.setDisable(true);
-                                lblTerminalStatus.setText(msg.isBlank() ? "Validated. Waiting for table." : msg);
-                            } else {
-                                tableAvailable = true;
-                                lblValidationResult.setText("VALID ✅");
-                                lblWaitMessage.setText("");
-                                btnCheckIn.setDisable(false);
-                                lblTerminalStatus.setText(msg.isBlank() ? "Code validated." : msg);
-                            }
-
-                            // We don't display status in UI anymore; keep details as-is.
 
                         } else {
-                            validated = false;
-                            tableAvailable = false;
-                            lblValidationResult.setText("NOT FOUND ❌");
-                            lblTerminalStatus.setText(msg.isBlank() ? "Code not found." : msg);
-                            resetDetailsOnly();
-                            btnCheckIn.setDisable(true);
+                            setValidationState(false, false, "INVALID ❌",
+                                    nonEmptyOr(dto.getMessage(), "Invalid code."));
                         }
                     }
+                }
 
                     // =========================
                     // ✅ CHECK-IN RESPONSE
                     // =========================
-                    case RESPONSE_TERMINAL_CHECK_IN -> {
-                        Object payload = env.getPayload();
+                case RESPONSE_TERMINAL_CHECK_IN -> {
+                    // Always unlock on response
+                    checkInInFlight = false;
 
-                        // NEW: server sends DTO (recommended)
-                        if (payload instanceof TerminalValidateResponseDTO dto) {
+                    Object payload = env.getPayload();
 
-                            // After check-in, tableId should be filled by server
-                            String tableId = dto.getTableId();
-                            lblTableNumber.setText((tableId == null || tableId.isBlank()) ? "-" : tableId);
+                    // =========================================================
+                    // NEW: server sends TerminalValidateResponseDTO (recommended)
+                    // =========================================================
+                    if (payload instanceof TerminalValidateResponseDTO dto) {
 
-                            String msg = dto.getMessage();
-                            if (msg == null || msg.isBlank()) msg = "Checked-in successfully (ARRIVED).";
-                            lblTerminalStatus.setText(msg);
+                        // After check-in, tableId should be filled by server on success
+                        String tableId = dto.getTableId();
+                        boolean hasTable = tableId != null && !tableId.isBlank() && !"-".equals(tableId);
 
-                            btnCheckIn.setDisable(true);
-                            validated = false;
-                            tableAvailable = false;
-                            break;
+                        lblTableNumber.setText(hasTable ? tableId : "-");
+
+                        String msg = dto.getMessage();
+                        if (msg == null || msg.isBlank()) {
+                            msg = dto.isValid()
+                                    ? (hasTable ? "Checked-in successfully." : "Check-in processed, but no table assigned.")
+                                    : "Check-in failed.";
+                        }
+                        lblTerminalStatus.setText(msg);
+
+                        // ✅ Mark checked-in only on TRUE success (valid + table assigned)
+                        checkedIn = dto.isValid() && hasTable;
+                        if (checkedIn) {
+                            lastCheckedInCode = safeTrim(txtConfirmationCode.getText());
+                            lblValidationResult.setText("CHECKED-IN ✅");
                         }
 
-                        // fallback: old server behavior (String)
-                        String msg = (payload == null) ? "" : payload.toString();
-
-                        if (containsIgnoreCase(msg, "ARRIVED") || containsIgnoreCase(msg, "SUCCESS")) {
-
-                            // Optional: parse "ARRIVED|T12"
-                            if (msg.contains("|")) {
-                                String[] parts = msg.split("\\|");
-                                if (parts.length >= 2) {
-                                    String tableId = parts[1].trim();
-                                    lblTableNumber.setText(tableId.isBlank() ? "-" : tableId);
-                                }
-                            }
-
-                            lblTerminalStatus.setText(msg.isBlank() ? "Checked-in successfully (ARRIVED)." : msg);
-                        } else {
-                            lblTerminalStatus.setText(msg.isBlank() ? "Check-in failed." : msg);
-                        }
-
-                        btnCheckIn.setDisable(true);
+                        // Reset ability to reuse validated state (same as your original)
                         validated = false;
                         tableAvailable = false;
+
+                        break;
                     }
+
+                    // =========================================
+                    // Fallback: old server behavior (String)
+                    // =========================================
+                    String msg = (payload == null) ? "" : payload.toString();
+
+                    boolean success = containsIgnoreCase(msg, "ARRIVED") || containsIgnoreCase(msg, "SUCCESS");
+
+                    if (success) {
+
+                        // Optional parse "ARRIVED|T12"
+                        String parsedTableId = null;
+
+                        if (msg.contains("|")) {
+                            String[] parts = msg.split("\\|");
+                            if (parts.length >= 2) {
+                                parsedTableId = parts[1].trim();
+                            }
+                        }
+
+                        boolean hasTable = parsedTableId != null && !parsedTableId.isBlank();
+
+                        if (hasTable) {
+                            lblTableNumber.setText(parsedTableId);
+                        } else {
+                            // If no table in message, keep whatever is already shown or "-"
+                            if (lblTableNumber.getText() == null || lblTableNumber.getText().isBlank()) {
+                                lblTableNumber.setText("-");
+                            }
+                        }
+
+                        lblTerminalStatus.setText(msg.isBlank() ? "Checked-in successfully." : msg);
+
+                        // ✅ In old mode: consider success only if we have a table
+                        checkedIn = hasTable;
+                        if (checkedIn) {
+                            lastCheckedInCode = safeTrim(txtConfirmationCode.getText());
+                            lblValidationResult.setText("CHECKED-IN ✅");
+                        }
+
+                    } else {
+                        lblTerminalStatus.setText(msg.isBlank() ? "Check-in failed." : msg);
+                        checkedIn = false;
+                    }
+
+                    validated = false;
+                    tableAvailable = false;
+                }
+
 
                     case RESPONSE_RECOVER_CONFIRMATION_CODE -> {
                         Object payload = env.getPayload();
                         String msg = (payload == null) ? "" : payload.toString();
                         lblRecoverResult.setText(msg.isBlank() ? "Recovery response received." : msg);
                         lblTerminalStatus.setText("Recovery done.");
+                    }
+
+                    case RESPONSE_WAITING_LIST -> {
+                        joinWLInFlight = false; // unlock on response
+
+                        Object payload = env.getPayload();
+
+                        if (payload instanceof common.dto.WaitingListDTO dto) {
+                            String code = dto.getConfirmationCode();
+                            String st = dto.getStatus();
+                            int people = dto.getPeopleCount();
+                            String email = dto.getEmail();
+                            String phone = dto.getPhone();
+
+                            lblTerminalStatus.setText("✅ Joined waiting list. Code: " + (code == null ? "-" : code));
+
+                            // ✅ Fill Waiting List Details box
+                            lblWaitCode.setText(code == null || code.isBlank() ? "-" : code);
+                            lblWaitStatus.setText(st == null || st.isBlank() ? "-" : st);
+                            lblWaitPeople.setText(people > 0 ? String.valueOf(people) : "-");
+                            lblWaitEmail.setText(email == null || email.isBlank() ? "-" : email);
+                            lblWaitPhone.setText(phone == null || phone.isBlank() ? "-" : phone);
+
+                        } else {
+                            String msg = (payload == null) ? "" : payload.toString();
+                            lblTerminalStatus.setText(msg.isBlank() ? "Waiting list response received." : msg);
+                        }
+                    }
+
+                    case RESPONSE_LEAVE_WAITING_LIST -> {
+                        leaveWLInFlight = false; // unlock on response
+
+                        Object payload = env.getPayload();
+
+                        // If server returns WaitingListDTO updated
+                        if (payload instanceof common.dto.WaitingListDTO dto) {
+                            lblTerminalStatus.setText("✅ Left waiting list. Code: " + nonEmptyOrDash(dto.getConfirmationCode()));
+
+                            // Update waiting box
+                            lblWaitStatus.setText(nonEmptyOrDash(dto.getStatus()));
+
+                            // Optional: clear all waiting details
+                            resetWaitingDetails();
+
+                        } else {
+                            // Or server returns String
+                            String msg = (payload == null) ? "" : payload.toString();
+                            lblTerminalStatus.setText(msg.isBlank() ? "Left waiting list." : msg);
+
+                            resetWaitingDetails();
+                        }
+                    }
+                    
+                    case RESPONSE_TERMINAL_CANCEL_RESERVATION -> {
+                        cancelResInFlight = false;
+
+                        Object payload = env.getPayload();
+                        String msg = (payload == null) ? "" : payload.toString();
+
+                        lblTerminalStatus.setText(msg.isBlank() ? "Cancel response received." : msg);
+
+                        // ✅ Reset UI after cancel (recommended)
+                        validated = false;
+                        tableAvailable = false;
+                        checkedIn = false;
+                        lastCheckedInCode = "";
+                        lastValidatedCode = "";
+
+                        lblValidationResult.setText("");
+                        resetAll();
+                        resetWaitingDetails();
+                        lblRecoverResult.setText("");
+                        
+                        txtConfirmationCode.clear();
                     }
 
                     default -> {
@@ -372,11 +660,24 @@ public class TerminalController implements ClientUI {
     // Helpers
     // =========================
 
+    private void resetWaitingDetails() {
+        if (lblWaitCode != null) lblWaitCode.setText("-");
+        if (lblWaitStatus != null) lblWaitStatus.setText("-");
+        if (lblWaitPeople != null) lblWaitPeople.setText("-");
+        if (lblWaitEmail != null) lblWaitEmail.setText("-");
+        if (lblWaitPhone != null) lblWaitPhone.setText("-");
+    }
+
     private void sendToServer(OpCode op, Object payload) {
         try {
             var client = ClientSession.getClient();
             if (client == null) {
                 lblTerminalStatus.setText("ClientSession client is null.");
+                validateInFlight = false;
+                checkInInFlight = false;
+                joinWLInFlight = false;
+                leaveWLInFlight = false;
+                cancelResInFlight = false;   // ✅ ADD THIS
                 return;
             }
 
@@ -386,6 +687,12 @@ public class TerminalController implements ClientUI {
         } catch (Exception e) {
             lblTerminalStatus.setText("Send failed: " + e.getMessage());
             e.printStackTrace();
+
+            validateInFlight = false;
+            checkInInFlight = false;
+            joinWLInFlight = false;
+            leaveWLInFlight = false;
+            cancelResInFlight = false;   // ✅ ADD THIS
         }
     }
 
@@ -468,18 +775,16 @@ public class TerminalController implements ClientUI {
             resetDetailsOnly();
             lblTableNumber.setText("-");
             lblWaitMessage.setText("");
-            btnCheckIn.setDisable(true);
             return;
         }
 
         if (!hasTable) {
             lblTableNumber.setText("-");
             lblWaitMessage.setText("Please wait…");
-            btnCheckIn.setDisable(true);
         } else {
             lblWaitMessage.setText("");
-            btnCheckIn.setDisable(false);
         }
+
     }
 
     private void resetAll() {
@@ -490,8 +795,7 @@ public class TerminalController implements ClientUI {
 
         lblTableNumber.setText("-");
         lblWaitMessage.setText("");
-
-        btnCheckIn.setDisable(true);
+        // Buttons stay enabled always
     }
 
     private void resetDetailsOnly() {
@@ -518,40 +822,6 @@ public class TerminalController implements ClientUI {
 
         lblWaitMessage.setText("");
     }
-
-    // =========================
-    // Existing ReservationDTO UI filler (kept, but only fills the 3 fields we show)
-    // =========================
-    private void applyReservationToUI(ReservationDTO res) {
-        // ReservationDTO may not have reservationId; keep "-"
-        lblResId.setText("-");
-
-        lblResDateTime.setText(nonEmptyOrDash(getReservationTime(res)));
-        lblResGuests.setText(nonEmptyOrDash(getGuests(res)));
-
-        String tableId = safeStr(getTableId(res));
-        lblTableNumber.setText(tableId.isBlank() ? "-" : tableId);
-
-        lblWaitMessage.setText("");
-    }
-
-    // ---- DTO getter adapters (ReservationDTO) ----
-    private String getReservationTime(ReservationDTO r) {
-        try { return safeStr(r.getReservationTime()); } catch (Throwable ignored) {}
-        return "-";
-    }
-
-    private String getGuests(ReservationDTO r) {
-        try { return String.valueOf(r.getNumOfCustomers()); } catch (Throwable ignored) {}
-        return "-";
-    }
-
-    private String getReservationStatus(ReservationDTO r) {
-        try { return safeStr(r.getStatus()); } catch (Throwable ignored) {}
-        return "-";
-    }
-
-    private String getTableId(ReservationDTO r) { return "-"; }
 
     // =========================
     // Small helpers
@@ -587,6 +857,96 @@ public class TerminalController implements ClientUI {
     private static String safeStr(Object o) {
         return (o == null) ? "" : String.valueOf(o);
     }
+
+    private static class JoinWaitingInput {
+        final int people;
+        final String email;
+        final String phone; // optional
+
+        JoinWaitingInput(int people, String email, String phone) {
+            this.people = people;
+            this.email = email;
+            this.phone = phone;
+        }
+    }
+
+    private JoinWaitingInput askJoinWaitingListData() {
+        Dialog<JoinWaitingInput> dialog = new Dialog<>();
+        dialog.setTitle("Join Waiting List");
+        dialog.setHeaderText("Enter details to join the waiting list");
+
+        ButtonType okBtn = new ButtonType("Join", ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(okBtn, ButtonType.CANCEL);
+
+        javafx.scene.layout.GridPane grid = new javafx.scene.layout.GridPane();
+        grid.setHgap(10);
+        grid.setVgap(10);
+
+        TextField peopleField = new TextField();
+        peopleField.setPromptText("e.g. 3");
+
+        TextField emailField = new TextField();
+        emailField.setPromptText("email@example.com (required)");
+
+        TextField phoneField = new TextField();
+        phoneField.setPromptText("05XXXXXXXX (optional)");
+
+        grid.add(new Label("People count*:"), 0, 0);
+        grid.add(peopleField, 1, 0);
+
+        grid.add(new Label("Email*:"), 0, 1);
+        grid.add(emailField, 1, 1);
+
+        grid.add(new Label("Phone (optional):"), 0, 2);
+        grid.add(phoneField, 1, 2);
+
+        dialog.getDialogPane().setContent(grid);
+
+        // Disable Join button until required fields are valid (this is fine; not terminal page buttons)
+        Node joinButton = dialog.getDialogPane().lookupButton(okBtn);
+        joinButton.setDisable(true);
+
+        Runnable validate = () -> {
+            String p = peopleField.getText() == null ? "" : peopleField.getText().trim();
+            String e = emailField.getText() == null ? "" : emailField.getText().trim();
+            boolean ok = false;
+            try {
+                ok = !e.isBlank() && Integer.parseInt(p) > 0;
+            } catch (Exception ignored) {}
+            joinButton.setDisable(!ok);
+        };
+
+        peopleField.textProperty().addListener((o, a, b) -> validate.run());
+        emailField.textProperty().addListener((o, a, b) -> validate.run());
+        validate.run();
+
+        dialog.setResultConverter(btn -> {
+            if (btn == okBtn) {
+                int people = Integer.parseInt(peopleField.getText().trim());
+                String email = emailField.getText().trim();
+                String phone = phoneField.getText() == null ? "" : phoneField.getText().trim();
+                return new JoinWaitingInput(people, email, phone);
+            }
+            return null;
+        });
+
+        return dialog.showAndWait().orElse(null);
+    }
+
+    private Integer askPeopleCountOnly() {
+        TextInputDialog d = new TextInputDialog();
+        d.setTitle("Join Waiting List");
+        d.setHeaderText("Enter number of guests");
+
+        d.setContentText("People count:");
+
+        return d.showAndWait()
+                .map(String::trim)
+                .filter(s -> !s.isBlank())
+                .map(s -> {
+                    try { return Integer.parseInt(s); } catch (Exception e) { return -1; }
+                })
+                .filter(n -> n > 0)
+                .orElse(null);
+    }
 }
-
-
