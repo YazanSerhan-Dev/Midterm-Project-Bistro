@@ -750,13 +750,17 @@ public class BistroServer extends AbstractServer {
         // Send Email (Optional, wrapped in try/catch so it doesn't crash server)
         try {
             String toEmail;
+            String phone;
             if (dto.isSubscriber()) {
                 toEmail = DataBase.dao.SubscriberDAO.getEmailByUsername(dto.getSubscriberUsername());
-            } else {
+                phone = SubscriberDAO.getPhoneByUsername(dto.getSubscriberUsername());
+                } else {
                 toEmail = dto.getGuestEmail();
+                phone = dto.getGuestPhone();
             }
             if (toEmail != null && !toEmail.isBlank()) {
-                Server.EmailService.sendReservationConfirmation(toEmail, r.confirmationCode);
+                EmailService.sendReservationConfirmation(toEmail, r.confirmationCode);
+                EmailService.smsStub(phone,"Reservation has been made | code :" + r.confirmationCode);
             }
         } catch (Exception mailEx) {
             System.out.println("[EMAIL] Failed to send email: " + mailEx.getMessage());
