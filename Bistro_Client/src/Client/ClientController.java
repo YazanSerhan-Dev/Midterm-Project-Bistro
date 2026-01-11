@@ -360,6 +360,18 @@ public class ClientController implements ClientUI {
             this.phone = phone;
         }
     }
+    
+    private static boolean isValidEmailFormat(String email) {
+        if (email == null) return false;
+        String e = email.trim();
+        return e.matches("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
+    }
+
+    private static boolean isValidPhone10Digits(String phone) {
+        if (phone == null) return false;
+        String p = phone.trim();
+        return p.matches("^05\\d{8}$");
+    }
 
     private GuestContact askGuestEmailAndPhone() {
 
@@ -378,19 +390,30 @@ public class ClientController implements ClientUI {
         emailField.setPromptText("email@example.com");
 
         TextField phoneField = new TextField();
-        phoneField.setPromptText("05XXXXXXXX");
+        phoneField.setPromptText("05XXXXXXXX"); // user can type anything, but we validate 10 digits
+
+        Label lblError = new Label();
+        lblError.setStyle("-fx-text-fill: #d32f2f; -fx-font-weight: bold;");
 
         grid.add(new Label("Email:"), 0, 0);
         grid.add(emailField, 1, 0);
         grid.add(new Label("Phone:"), 0, 1);
         grid.add(phoneField, 1, 1);
+        grid.add(lblError, 1, 2);
 
         dialog.getDialogPane().setContent(grid);
+
+        // Disable OK until valid
+        Button okButton = (Button) dialog.getDialogPane().lookupButton(okBtn);
+        okButton.setDisable(true);
+
 
         dialog.setResultConverter(btn -> {
             if (btn == okBtn) {
                 String email = emailField.getText() == null ? "" : emailField.getText().trim();
                 String phone = phoneField.getText() == null ? "" : phoneField.getText().trim();
+                // safety: validate again
+                if (!isValidEmailFormat(email) || !isValidPhone10Digits(phone)) return null;
                 return new GuestContact(email, phone);
             }
             return null;

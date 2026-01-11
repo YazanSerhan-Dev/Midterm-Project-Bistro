@@ -442,7 +442,7 @@ public class BistroServer extends AbstractServer {
                 return;
             }
 
-            boolean ok = WaitingListDAO.cancelIfWaitingOrAssignedByCode(code);
+            boolean ok = WaitingListDAO.cancelAndReleaseTablesByCode(code);
             if (!ok) {
                 sendOk(client, OpCode.RESPONSE_LEAVE_WAITING_LIST, "Cancel failed (status changed).");
                 return;
@@ -694,6 +694,19 @@ public class BistroServer extends AbstractServer {
     // -----------------------------------------------------------
     // 2. MAKE RESERVATION (From the Main branch)
     // -----------------------------------------------------------
+    
+    private static boolean isValidEmailFormat(String email) {
+        if (email == null) return false;
+        String e = email.trim();
+        return e.matches("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
+    }
+
+    private static boolean isValidPhone10Digits(String phone) {
+        if (phone == null) return false;
+        String p = phone.trim();
+        return p.matches("^05\\d{8}$");
+    }
+
     private void handleMakeReservation(Envelope req, ConnectionToClient client) throws Exception {
 
         Object payloadObj = readEnvelopePayload(req);
@@ -708,8 +721,18 @@ public class BistroServer extends AbstractServer {
         }
 
         if (!dto.isSubscriber()) {
-            if (dto.getGuestEmail() == null || dto.getGuestEmail().isBlank()) {
-                sendOk(client, OpCode.RESPONSE_MAKE_RESERVATION, new MakeReservationResponseDTO(false, -1, null, "Guest email is required."));
+            String ge = dto.getGuestEmail() == null ? "" : dto.getGuestEmail().trim();
+            String gp = dto.getGuestPhone() == null ? "" : dto.getGuestPhone().trim();
+
+            if (!isValidEmailFormat(ge)) {
+                sendOk(client, OpCode.RESPONSE_MAKE_RESERVATION,
+                        new MakeReservationResponseDTO(false, -1, null, "Invalid guest email."));
+                return;
+            }
+
+            if (!isValidPhone10Digits(gp)) {
+                sendOk(client, OpCode.RESPONSE_MAKE_RESERVATION,
+                        new MakeReservationResponseDTO(false, -1, null, "Invalid guest phone (must be 10 digits)."));
                 return;
             }
         }

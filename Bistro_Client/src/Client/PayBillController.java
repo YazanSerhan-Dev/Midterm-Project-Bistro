@@ -111,13 +111,33 @@ public class PayBillController implements ClientUI {
 
         // Minimal UI validation for card payment
         if (rbCreditCard.isSelected()) {
-            if (safeTrim(txtCardNumber.getText()).isBlank() ||
-                safeTrim(txtCardExpiry.getText()).isBlank() ||
-                safeTrim(txtCardCvv.getText()).isBlank() ||
-                safeTrim(txtCardHolder.getText()).isBlank()) {
-                lblPaymentResult.setText("Fill all card fields.");
-                return;
-            }
+        	if (rbCreditCard.isSelected()) {
+
+        	    String card = safeTrim(txtCardNumber.getText());
+        	    String expiry = safeTrim(txtCardExpiry.getText());
+        	    String cvv = safeTrim(txtCardCvv.getText());
+        	    String holder = safeTrim(txtCardHolder.getText());
+
+        	    if (card.isBlank() || expiry.isBlank() || cvv.isBlank() || holder.isBlank()) {
+        	        lblPaymentResult.setText("Fill all card fields.");
+        	        return;
+        	    }
+
+        	    if (!isValidCardNumber(card)) {
+        	        lblPaymentResult.setText("Invalid card number.");
+        	        return;
+        	    }
+
+        	    if (!isValidExpiry(expiry)) {
+        	        lblPaymentResult.setText("Invalid or expired card date (MM/YY).");
+        	        return;
+        	    }
+
+        	    if (!isValidCvv(cvv)) {
+        	        lblPaymentResult.setText("Invalid CVV.");
+        	        return;
+        	    }
+        	}
         }
 
         if (!isConnected()) {
@@ -320,6 +340,64 @@ public class PayBillController implements ClientUI {
 
     private static String safeTrim(String s) { return s == null ? "" : s.trim(); }
     private static String nz(String s, String fallback) { return (s == null || s.isBlank()) ? fallback : s; }
+    
+ // =========================
+ // Payment validation (Level 1 - looks valid)
+ // =========================
+
+	 private static String normalizeCardNumber(String input) {
+	     if (input == null) return "";
+	     return input.replaceAll("[\\s-]", "");
+	 }
+	
+	 private static boolean isValidCardNumber(String input) {
+	     String n = normalizeCardNumber(input);
+	     if (!n.matches("^\\d{13,19}$")) return false;
+	     return passesLuhn(n);
+	 }
+	
+	 private static boolean passesLuhn(String digits) {
+	     int sum = 0;
+	     boolean doubleDigit = false;
+	
+	     for (int i = digits.length() - 1; i >= 0; i--) {
+	         int d = digits.charAt(i) - '0';
+	
+	         if (doubleDigit) {
+	             d *= 2;
+	             if (d > 9) d -= 9;
+	         }
+	
+	         sum += d;
+	         doubleDigit = !doubleDigit;
+	     }
+	     return sum % 10 == 0;
+	 }
+	
+	 private static boolean isValidExpiry(String expiry) {
+	     if (expiry == null) return false;
+	     String e = expiry.trim();
+	
+	     if (!e.matches("^\\d{2}/(\\d{2}|\\d{4})$")) return false;
+	
+	     String[] parts = e.split("/");
+	     int month = Integer.parseInt(parts[0]);
+	     if (month < 1 || month > 12) return false;
+	
+	     int year = Integer.parseInt(parts[1]);
+	     if (parts[1].length() == 2) year += 2000;
+	
+	     java.time.YearMonth exp = java.time.YearMonth.of(year, month);
+	     java.time.YearMonth now = java.time.YearMonth.now();
+	
+	     return !exp.isBefore(now);
+	 }
+	
+	 private static boolean isValidCvv(String cvv) {
+	     if (cvv == null) return false;
+	     return cvv.trim().matches("^\\d{3,4}$");
+	 }
+	
 
     // Navigation (keep your current behavior)
     @FXML private void onGoToTerminal() { SceneManager.showTerminal(); }

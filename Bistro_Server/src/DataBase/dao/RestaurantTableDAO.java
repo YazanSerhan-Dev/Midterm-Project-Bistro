@@ -115,46 +115,6 @@ public class RestaurantTableDAO {
         return tableId;
     }
     
-    public static int freeTablesForExpiredReservations() throws Exception {
-
-        String sql = """
-            UPDATE restaurant_table t
-            JOIN visit v ON v.table_id = t.table_id
-            JOIN user_activity ua ON ua.activity_id = v.activity_id
-            JOIN reservation r ON r.reservation_id = ua.reservation_id
-            SET t.status = 'FREE'
-            WHERE r.status = 'EXPIRED'
-              AND t.status = 'OCCUPIED'
-        """;
-
-        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
-        PooledConnection pc = pool.getConnection();
-        Connection conn = pc.getConnection();
-
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            return ps.executeUpdate();
-        } finally {
-            pool.releaseConnection(pc);
-        }
-    }
-
-    public static int getMaxTableSeats() throws Exception {
-        String sql = "SELECT COALESCE(MAX(num_of_seats),0) AS maxSeats FROM restaurant_table";
-
-        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
-        PooledConnection pc = pool.getConnection();
-        Connection conn = pc.getConnection();
-
-        try (PreparedStatement ps = conn.prepareStatement(sql);
-             ResultSet rs = ps.executeQuery()) {
-
-            if (rs.next()) return rs.getInt("maxSeats");
-            return 0;
-        } finally {
-            pool.releaseConnection(pc);
-        }
-    }
-    
  // === Option-1: REAL reservation hold using restaurant_table columns ===
 
     public static String reserveFreeTableForReservation(Connection conn, int numCustomers, int reservationId, int holdMinutes) throws Exception {
@@ -216,26 +176,6 @@ public class RestaurantTableDAO {
                 if (rs.next()) return rs.getString("table_id");
                 return null;
             }
-        }
-    }
-
-    public static boolean occupyReservedTableForReservation(Connection conn, String tableId, int reservationId) throws Exception {
-        String sql = """
-            UPDATE restaurant_table
-            SET status = 'OCCUPIED',
-                reserved_for_reservation_id = NULL,
-                reserved_until = NULL
-            WHERE table_id = ?
-              AND status = 'RESERVED'
-              AND reserved_for_reservation_id = ?
-              AND reserved_until IS NOT NULL
-              AND reserved_until > NOW()
-        """;
-
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, tableId);
-            ps.setInt(2, reservationId);
-            return ps.executeUpdate() == 1;
         }
     }
 
@@ -320,45 +260,6 @@ public class RestaurantTableDAO {
             ps.setString(2, tableId);
             int updated = ps.executeUpdate();
             return (updated == 1) ? tableId : null;
-        }
-    }
-
-    public static String getReservedTableForWaiting(Connection conn, int waitingId) throws Exception {
-        String sql = """
-            SELECT table_id
-            FROM restaurant_table
-            WHERE status = 'RESERVED'
-              AND reserved_for_waiting_id = ?
-              AND reserved_until IS NOT NULL
-            LIMIT 1
-        """;
-
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, waitingId);
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) return rs.getString("table_id");
-                return null;
-            }
-        }
-    }
-
-    public static boolean occupyReservedTableForWaiting(Connection conn, String tableId, int waitingId) throws Exception {
-        String sql = """
-            UPDATE restaurant_table
-            SET status = 'OCCUPIED',
-                reserved_for_waiting_id = NULL,
-                reserved_until = NULL
-            WHERE table_id = ?
-              AND status = 'RESERVED'
-              AND reserved_for_waiting_id = ?
-              AND reserved_until IS NOT NULL
-              AND reserved_until >= NOW()
-        """;
-
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, tableId);
-            ps.setInt(2, waitingId);
-            return ps.executeUpdate() == 1;
         }
     }
 

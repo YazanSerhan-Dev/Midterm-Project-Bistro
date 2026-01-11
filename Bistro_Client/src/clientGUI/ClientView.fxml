@@ -22,7 +22,7 @@
                 <Label text="Bistro System" styleClass="top-title"/>
                 <Region HBox.hgrow="ALWAYS"/>
                 <Label fx:id="lblUserInfo" text="Welcome, Guest"/>
-                <Button text="Logout" onAction="#onLogout"/>
+                <Button text="Logout" onAction="#onLogout" styleClass="danger-button"/>
             </children>
         </HBox>
     </top>
@@ -89,7 +89,7 @@
         			onAction="#onLeaveWaitingList"
         			visible="true"
         			managed="true"
-        			maxWidth="Infinity" styleClass="nav-button">   
+        			maxWidth="Infinity" styleClass="danger-button">   
         			<graphic>
         				<ImageView fitWidth="16" fitHeight="16" preserveRatio="true" opacity="0.90">
             				<image>
