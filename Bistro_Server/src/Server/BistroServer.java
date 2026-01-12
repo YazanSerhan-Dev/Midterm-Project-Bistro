@@ -144,6 +144,7 @@ public class BistroServer extends AbstractServer {
                 // --- WAITING LIST (Fixed Logic) ---
                 case REQUEST_WAITING_LIST -> handlgeteWaitingList(req, client); // Agent Viewing List
                 case REQUEST_WAITING_ADD  -> handleWaitingList(req, client); // Customer Joining
+                case REQUEST_WAITING_REMOVE -> handleRemoveWaitingCustomer(req, client); // <--- ADD THIS
                 case REQUEST_LEAVE_WAITING_LIST -> handleLeaveWaitingList(req, client);
                 
                 // --- DASHBOARD: CURRENT DINERS ---
@@ -503,9 +504,7 @@ public class BistroServer extends AbstractServer {
                 return;
             }
 
-            // ✅ NEW VALIDATION (Option B multi-table):
-            // Waiting list is allowed even if there is no FREE table now.
-            // We only block if the group size is larger than the restaurant TOTAL capacity.
+            
             int totalSeats = RestaurantTableDAO.getTotalSeats();
             if (totalSeats <= 0) {
                 sendOk(client, OpCode.RESPONSE_WAITING_LIST, "Restaurant tables are not configured. Please contact staff.");
@@ -1237,6 +1236,36 @@ public class BistroServer extends AbstractServer {
             log("Sent all reservations to Agent.");
         } catch (Exception e) {
             e.printStackTrace();
+        }
+    }
+    
+    private void handleRemoveWaitingCustomer(Envelope req, ConnectionToClient client) {
+        try {
+            Object payload = readEnvelopePayload(req);
+            
+            // Staff sends just the ID (Integer)
+            int waitingId = -1;
+            if (payload instanceof Integer i) waitingId = i;
+            else if (payload instanceof String s) waitingId = Integer.parseInt(s);
+            
+            if (waitingId <= 0) {
+                sendOk(client, OpCode.RESPONSE_WAITING_REMOVE, "Invalid waiting ID.");
+                return;
+            }
+
+            // Call the new DAO method
+            boolean success = DataBase.dao.WaitingListDAO.cancelWaitingById(waitingId);
+
+            if (success) {
+                sendOk(client, OpCode.RESPONSE_WAITING_REMOVE, "Customer removed from waiting list.");
+            } else {
+                sendOk(client, OpCode.RESPONSE_WAITING_REMOVE, "Could not remove (already arrived or not found).");
+            }
+
+        } catch (Exception e) {
+            try {
+                sendOk(client, OpCode.RESPONSE_WAITING_REMOVE, "Server error: " + e.getMessage());
+            } catch (Exception ignored) {}
         }
     }
     

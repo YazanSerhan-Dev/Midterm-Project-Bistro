@@ -617,4 +617,72 @@ public class WaitingListDAO {
             pool.releaseConnection(pc);
         }
     }
+    
+ // =============================================================
+    // 3. STAFF REMOVAL METHODS (Fixes "Remove / Cancel" button)
+    // =============================================================
+
+    public static boolean cancelWaitingById(int waitingId) throws Exception {
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try {
+            conn.setAutoCommit(false);
+
+            // 1. Lock and Check Status
+            String status = null;
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "SELECT status FROM waiting_list WHERE waiting_id = ? FOR UPDATE")) {
+                ps.setInt(1, waitingId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) {
+                        status = rs.getString("status");
+                    } else {
+                        conn.rollback();
+                        return false; // ID not found
+                    }
+                }
+            }
+
+            // 2. If already arrived or canceled, do not remove again
+            if ("ARRIVED".equalsIgnoreCase(status) || "CANCELED".equalsIgnoreCase(status)) {
+                conn.rollback();
+                return false;
+            }
+
+            // 3. Update Status to CANCELED
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "UPDATE waiting_list SET status = 'CANCELED' WHERE waiting_id = ?")) {
+                ps.setInt(1, waitingId);
+                int rows = ps.executeUpdate();
+                if (rows <= 0) {
+                    conn.rollback();
+                    return false;
+                }
+            }
+
+            // 4. Release any tables reserved for this waiting ID
+            try (PreparedStatement ps = conn.prepareStatement("""
+                UPDATE restaurant_table
+                SET status = 'FREE',
+                    reserved_for_waiting_id = NULL,
+                    reserved_until = NULL
+                WHERE reserved_for_waiting_id = ?
+            """)) {
+                ps.setInt(1, waitingId);
+                ps.executeUpdate();
+            }
+
+            conn.commit();
+            return true;
+
+        } catch (Exception e) {
+            try { conn.rollback(); } catch (Exception ignored) {}
+            throw e;
+        } finally {
+            try { conn.setAutoCommit(true); } catch (Exception ignored) {}
+            pool.releaseConnection(pc);
+        }
+    }
 }

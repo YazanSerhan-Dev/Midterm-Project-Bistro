@@ -90,9 +90,7 @@ public enum OpCode {
     REQUEST_WAITING_REMOVE, // Agent cancels a waiting customer
     RESPONSE_WAITING_REMOVE,
     
-    REQUEST_WAITING_ASSIGN, // Agent assigns a table to a customer
-    RESPONSE_WAITING_ASSIGN,
-    
+   
     REQUEST_CURRENT_DINERS,
     RESPONSE_CURRENT_DINERS,
     

@@ -234,7 +234,6 @@ public class StaffController implements ClientUI {
 
                 // --- Operation Results (Alert + Refresh) ---
                 case RESPONSE_WAITING_ADD:
-                case RESPONSE_WAITING_ASSIGN:
                 case RESPONSE_WAITING_REMOVE:
                     handleWaitingListUpdateResponse((String) env.getPayload());
                     break;
@@ -833,25 +832,6 @@ public class StaffController implements ClientUI {
         	});
     }
     
-    // ✅ FIXED: Uncommented methods so the buttons in FXML work
-    @FXML
-    void onAssignTable(ActionEvent event) {
-        WaitingListRow selected = tblWaitingList.getSelectionModel().getSelectedItem();
-        if (selected == null) {
-            showAlert("Selection Error", "Please select a customer from the waiting list first.");
-            return;
-        }
-
-        TextInputDialog dialog = new TextInputDialog();
-        dialog.setTitle("Assign Table");
-        dialog.setHeaderText("Assigning Customer ID: " + selected.getWaitingId());
-        dialog.setContentText("Enter Table Number (e.g. T01):");
-
-        dialog.showAndWait().ifPresent(tableId -> {
-            Object[] payload = new Object[]{ selected.getWaitingId(), tableId };
-            sendToServer(Envelope.request(OpCode.REQUEST_WAITING_ASSIGN, payload));
-        });
-    }
 
     @FXML
     void onRemoveWaitingCustomer(ActionEvent event) {

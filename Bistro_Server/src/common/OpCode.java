@@ -67,7 +67,7 @@ public enum OpCode {
     REQUEST_TERMINAL_CANCEL_RESERVATION,
     RESPONSE_TERMINAL_CANCEL_RESERVATION,
     
- // ===== Agent – Subscriber Registration =====
+    // ===== Agent Operations =====
     REQUEST_REGISTER_CUSTOMER,
     RESPONSE_REGISTER_CUSTOMER,
     
@@ -79,7 +79,7 @@ public enum OpCode {
     
     REQUEST_LEAVE_WAITING_LIST,
     RESPONSE_LEAVE_WAITING_LIST,
-    
+
     REQUEST_AGENT_RESERVATIONS_LIST,
     RESPONSE_AGENT_RESERVATIONS_LIST,
     
@@ -90,9 +90,7 @@ public enum OpCode {
     REQUEST_WAITING_REMOVE, // Agent cancels a waiting customer
     RESPONSE_WAITING_REMOVE,
     
-    REQUEST_WAITING_ASSIGN, // Agent assigns a table to a customer
-    RESPONSE_WAITING_ASSIGN,
-    
+   
     REQUEST_CURRENT_DINERS,
     RESPONSE_CURRENT_DINERS,
     
