@@ -5,26 +5,32 @@ import java.io.Serializable;
 public class ReportDTO implements Serializable {
     private static final long serialVersionUID = 1L;
 
-    private String label;
-    private Number value1;
-    private Number value2;
+    private String date; // The X-axis (e.g., "2025-01-01")
 
-    // ✅ ADD THIS: No-Argument Constructor
-    public ReportDTO() {
-    }
+    // For Performance Report
+    private int totalLate;
+    private int totalOverstay;
 
-    public ReportDTO(String label, Number value1, Number value2) {
-        this.label = label;
-        this.value1 = value1;
-        this.value2 = value2;
-    }
+    // For Activity Report
+    private int totalReservations;
+    private int totalWaiting;
 
-    public String getLabel() { return label; }
-    public Number getValue1() { return value1; }
-    public Number getValue2() { return value2; }
-    
-    // Setters are often required by serialization libraries to fill the object after creation
-    public void setLabel(String label) { this.label = label; }
-    public void setValue1(Number value1) { this.value1 = value1; }
-    public void setValue2(Number value2) { this.value2 = value2; }
+    public ReportDTO() {}
+
+    // Getters and Setters
+
+    public String getDate() { return date; }
+    public void setDate(String date) { this.date = date; }
+
+    public int getTotalLate() { return totalLate; }
+    public void setTotalLate(int totalLate) { this.totalLate = totalLate; }
+
+    public int getTotalOverstay() { return totalOverstay; }
+    public void setTotalOverstay(int totalOverstay) { this.totalOverstay = totalOverstay; }
+
+    public int getTotalReservations() { return totalReservations; }
+    public void setTotalReservations(int totalReservations) { this.totalReservations = totalReservations; }
+
+    public int getTotalWaiting() { return totalWaiting; }
+    public void setTotalWaiting(int totalWaiting) { this.totalWaiting = totalWaiting; }
 }

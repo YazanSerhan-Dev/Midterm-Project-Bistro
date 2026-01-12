@@ -11,18 +11,19 @@ import common.dto.ReportDTO;
 
 public class ReportDAO {
 
-	public static List<ReportDTO> getPerformanceReport(int month, int year) throws Exception {
+    // 1. Performance Report
+    public static List<ReportDTO> getPerformanceReport(int month, int year) throws Exception {
         List<ReportDTO> list = new ArrayList<>();
         String sql = """
             SELECT 
-                report_date, 
+                DATE(report_date) as r_date, 
                 SUM(late_minutes) as total_late, 
                 SUM(overstay_minutes) as total_overstay 
             FROM performance_log 
             WHERE MONTH(report_date) = ? 
               AND YEAR(report_date) = ?
-            GROUP BY report_date
-            ORDER BY report_date ASC
+            GROUP BY r_date
+            ORDER BY r_date ASC
         """;
 
         MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
@@ -35,11 +36,12 @@ public class ReportDAO {
             
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    list.add(new ReportDTO(
-                        rs.getDate("report_date").toString(),
-                        rs.getInt("total_late"),
-                        rs.getInt("total_overstay")
-                    ));
+                    ReportDTO dto = new ReportDTO();
+                    dto.setDate(rs.getString("r_date"));
+                    // Set specific performance fields
+                    dto.setTotalLate(rs.getInt("total_late"));
+                    dto.setTotalOverstay(rs.getInt("total_overstay"));
+                    list.add(dto);
                 }
             }
         } finally {
@@ -48,17 +50,18 @@ public class ReportDAO {
         return list;
     }
 
-    // 2. Update getSubscriberActivityReport to accept params
+    // 2. Activity Report
     public static List<ReportDTO> getSubscriberActivityReport(int month, int year) throws Exception {
         List<ReportDTO> list = new ArrayList<>();
+        // Note: Using LEFT JOIN or just checking tables. 
+        // For simplicity, we count from user_activity.
         String sql = """
             SELECT 
                 DATE(activity_date) as act_date,
-                COUNT(reservation_id) as total_res,
-                COUNT(waiting_id) as total_wait
+                COUNT(CASE WHEN reservation_id IS NOT NULL THEN 1 END) as total_res,
+                COUNT(CASE WHEN waiting_id IS NOT NULL THEN 1 END) as total_wait
             FROM user_activity
-            WHERE subscriber_username IS NOT NULL
-              AND MONTH(activity_date) = ?
+            WHERE MONTH(activity_date) = ?
               AND YEAR(activity_date) = ?
             GROUP BY act_date
             ORDER BY act_date ASC
@@ -74,15 +77,17 @@ public class ReportDAO {
 
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    list.add(new ReportDTO(
-                        rs.getDate("act_date").toString(),
-                        rs.getInt("total_res"),
-                        rs.getInt("total_wait")
-                    ));
+                    ReportDTO dto = new ReportDTO();
+                    dto.setDate(rs.getString("act_date"));
+                    // Set specific activity fields
+                    dto.setTotalReservations(rs.getInt("total_res"));
+                    dto.setTotalWaiting(rs.getInt("total_wait"));
+                    list.add(dto);
                 }
             }
         } finally {
             pool.releaseConnection(pc);
         }
         return list;
-    }}
+    }
+}

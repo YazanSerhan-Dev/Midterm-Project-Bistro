@@ -84,12 +84,15 @@ public class StaffController implements ClientUI {
 
     @FXML
     public void initialize() {
+
         ClientSession.bindUI(this);
         String role = ClientSession.getRole();
+        boolean isManager = role != null && role.trim().equalsIgnoreCase("MANAGER");
         String username = ClientSession.getUsername();
         lblTitle.setText(role + " Dashboard: " + username);
 
-        boolean isManager = "MANAGER".equals(role);
+    	System.out.println("StaffController role = [" + ClientSession.getRole() + "]");
+
         if (btnViewReports != null) {
             btnViewReports.setVisible(isManager);
             btnViewReports.setManaged(isManager);
@@ -468,8 +471,8 @@ public class StaffController implements ClientUI {
         seriesOver.setName("Overstay (min)");
 
         for (ReportDTO d : data) {
-            seriesLate.getData().add(new XYChart.Data<>(d.getLabel(), d.getValue1()));
-            seriesOver.getData().add(new XYChart.Data<>(d.getLabel(), d.getValue2()));
+            seriesLate.getData().add(new XYChart.Data<>(d.getDate(), d.getTotalLate()));
+            seriesOver.getData().add(new XYChart.Data<>(d.getDate(), d.getTotalOverstay()));
         }
         
         chartPerformance.getData().addAll(seriesLate, seriesOver);
@@ -486,8 +489,8 @@ public class StaffController implements ClientUI {
         seriesWait.setName("Waiting List");
 
         for (ReportDTO d : data) {
-            seriesRes.getData().add(new XYChart.Data<>(d.getLabel(), d.getValue1()));
-            seriesWait.getData().add(new XYChart.Data<>(d.getLabel(), d.getValue2()));
+            seriesRes.getData().add(new XYChart.Data<>(d.getDate(), d.getTotalReservations()));
+            seriesWait.getData().add(new XYChart.Data<>(d.getDate(), d.getTotalWaiting()));
         }
         
         chartActivity.getData().addAll(seriesRes, seriesWait);
@@ -566,7 +569,7 @@ public class StaffController implements ClientUI {
         tblWaitingList.getItems().clear();
         for (Object obj : data) {
             if (obj instanceof WaitingListDTO dto) {
-                WaitingListRow row = new WaitingListRow(dto.getWaitingId(),dto.getNumOfCustomers(),dto.getRequestTime(),dto.getStatus(),dto.getConfirmationCode());
+                WaitingListRow row = new WaitingListRow(dto.getId(),dto.getPeopleCount(),dto.getRequestTime(),dto.getStatus(),dto.getConfirmationCode());
                 tblWaitingList.getItems().add(row);
             }
         }

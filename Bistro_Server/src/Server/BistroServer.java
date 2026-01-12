@@ -791,9 +791,7 @@ public class BistroServer extends AbstractServer {
     
     private void handleReportPerformance(Envelope req, ConnectionToClient client) {
         try {
-            // Unpack DTO
             common.dto.ReportRequestDTO dto = (common.dto.ReportRequestDTO) req.getPayload();
-            // Pass params to DAO
             List<common.dto.ReportDTO> data = DataBase.dao.ReportDAO.getPerformanceReport(dto.getMonth(), dto.getYear());
             sendOk(client, OpCode.RESPONSE_REPORT_PERFORMANCE, data);
         } catch (Exception e) {
@@ -804,9 +802,7 @@ public class BistroServer extends AbstractServer {
 
     private void handleReportActivity(Envelope req, ConnectionToClient client) {
         try {
-            // Unpack DTO
             common.dto.ReportRequestDTO dto = (common.dto.ReportRequestDTO) req.getPayload();
-            // Pass params to DAO
             List<common.dto.ReportDTO> data = DataBase.dao.ReportDAO.getSubscriberActivityReport(dto.getMonth(), dto.getYear());
             sendOk(client, OpCode.RESPONSE_REPORT_ACTIVITY, data);
         } catch (Exception e) {
@@ -1169,8 +1165,9 @@ public class BistroServer extends AbstractServer {
         try {
             var req = (common.dto.LoginRequestDTO) env.getPayload();
             String role = DataBase.dao.StaffDAO.checkLoginAndGetRole(req.getUsername(), req.getPassword());
+
             LoginResponseDTO res = (role != null)
-                    ? new common.dto.LoginResponseDTO(true, "Login success", req.getUsername(), null, role)
+                    ? new common.dto.LoginResponseDTO(true, "Login success", req.getUsername(), role.trim(), null)
                     : new common.dto.LoginResponseDTO(false, "Invalid username or password", null, null, null);
 
             Envelope reply = Envelope.ok(OpCode.RESPONSE_LOGIN_STAFF, res);
@@ -1183,6 +1180,7 @@ public class BistroServer extends AbstractServer {
             } catch (Exception ignored) {}
         }
     }
+
 
     private void handleReservationsList(Envelope req, ConnectionToClient client) throws Exception {
         Object payload = readEnvelopePayload(req);
