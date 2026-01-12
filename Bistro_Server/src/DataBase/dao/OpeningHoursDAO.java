@@ -1,13 +1,18 @@
 package DataBase.dao;
 
 import java.sql.Connection;
+import java.sql.Date;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Time;
-import java.sql.Date;
+import java.sql.Timestamp;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 import DataBase.MySQLConnectionPool;
 import DataBase.PooledConnection;
@@ -16,7 +21,7 @@ import common.dto.OpeningHoursDTO;
 public class OpeningHoursDAO {
 
     // =============================================================
-    // 1. RESTORED METHOD: Used by TxtOpeningHoursImporter
+    // 1. INSERT RAW (Used by Importer)
     // =============================================================
     public static void insertOpeningHours(
             String dayOfWeek,
@@ -54,15 +59,11 @@ public class OpeningHoursDAO {
     }
 
     // =============================================================
-    // 2. NEW METHOD: Used by UI to Add Special Dates (Logic Fix)
+    // 2. MANAGEMENT METHODS (From YOUR Branch - For Staff UI)
     // =============================================================
+
     public static void insertSpecialHour(String dateStr, String dayOfWeekIgnored, String open, String close) throws Exception {
-        
-        // 1. Parse the date string (e.g., "2025-12-31")
         LocalDate date = LocalDate.parse(dateStr);
-        
-        // 2. Calculate the real English day name (e.g., "WEDNESDAY" -> "Wednesday")
-        // This satisfies the Database Enum constraint ('Monday', 'Tuesday'...)
         String realDayName = date.getDayOfWeek().name();
         realDayName = realDayName.substring(0, 1) + realDayName.substring(1).toLowerCase();
 
@@ -76,20 +77,15 @@ public class OpeningHoursDAO {
             ps.setString(1, realDayName); 
             ps.setString(2, open);
             ps.setString(3, close);
-            ps.setDate(4, Date.valueOf(date)); // Convert LocalDate to SQL Date
-            
+            ps.setDate(4, Date.valueOf(date)); 
             ps.executeUpdate();
         } finally {
             pool.releaseConnection(pc);
         }
     }
 
-    // =============================================================
-    // 3. GET ALL HOURS (UI Display)
-    // =============================================================
     public static List<OpeningHoursDTO> getAllOpeningHours() throws Exception {
         List<OpeningHoursDTO> list = new ArrayList<>();
-        // Sort: Regular first (is_special='NO'), then Special (is_special='YES') ordered by date
         String sql = "SELECT * FROM opening_hours ORDER BY is_special ASC, special_date ASC, hours_id ASC";
 
         MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
@@ -101,19 +97,12 @@ public class OpeningHoursDAO {
 
             while (rs.next()) {
                 boolean isSpecial = "YES".equalsIgnoreCase(rs.getString("is_special"));
-                
-                // TRICK: If it's special, show "Special" in the table column instead of "Wednesday"
                 String displayDay = isSpecial ? "Special" : rs.getString("day_of_week");
-
-                // Safely format time (substring to remove seconds if needed)
-                String oTime = rs.getString("open_time");
-                String cTime = rs.getString("close_time");
-
                 list.add(new OpeningHoursDTO(
                     rs.getInt("hours_id"),
                     displayDay,
-                    oTime,
-                    cTime,
+                    rs.getString("open_time"),
+                    rs.getString("close_time"),
                     isSpecial,
                     rs.getString("special_date")
                 ));
@@ -124,16 +113,11 @@ public class OpeningHoursDAO {
         return list;
     }
 
-    // =============================================================
-    // 4. UPDATE HOUR (Edit Button)
-    // =============================================================
     public static boolean updateOpeningHour(int id, String open, String close) throws Exception {
         String sql = "UPDATE opening_hours SET open_time=?, close_time=? WHERE hours_id=?";
-        
         MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
         PooledConnection pc = pool.getConnection();
         Connection conn = pc.getConnection();
-
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, open);
             ps.setString(2, close);
@@ -144,16 +128,11 @@ public class OpeningHoursDAO {
         }
     }
 
-    // =============================================================
-    // 5. DELETE HOUR (Remove Special)
-    // =============================================================
     public static boolean deleteOpeningHour(int id) throws Exception {
         String sql = "DELETE FROM opening_hours WHERE hours_id=?";
-        
         MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
         PooledConnection pc = pool.getConnection();
         Connection conn = pc.getConnection();
-
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, id);
             return ps.executeUpdate() > 0;
@@ -162,16 +141,13 @@ public class OpeningHoursDAO {
         }
     }
 
-    // =============================================================
-    // 6. GET TODAY'S HOURS (Top Label)
-    // =============================================================
+    /** Returns String for UI Label (e.g. "08:00 - 22:00") */
     public static String getHoursForDate(LocalDate date) throws Exception {
         MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
         PooledConnection pc = pool.getConnection();
         Connection conn = pc.getConnection();
-
         try {
-            // A. Check for SPECIAL date first
+            // Check Special
             String sqlSpecial = "SELECT open_time, close_time FROM opening_hours WHERE is_special='YES' AND special_date=?";
             try (PreparedStatement ps = conn.prepareStatement(sqlSpecial)) {
                 ps.setDate(1, Date.valueOf(date));
@@ -181,11 +157,9 @@ public class OpeningHoursDAO {
                     }
                 }
             }
-
-            // B. If no special date, check REGULAR day of week
+            // Check Regular
             String dayName = date.getDayOfWeek().toString(); 
-            dayName = dayName.substring(0, 1) + dayName.substring(1).toLowerCase(); // "MONDAY" -> "Monday"
-
+            dayName = dayName.substring(0, 1) + dayName.substring(1).toLowerCase();
             String sqlRegular = "SELECT open_time, close_time FROM opening_hours WHERE day_of_week=? AND is_special='NO' LIMIT 1";
             try (PreparedStatement ps = conn.prepareStatement(sqlRegular)) {
                 ps.setString(1, dayName);
@@ -195,17 +169,114 @@ public class OpeningHoursDAO {
                     }
                 }
             }
-            
             return "Closed";
-            
         } finally {
             pool.releaseConnection(pc);
         }
     }
     
-    // Helper to keep times clean (09:00 instead of 09:00:00)
     private static String formatTime(String t) {
         if (t == null) return "";
         return (t.length() > 5) ? t.substring(0, 5) : t;
+    }
+
+    // =============================================================
+    // 3. LOGIC METHODS (From MAIN Branch - For Reservation Logic)
+    // =============================================================
+
+    public static boolean isOpenForReservation(Timestamp startTs, int diningMinutes) throws Exception {
+        if (startTs == null) return false;
+        LocalDateTime start = startTs.toLocalDateTime();
+        LocalDate date = start.toLocalDate();
+        LocalTime time = start.toLocalTime();
+        LocalDateTime end = start.plusMinutes(diningMinutes);
+        LocalDate endDate = end.toLocalDate();
+        LocalTime endTime = end.toLocalTime();
+
+        if (!endDate.equals(date)) return false; // Must be same day
+
+        OpenInterval interval = getOpenIntervalForDate(date);
+        if (interval == null) return false;
+
+        return !time.isBefore(interval.open) && !endTime.isAfter(interval.close);
+    }
+
+    /** Helper class for logic */
+    private static class OpenInterval {
+        final LocalTime open;
+        final LocalTime close;
+        OpenInterval(LocalTime open, LocalTime close) {
+            this.open = open;
+            this.close = close;
+        }
+    }
+
+    private static OpenInterval getOpenIntervalForDate(LocalDate date) throws Exception {
+        String sqlSpecial = "SELECT open_time, close_time FROM opening_hours WHERE is_special = 'YES' AND special_date = ? LIMIT 1";
+        String sqlWeekly = "SELECT open_time, close_time FROM opening_hours WHERE (is_special IS NULL OR is_special = 'NO') AND day_of_week = ? LIMIT 1";
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try {
+            // Check special
+            try (PreparedStatement ps = conn.prepareStatement(sqlSpecial)) {
+                ps.setDate(1, java.sql.Date.valueOf(date));
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) {
+                        Time o = rs.getTime("open_time");
+                        Time c = rs.getTime("close_time");
+                        if (o != null && c != null) return new OpenInterval(o.toLocalTime(), c.toLocalTime());
+                    }
+                }
+            }
+            // Check weekly
+            String dowStr = date.getDayOfWeek().getDisplayName(java.time.format.TextStyle.FULL, Locale.ENGLISH);
+            try (PreparedStatement ps = conn.prepareStatement(sqlWeekly)) {
+                ps.setString(1, dowStr);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) {
+                        Time o = rs.getTime("open_time");
+                        Time c = rs.getTime("close_time");
+                        if (o != null && c != null) return new OpenInterval(o.toLocalTime(), c.toLocalTime());
+                    }
+                }
+            }
+            return null;
+        } finally {
+            pool.releaseConnection(pc);
+        }
+    }
+
+    public static List<String> getAvailableTimeSlots(LocalDate date, int slotMinutes, int diningMinutes) throws Exception {
+        List<String> out = new ArrayList<>();
+        if (date == null) return out;
+
+        OpenInterval interval = getOpenIntervalForDate(date);
+        if (interval == null) return out;
+
+        LocalTime open = interval.open;
+        LocalTime close = interval.close;
+        LocalTime lastStart = close.minusMinutes(diningMinutes);
+        if (lastStart.isBefore(open)) return out;
+
+        LocalDate today = LocalDate.now();
+        if (date.isAfter(today.plusMonths(1))) return out;
+
+        LocalTime minStart = open;
+        if (date.equals(today)) {
+             LocalTime nowPlus1h = LocalTime.now().withSecond(0).withNano(0).plusHours(1);
+             if (nowPlus1h.isAfter(minStart)) minStart = nowPlus1h;
+        }
+        minStart = minStart.withSecond(0).withNano(0);
+
+        int mod = minStart.getMinute() % slotMinutes;
+        if (mod != 0) minStart = minStart.plusMinutes(slotMinutes - mod);
+
+        for (LocalTime t = minStart; !t.isAfter(lastStart); t = t.plusMinutes(slotMinutes)) {
+            out.add(String.format("%02d:%02d", t.getHour(), t.getMinute()));
+        }
+        return out;
     }
 }

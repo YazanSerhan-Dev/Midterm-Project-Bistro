@@ -7,6 +7,7 @@ import java.sql.Timestamp;
 import DataBase.MySQLConnectionPool;
 import DataBase.PooledConnection;
 import DataBase.Reservation;
+import Server.EmailService;
 
 import java.sql.*;
 import java.util.ArrayList;
@@ -230,11 +231,13 @@ public class ReservationDAO {
 
     
     public static int cancelNoShows15Min() throws Exception {
+
         String sql = """
-            UPDATE reservation
-            SET status = 'CANCELED'
-            WHERE status = 'CONFIRMED'
-              AND reservation_time < (NOW() - INTERVAL 15 MINUTE)
+        	UPDATE reservation
+        		SET status = 'CANCELED'
+        		WHERE status = 'CONFIRMED'
+        		AND reservation_time <= NOW()
+        		AND TIMESTAMPDIFF(MINUTE, reservation_time, NOW()) > 15;
         """;
 
         MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
@@ -249,6 +252,7 @@ public class ReservationDAO {
     }
 
 
+
  // inside DataBase.dao.ReservationDAO
     public static String markArrivedByCodeReturnTableId(String code) throws Exception {
 
@@ -261,14 +265,16 @@ public class ReservationDAO {
 
         String sqlGetDbNow = "SELECT NOW() AS db_now";
 
+        // ✅ allow ARRIVED from CONFIRMED OR PENDING (second scan)
         String sqlSetArrived = """
             UPDATE reservation
             SET status = 'ARRIVED',
                 expiry_time = DATE_ADD(reservation_time, INTERVAL 2 HOUR)
             WHERE reservation_id = ?
-              AND status = 'CONFIRMED'
+              AND status IN ('CONFIRMED','PENDING')
         """;
 
+        // ✅ cancel “late no-show” only for CONFIRMED (never for PENDING)
         String sqlCancelLate = """
             UPDATE reservation
             SET status = 'CANCELED'
@@ -314,8 +320,13 @@ public class ReservationDAO {
                 }
             }
 
-            if (!"CONFIRMED".equalsIgnoreCase(status)) {
+            if (!"CONFIRMED".equalsIgnoreCase(status) && !"PENDING".equalsIgnoreCase(status)) {
                 throw new Exception("Check-in not allowed: status is " + status);
+            }
+
+            // Already checked-in?
+            if (VisitDAO.existsVisitForReservationId(conn, reservationId)) {
+                throw new Exception("Already checked-in for this reservation.");
             }
 
             // 2) Use DB clock to avoid timezone mismatch
@@ -331,21 +342,25 @@ public class ReservationDAO {
             }
 
             long nowMs = dbNow.getTime();
-            long startMs = reservationTime.getTime();
-            long endMs = startMs + 15L * 60L * 1000L;
 
-            if (nowMs < startMs) {
-                throw new Exception("Too early. Check-in starts at reservation time.");
-            }
+            // ✅ TIME WINDOW applies ONLY for CONFIRMED
+            if ("CONFIRMED".equalsIgnoreCase(status)) {
+                long startMs = reservationTime.getTime();
+                long endMs = startMs + 15L * 60L * 1000L;
 
-            if (nowMs > endMs) {
-                // cancel late no-show immediately
-                try (PreparedStatement ps = conn.prepareStatement(sqlCancelLate)) {
-                    ps.setInt(1, reservationId);
-                    ps.executeUpdate();
+                if (nowMs < startMs) {
+                    throw new Exception("Too early. Check-in starts at reservation time.");
                 }
-                conn.commit();
-                throw new Exception("Too late. Reservation was canceled (no-show).");
+
+                if (nowMs > endMs) {
+                    // cancel late no-show immediately (CONFIRMED only)
+                    try (PreparedStatement ps = conn.prepareStatement(sqlCancelLate)) {
+                        ps.setInt(1, reservationId);
+                        ps.executeUpdate();
+                    }
+                    conn.commit();
+                    throw new Exception("Too late. Reservation was canceled (no-show).");
+                }
             }
 
             // 3) Find activity_id (must exist for Visit)
@@ -361,13 +376,48 @@ public class ReservationDAO {
                 throw new Exception("Missing user_activity row for this reservation. (Fix make-reservation flow)");
             }
 
-            // 4) Allocate table
-            String tableId = DataBase.dao.RestaurantTableDAO.allocateFreeTable(conn, numCustomers);
-            if (tableId == null) {
-                throw new Exception("No suitable FREE table available right now.");
+            // 4) Allocate/Occupy table
+            String tableId = null;
+            List<String> tableIds = null;
+
+            // CONFIRMED -> allocate FREE (single first, then multi-table best-fit)
+            if ("CONFIRMED".equalsIgnoreCase(status)) {
+
+            	tableIds = RestaurantTableDAO.allocateFreeTablesBestFit(conn, reservationId, numCustomers);
+
+             	if (tableIds == null || tableIds.isEmpty()) {
+                 // Tables full -> move to PENDING (Option 1 first scan)
+             		boolean changed = markPendingByCode(conn, code);
+             		conn.commit(); // commit the PENDING status
+             		throw new Exception(changed
+                         ? "No suitable tables free. Reservation moved to PENDING — you will be emailed when tables are reserved."
+                         : "No suitable tables free. Could not move to PENDING.");
+             }
+
+             tableId = tableIds.get(0); // keep old behavior for returning a single "main" table
+         }
+
+            // PENDING -> second scan: must have RESERVED table for this reservation
+            else { // PENDING
+
+                tableIds = RestaurantTableDAO.getReservedTablesForReservation(conn, reservationId);
+
+                if (tableIds == null || tableIds.isEmpty()) {
+                    conn.commit();
+                    throw new Exception("Still waiting for reserved tables. Please wait for the email.");
+                }
+
+                int changed = RestaurantTableDAO.occupyReservedTablesForReservation(conn, reservationId);
+                if (changed <= 0) {
+                    conn.commit();
+                    throw new Exception("Reserved tables are not available (or 15-min window expired). Please wait for new tables.");
+                }
+
+                tableId = tableIds.get(0); // main table for UI/return
             }
 
-            // 5) Set ARRIVED
+
+            // 5) Set ARRIVED (works for CONFIRMED and PENDING now)
             int updated;
             try (PreparedStatement ps = conn.prepareStatement(sqlSetArrived)) {
                 ps.setInt(1, reservationId);
@@ -379,7 +429,14 @@ public class ReservationDAO {
             }
 
             // 6) Insert visit
-            DataBase.dao.VisitDAO.insertVisit(conn, activityId, tableId);
+            if (tableIds == null || tableIds.isEmpty()) {
+                // fallback safety (should not happen)
+                VisitDAO.insertVisit(conn, activityId, tableId);
+            } else {
+                for (String t : tableIds) {
+                    VisitDAO.insertVisit(conn, activityId, t);
+                }
+            }
 
             conn.commit();
             return tableId;
@@ -492,31 +549,58 @@ public class ReservationDAO {
                     return new common.dto.TerminalValidateResponseDTO(false, "Invalid code.");
                 }
 
-                common.dto.TerminalValidateResponseDTO dto = new common.dto.TerminalValidateResponseDTO();
-                dto.setValid(true);
-                dto.setMessage("VALID");
+                int reservationId = rs.getInt("reservation_id");
+                java.sql.Timestamp time = rs.getTimestamp("reservation_time");
+                int num = rs.getInt("num_of_customers");
+                String status = rs.getString("status");
+                boolean canCheckIn = rs.getInt("can_check_in") == 1;
 
-                dto.setReservationId(rs.getInt("reservation_id"));
-                dto.setReservationTime(rs.getTimestamp("reservation_time"));
-                dto.setNumOfCustomers(rs.getInt("num_of_customers"));
-                dto.setStatus(rs.getString("status"));
+                common.dto.TerminalValidateResponseDTO dto = new common.dto.TerminalValidateResponseDTO(true, "OK");
+                dto.setReservationId(reservationId);
+                dto.setReservationTime(time);
+                dto.setNumOfCustomers(num);
+                dto.setStatus(status == null ? "" : status);
 
-                // Option A: table assigned on check-in
-                dto.setTableId(null);
+                // Default
+                dto.setTableId("-");
+                dto.setCheckInAllowed(false);
 
-                // ✅ uses DB time NOW()
-                dto.setCheckInAllowed(rs.getInt("can_check_in") == 1);
-
-                // ✅ Optional: make message clearer
-                if (!dto.isCheckInAllowed()) {
-                    String st = dto.getStatus() == null ? "" : dto.getStatus();
-                    if (!"CONFIRMED".equalsIgnoreCase(st)) {
-                        dto.setMessage("Check-in not allowed: status is " + st);
-                    } else {
-                        dto.setMessage("Check-in allowed only from reservation time until +15 minutes.");
-                    }
+                // Case 1: normal confirmed window
+                if ("CONFIRMED".equalsIgnoreCase(status)) {
+                    dto.setCheckInAllowed(canCheckIn);
+                    dto.setMessage(canCheckIn
+                            ? "Code valid. Ready to check-in."
+                            : "Too early/late for check-in (allowed from reservation time until +15 minutes).");
+                    return dto;
                 }
 
+                // Case 2: waiting-for-table (PENDING)
+                if ("PENDING".equalsIgnoreCase(status)) {
+
+                    String reservedTable = RestaurantTableDAO.getReservedTableForReservation(conn, reservationId);
+
+                    if (reservedTable != null && !reservedTable.isBlank()) {
+                        dto.setTableId(reservedTable);
+                        dto.setCheckInAllowed(true);
+                        dto.setMessage("Table is ready: " + reservedTable + ". Press Check-in to confirm within 15 minutes.");
+                    } else {
+                        dto.setTableId("-");
+                        dto.setCheckInAllowed(false);
+                        dto.setMessage("No suitable table right now. Please wait — you will be notified when a table is ready.");
+                    }
+                    return dto;
+                }
+
+                // Case 3: already arrived
+                if ("ARRIVED".equalsIgnoreCase(status)) {
+                    dto.setCheckInAllowed(false);
+                    dto.setMessage("Already arrived.");
+                    return dto;
+                }
+
+                // Other statuses
+                dto.setCheckInAllowed(false);
+                dto.setMessage("Reservation status: " + status);
                 return dto;
             }
 
@@ -526,6 +610,7 @@ public class ReservationDAO {
     }
 
 
+
  // inside ReservationDAO
     public static boolean canFitAtTime(
             Timestamp start,
@@ -533,10 +618,10 @@ public class ReservationDAO {
     ) throws Exception {
 
         Timestamp end = Timestamp.valueOf(
-                start.toLocalDateTime().plusMinutes(15)
+                start.toLocalDateTime().plusMinutes(120)
         );
 
-        int totalSeats = RestaurantTableDAO.getTotalSeatsAvailable();
+        int totalSeats = RestaurantTableDAO.getTotalSeats();
         int booked = getBookedCustomersInRange(start, end);
 
         return booked + numCustomers <= totalSeats;
@@ -750,6 +835,353 @@ public class ReservationDAO {
             pool.releaseConnection(pc);
         }
     }
+
+    public static int getDueReservationSeatsNow() throws Exception {
+
+        String sql = """
+            SELECT COALESCE(SUM(num_of_customers),0) AS total
+            FROM reservation
+            WHERE status = 'CONFIRMED'
+              AND NOW() >= reservation_time
+              AND NOW() <= DATE_ADD(reservation_time, INTERVAL 15 MINUTE)
+        """;
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try (PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+
+            if (rs.next()) return rs.getInt("total");
+            return 0;
+
+        } finally {
+            pool.releaseConnection(pc);
+        }
+    }
+
+    public static boolean markPendingByCode(Connection conn, String code) throws Exception {
+        String sql = """
+            UPDATE reservation
+            SET status = 'PENDING'
+            WHERE confirmation_code = ?
+              AND status = 'CONFIRMED'
+        """;
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, code == null ? "" : code.trim());
+            return ps.executeUpdate() > 0;
+        }
+    }
+
+    public static class ResMini {
+        public final int reservationId;
+        public final int numCustomers;
+        public final String status;
+
+        public ResMini(int reservationId, int numCustomers, String status) {
+            this.reservationId = reservationId;
+            this.numCustomers = numCustomers;
+            this.status = status;
+        }
+    }
+
+    public static ResMini getReservationMiniByCode(Connection conn, String code) throws Exception {
+        String sql = """
+            SELECT reservation_id, num_of_customers, status
+            FROM reservation
+            WHERE confirmation_code = ?
+            LIMIT 1
+        """;
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, code == null ? "" : code.trim());
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) return null;
+                return new ResMini(
+                    rs.getInt("reservation_id"),
+                    rs.getInt("num_of_customers"),
+                    rs.getString("status")
+                );
+            }
+        }
+    }
+
+    public static void autoReserveForPendingReservations() throws Exception {
+
+        String pickSql = """
+            SELECT reservation_id, num_of_customers
+            FROM reservation
+            WHERE status = 'PENDING'
+            ORDER BY reservation_time ASC
+            LIMIT 20
+        """;
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try {
+            conn.setAutoCommit(false);
+
+            List<int[]> candidates = new ArrayList<>();
+
+            try (PreparedStatement ps = conn.prepareStatement(pickSql);
+                 ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    candidates.add(new int[]{
+                            rs.getInt("reservation_id"),
+                            rs.getInt("num_of_customers")
+                    });
+                }
+            }
+
+            for (int[] c : candidates) {
+                int resId = c[0];
+                int seats = c[1];
+
+                // already reserved?
+                List<String> existing =
+                        RestaurantTableDAO.getReservedTablesForReservation(conn, resId);
+                if (existing != null && !existing.isEmpty()) {
+                    continue;
+                }
+
+                List<String> tableIds =
+                        RestaurantTableDAO.reserveFreeTablesBestFitForReservation(
+                                conn, resId, seats, 15);
+
+                if (tableIds != null && !tableIds.isEmpty()) {
+                    conn.commit();
+
+                    try {
+                        String email = getReservationEmail(resId);
+                        if (email != null && !email.isBlank()) {
+                            EmailService.sendReservationTableReady(
+                                    email, String.join(",", tableIds));
+                        }
+                    } catch (Exception ignored) {}
+
+                    return; // ✅ IMPORTANT: stop after FIRST success
+                }
+            }
+
+            conn.rollback(); // nothing fit
+
+        } catch (Exception e) {
+            try { conn.rollback(); } catch (Exception ignored) {}
+            throw e;
+
+        } finally {
+            try { conn.setAutoCommit(true); } catch (Exception ignored) {}
+            pool.releaseConnection(pc);
+        }
+    }
+
+    public static int cancelPendingReservationsWithExpiredHold() throws Exception {
+
+        String sql = """
+            UPDATE reservation r
+            JOIN restaurant_table t
+              ON t.reserved_for_reservation_id = r.reservation_id
+            SET r.status = 'CANCELED',
+                t.status = 'FREE',
+                t.reserved_for_reservation_id = NULL,
+                t.reserved_until = NULL
+            WHERE r.status = 'PENDING'
+              AND t.status = 'RESERVED'
+              AND t.reserved_until < NOW()
+        """;
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            return ps.executeUpdate();
+        } finally {
+            pool.releaseConnection(pc);
+        }
+    }
+
+    public static boolean hasDueReservationNeedingSeats(Connection conn, int lookAheadMinutes) throws Exception {
+        // reservations that should be seated soon (CONFIRMED or PENDING)
+        // and currently they don't have enough RESERVED/OCCUPIED seats linked to them
+        String sql = """
+            SELECT r.reservation_id, r.num_of_customers
+            FROM reservation r
+            WHERE r.status IN ('CONFIRMED','PENDING')
+              AND r.reservation_time BETWEEN DATE_SUB(NOW(), INTERVAL 30 MINUTE)
+                                       AND DATE_ADD(NOW(), INTERVAL ? MINUTE)
+            ORDER BY r.reservation_time ASC
+            LIMIT 1
+            FOR UPDATE
+        """;
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, lookAheadMinutes);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next(); // if there is at least one due reservation => reserve for them first
+            }
+        }
+    }
+
+    public static boolean hasAnyPending(Connection conn) throws Exception {
+        try (PreparedStatement ps = conn.prepareStatement("""
+            SELECT 1 FROM reservation WHERE status = 'PENDING' LIMIT 1
+        """);
+             ResultSet rs = ps.executeQuery()) {
+            return rs.next();
+        }
+    }
+
+    public static int sumPendingSeats(Connection conn, int limit) throws Exception {
+        String sql = """
+            SELECT COALESCE(SUM(num_of_customers),0)
+            FROM (
+                SELECT num_of_customers
+                FROM reservation
+                WHERE status = 'PENDING'
+                ORDER BY reservation_time ASC
+                LIMIT ?
+            ) x
+        """;
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, limit);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getInt(1) : 0;
+            }
+        }
+    }
+
+    public static int sumConfirmedDueSoonSeats(Connection conn, int lookAheadMinutes) throws Exception {
+        String sql = """
+            SELECT COALESCE(SUM(num_of_customers),0)
+            FROM reservation
+            WHERE status = 'CONFIRMED'
+              AND reservation_time <= DATE_ADD(NOW(), INTERVAL ? MINUTE)
+        """;
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, lookAheadMinutes);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getInt(1) : 0;
+            }
+        }
+    }
+    
+ // ReservationDAO.java (add inside class)
+    public static class CancelByCodeResult {
+        public final boolean ok;
+        public final String message;
+
+        public CancelByCodeResult(boolean ok, String message) {
+            this.ok = ok;
+            this.message = message;
+        }
+    }
+
+    /**
+     * Cancel reservation by confirmation code (Terminal flow).
+     * Allowed statuses: CONFIRMED, PENDING
+     * Not allowed: ARRIVED, CANCELED, EXPIRED, COMPLETED...
+     * Also releases RESERVED tables linked to this reservation.
+     */
+    public static CancelByCodeResult cancelReservationByCode(String confirmationCode) throws Exception {
+        if (confirmationCode == null || confirmationCode.trim().isEmpty()) {
+            return new CancelByCodeResult(false, "Missing confirmation code.");
+        }
+
+        String code = confirmationCode.trim();
+
+        String sqlGet = """
+            SELECT reservation_id, status
+            FROM reservation
+            WHERE confirmation_code = ?
+            LIMIT 1
+            FOR UPDATE
+        """;
+
+        String sqlCancel = """
+            UPDATE reservation
+            SET status = 'CANCELED'
+            WHERE reservation_id = ?
+              AND status IN ('CONFIRMED','PENDING')
+        """;
+
+        String sqlReleaseTables = """
+            UPDATE restaurant_table
+            SET status = 'FREE',
+                reserved_for_reservation_id = NULL,
+                reserved_until = NULL
+            WHERE reserved_for_reservation_id = ?
+              AND status = 'RESERVED'
+        """;
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try {
+            conn.setAutoCommit(false);
+
+            Integer resId = null;
+            String status = null;
+
+            try (PreparedStatement ps = conn.prepareStatement(sqlGet)) {
+                ps.setString(1, code);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (!rs.next()) {
+                        conn.rollback();
+                        return new CancelByCodeResult(false, "Code not found.");
+                    }
+                    resId = rs.getInt("reservation_id");
+                    status = rs.getString("status");
+                }
+            }
+
+            if (status == null) status = "";
+
+            // Block if already arrived / not cancelable
+            if (!status.equalsIgnoreCase("CONFIRMED") && !status.equalsIgnoreCase("PENDING")) {
+                conn.rollback();
+                return new CancelByCodeResult(false, "Cannot cancel. Status is: " + status);
+            }
+
+            // If there is a visit already -> don’t allow cancel (extra safety)
+            if (VisitDAO.existsVisitForReservationId(conn, resId)) {
+                conn.rollback();
+                return new CancelByCodeResult(false, "Already checked-in. Cannot cancel now.");
+            }
+
+            int updated;
+            try (PreparedStatement ps = conn.prepareStatement(sqlCancel)) {
+                ps.setInt(1, resId);
+                updated = ps.executeUpdate();
+            }
+
+            if (updated != 1) {
+                conn.rollback();
+                return new CancelByCodeResult(false, "Cancel failed (status changed).");
+            }
+
+            // Release reserved tables (important for PENDING)
+            try (PreparedStatement ps = conn.prepareStatement(sqlReleaseTables)) {
+                ps.setInt(1, resId);
+                ps.executeUpdate();
+            }
+
+            conn.commit();
+            return new CancelByCodeResult(true, "✅ Reservation canceled.");
+
+        } catch (Exception e) {
+            try { conn.rollback(); } catch (Exception ignored) {}
+            throw e;
+
+        } finally {
+            try { conn.setAutoCommit(true); } catch (Exception ignored) {}
+            pool.releaseConnection(pc);
+        }
+    }
+
 
 
 }

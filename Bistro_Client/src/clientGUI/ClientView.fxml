@@ -3,11 +3,13 @@
 <?import javafx.geometry.Insets?>
 <?import javafx.scene.control.*?>
 <?import javafx.scene.layout.*?>
+<?import javafx.scene.image.Image?>
+<?import javafx.scene.image.ImageView?>
 
 <BorderPane xmlns="http://javafx.com/javafx/21"
             xmlns:fx="http://javafx.com/fxml/1"
             fx:controller="Client.ClientController"
-            prefWidth="980" prefHeight="620">
+            prefWidth="980" prefHeight="620" stylesheets="@/Styles/main.css">
 
     <padding>
         <Insets top="10" right="10" bottom="10" left="10"/>
@@ -15,38 +17,71 @@
 
     <!-- TOP BAR -->
     <top>
-        <HBox spacing="10" style="-fx-alignment: CENTER_LEFT;">
+        <HBox spacing="10" alignment="CENTER_LEFT" styleClass="top-bar">
             <children>
-                <Label text="Bistro System" style="-fx-font-size: 18px; -fx-font-weight: bold;"/>
+                <Label text="Bistro System" styleClass="top-title"/>
                 <Region HBox.hgrow="ALWAYS"/>
                 <Label fx:id="lblUserInfo" text="Welcome, Guest"/>
-                <Button text="Logout" onAction="#onLogout"/>
+                <Button text="Logout" onAction="#onLogout" styleClass="danger-button"/>
             </children>
         </HBox>
     </top>
 
     <!-- LEFT SIDEBAR -->
     <left>
-        <VBox spacing="10" prefWidth="220" style="-fx-background-color: #f4f4f4; -fx-background-radius: 10;">
+        <VBox spacing="10" prefWidth="220" styleClass="sidebar">
             <padding>
                 <Insets top="12" right="12" bottom="12" left="12"/>
             </padding>
 
             <children>
-                <Label text="Menu" style="-fx-font-weight: bold; -fx-font-size: 14px;"/>
+                <Label text="Menu" styleClass="sidebar-subtitle"/>
 
-                <Button text="My Reservations" maxWidth="Infinity" onAction="#onNavReservations"/>
-                <Button text="New Reservation" maxWidth="Infinity" onAction="#onNewReservation"/>
+                <Button text="My Reservations" maxWidth="Infinity" onAction="#onNavReservations" styleClass="nav-button nav-active">
+                   <graphic>
+        				<ImageView fitWidth="16" fitHeight="16" preserveRatio="true" opacity="0.90">
+            				<image>
+                				<Image url="@/logos/calendar-check.png"/>
+            				</image>
+        				</ImageView>
+    				</graphic>
+    			</Button>
+                <Button text="New Reservation" maxWidth="Infinity" onAction="#onNewReservation" styleClass="nav-button">
+                    <graphic>
+						<ImageView fitWidth="16" fitHeight="16" preserveRatio="true" opacity="0.90">
+            				<image>
+                				<Image url="@/logos/calendar-plus-2.png"/>
+            				</image>
+        				</ImageView>
+    				</graphic>
+    			</Button>
 
                 <!-- Story rules (UI hint only) -->
                 <Label wrapText="true"
                        text="Rules: choose a 30-minute slot • min 1 hour from now • up to 1 month ahead"
-                       style="-fx-font-size: 11px; -fx-text-fill: #555555;"/>
+                       styleClass="sidebar-hint"/>
 
                 <Separator/>
 
-                <Button fx:id="btnMyProfile" text="My Profile" maxWidth="Infinity" onAction="#onNavProfile"/>
-                <Button fx:id="btnHistory" text="History" maxWidth="Infinity" onAction="#onNavHistory"/>
+                <Button fx:id="btnMyProfile" text="My Profile" maxWidth="Infinity" onAction="#onNavProfile" styleClass="nav-button">
+                    <graphic>
+						<ImageView fitWidth="16" fitHeight="16" preserveRatio="true" opacity="0.90">
+            				<image>
+                				<Image url="@/logos/user.png"/>
+            				</image>
+        				</ImageView>
+    				</graphic>
+                </Button>
+                <Button fx:id="btnHistory" text="History" maxWidth="Infinity" onAction="#onNavHistory" styleClass="nav-button">
+                    <graphic>
+						<ImageView fitWidth="16" fitHeight="16" preserveRatio="true" opacity="0.90">
+            				<image>
+                				<Image url="@/logos/clipboard-clock.png"/>
+            				</image>
+        				</ImageView>
+    				</graphic>
+                </Button>
+                
                 
                 <Button
         			fx:id="btnLeaveWaitingList"
@@ -54,14 +89,38 @@
         			onAction="#onLeaveWaitingList"
         			visible="true"
         			managed="true"
-        			maxWidth="Infinity"/>              
+        			maxWidth="Infinity" styleClass="danger-button">   
+        			<graphic>
+        				<ImageView fitWidth="16" fitHeight="16" preserveRatio="true" opacity="0.90">
+            				<image>
+                				<Image url="@/logos/log-out.png"/>
+            				</image>
+        				</ImageView>
+    				</graphic>
+                </Button>           
 
                 <Separator/>
 
-                <Button text="Pay Bill" maxWidth="Infinity" onAction="#onPayBill"/>
-                <Button text="Terminal" maxWidth="Infinity" onAction="#onGoToTerminal"/>
+                <Button text="Pay Bill" maxWidth="Infinity" onAction="#onPayBill" styleClass="nav-button">
+                    <graphic>
+        				<ImageView fitWidth="16" fitHeight="16" preserveRatio="true" opacity="0.90">
+            				<image>
+                				<Image url="@/logos/receipt.png"/>
+            				</image>
+        				</ImageView>
+    				</graphic>
+                </Button>
+                
+                <Button text="Terminal" maxWidth="Infinity" onAction="#onGoToTerminal" styleClass="nav-button">
+                    <graphic>
+        				<ImageView fitWidth="16" fitHeight="16" preserveRatio="true" opacity="0.90">
+            				<image>
+                				<Image url="@/logos/square-terminal.png"/>
+            				</image>
+        				</ImageView>
+    				</graphic>
+                </Button>
 
-                <!-- Removed "Lost confirmation code" section -->
             </children>
         </VBox>
     </left>
@@ -71,36 +130,66 @@
         <StackPane>
 
             <!-- DASHBOARD -->
-            <VBox fx:id="paneDashboard" spacing="12">
+            <VBox fx:id="paneDashboard" spacing="12" styleClass="content">
                 <children>
 
-                    <!-- SUMMARY CARDS -->
-                    <HBox spacing="12">
-                        <children>
-                            <VBox spacing="6" style="-fx-border-color: #dddddd; -fx-border-radius: 10; -fx-background-radius: 10; -fx-padding: 12;">
-                                <children>
-                                    <Label text="Active Reservations" style="-fx-font-weight: bold;"/>
-                                    <Label fx:id="lblActiveReservations" text="0" style="-fx-font-size: 20px;"/>
-                                </children>
-                            </VBox>
+						<!-- SUMMARY CARDS -->
+						<HBox spacing="12">
+						    <children>
+						
+						        <!-- Active Reservations -->
+						        <VBox spacing="6" styleClass="stat-card">
+						            <children>
+						                <HBox spacing="8" alignment="CENTER_LEFT">
+						                    <ImageView fitWidth="16" fitHeight="16" preserveRatio="true" opacity="0.90">
+						                        <image>
+						                            <Image url="@/logos/check.png"/>
+						                        </image>
+						                    </ImageView>
+						                    <Label text="Active Reservations" styleClass="stat-title"/>
+						                </HBox>
+						
+						                <Label fx:id="lblActiveReservations" text="0" styleClass="stat-value"/>
+						            </children>
+						        </VBox>
+						
+						        <!-- Balance Due -->
+						        <VBox spacing="6" styleClass="stat-card">
+						            <children>
+						                <HBox spacing="8" alignment="CENTER_LEFT">
+						                    <ImageView fitWidth="16" fitHeight="16" preserveRatio="true" opacity="0.90">
+						                        <image>
+						                            <Image url="@/logos/wallet.png"/>
+						                        </image>
+						                    </ImageView>
+						                    <Label text="Balance Due" styleClass="stat-title"/>
+						                </HBox>
+						
+						                <Label fx:id="lblBalanceDue" text="₪0.00" styleClass="stat-value"/>
+						            </children>
+						        </VBox>
+						
+						        <!-- Subscription -->
+						        <VBox spacing="6" styleClass="stat-card">
+						            <children>
+						                <HBox spacing="8" alignment="CENTER_LEFT">
+						                    <ImageView fitWidth="16" fitHeight="16" preserveRatio="true" opacity="0.90">
+						                        <image>
+						                            <Image url="@/logos/badge-percent.png"/>
+						                        </image>
+						                    </ImageView>
+						                    <Label text="Subscription" styleClass="stat-title"/>
+						                </HBox>
+						
+						                <Label fx:id="lblSubscriptionStatus" text="Not Subscribed" styleClass="stat-value"/>
+						            </children>
+						        </VBox>
+						
+						    </children>
+						</HBox>
 
-                            <VBox spacing="6" style="-fx-border-color: #dddddd; -fx-border-radius: 10; -fx-background-radius: 10; -fx-padding: 12;">
-                                <children>
-                                    <Label text="Balance Due" style="-fx-font-weight: bold;"/>
-                                    <Label fx:id="lblBalanceDue" text="₪0.00" style="-fx-font-size: 20px;"/>
-                                </children>
-                            </VBox>
 
-                            <VBox spacing="6" style="-fx-border-color: #dddddd; -fx-border-radius: 10; -fx-background-radius: 10; -fx-padding: 12;">
-                                <children>
-                                    <Label text="Subscription" style="-fx-font-weight: bold;"/>
-                                    <Label fx:id="lblSubscriptionStatus" text="Not Subscribed" style="-fx-font-size: 20px;"/>
-                                </children>
-                            </VBox>
-                        </children>
-                    </HBox>
-
-                    <Label text="My Reservations" style="-fx-font-weight: bold; -fx-font-size: 14px;"/>
+                    <Label text="My Reservations" styleClass="section-title"/>
 
                     <!-- RESERVATIONS TABLE -->
                     <TableView fx:id="tblReservations" prefHeight="400.0" prefWidth="700.0">
@@ -116,10 +205,9 @@
 
                     <HBox spacing="10">
                         <children>
-                            <Button text="Refresh" onAction="#onRefreshReservations"/>
-                            <Button fx:id="btnCancelReservation" text="Cancel Selected" onAction="#onCancelReservation"/>
+                            <Button text="Refresh" onAction="#onRefreshReservations" styleClass="secondary-button"/>
+                            <Button fx:id="btnCancelReservation" text="Cancel Selected" onAction="#onCancelReservation" styleClass="danger-button"/>
                             <Region HBox.hgrow="ALWAYS"/>
-                            <Button text="View Details" onAction="#onViewReservationDetails"/>
                         </children>
                     </HBox>
                 </children>
@@ -127,6 +215,7 @@
 
             <!-- NEW RESERVATION -->
 <VBox fx:id="paneNewReservation"
+      styleClass="content"
       spacing="12"
       alignment="TOP_CENTER"
       visible="false"
@@ -187,9 +276,9 @@
 </VBox>
 
             <!-- PROFILE (Subscriber only) -->
-            <VBox fx:id="paneProfile" spacing="10" visible="false" managed="false">
+            <VBox fx:id="paneProfile" spacing="10" styleClass="content" visible="false" managed="false">
                 <children>
-                    <Label text="My Profile (Subscriber)" style="-fx-font-weight: bold; -fx-font-size: 14px;"/>
+                    <Label text="My Profile (Subscriber)" styleClass="section-title"/>
 
                     <GridPane hgap="10" vgap="10">
                         <children>
@@ -197,7 +286,7 @@
                             <TextField fx:id="txtMemberNumber" editable="false" GridPane.rowIndex="0" GridPane.columnIndex="1"/>
 
                             <Label text="Full Name:" GridPane.rowIndex="1" GridPane.columnIndex="0"/>
-                            <TextField fx:id="txtFullName" editable="false" GridPane.rowIndex="1" GridPane.columnIndex="1"/>
+                            <TextField fx:id="txtFullName" editable="true" GridPane.rowIndex="1" GridPane.columnIndex="1"/>
 
                             <Label text="Phone:" GridPane.rowIndex="2" GridPane.columnIndex="0"/>
                             <TextField fx:id="txtPhone" GridPane.rowIndex="2" GridPane.columnIndex="1"/>
@@ -217,9 +306,9 @@
             </VBox>
 
             <!-- HISTORY (Subscriber only) -->
-            <VBox fx:id="paneHistory" spacing="10" visible="false" managed="false">
+            <VBox fx:id="paneHistory" spacing="10" styleClass="content" visible="false" managed="false">
                 <children>
-                    <Label text="History (Subscriber)" style="-fx-font-weight: bold; -fx-font-size: 14px;"/>
+                    <Label text="History (Subscriber)" styleClass="section-title"/>
 
 <TableView fx:id="tblHistory">
   <columns>
@@ -246,7 +335,7 @@
 
     <!-- BOTTOM STATUS ONLY -->
     <bottom>
-        <HBox spacing="10" style="-fx-alignment: CENTER_LEFT;">
+        <HBox spacing="10" alignment="CENTER_LEFT" styleClass="bottom-bar">
             <children>
                 <Label fx:id="lblStatus" text="Ready."/>
             </children>

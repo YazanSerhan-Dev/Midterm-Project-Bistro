@@ -3,6 +3,7 @@ package Server;
 import java.io.IOException;
 import java.sql.Date; // From HEAD
 import java.sql.Timestamp;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -20,6 +21,7 @@ import common.OpCode;
 import common.dto.RegistrationDTO;
 import common.dto.ReservationDTO;
 import common.dto.SubscriberDTO;
+import common.dto.TerminalValidateResponseDTO;
 import common.dto.WaitingListDTO;
 // Imports from MAIN (Reservation & Login)
 import common.dto.LoginResponseDTO;
@@ -28,9 +30,15 @@ import common.dto.MakeReservationResponseDTO;
 import common.dto.CurrentDinersDTO; // Make sure to import this
 
 import DataBase.dao.VisitDAO;
+import common.dto.ProfileDTO;
 import DataBase.Reservation;
+import DataBase.dao.BillDAO;
+import DataBase.dao.OpeningHoursDAO;
 import DataBase.dao.ReservationDAO;
 import DataBase.dao.SubscriberDAO;
+import DataBase.dao.UserActivityDAO;
+import DataBase.dao.VisitDAO;
+import DataBase.dao.WaitingListDAO;
 import DataBase.dao.RestaurantTableDAO; // From MAIN
 
 public class BistroServer extends AbstractServer {
@@ -115,47 +123,58 @@ public class BistroServer extends AbstractServer {
             }
 
             switch (req.getOp()) {
+                // --- RESERVATIONS ---
                 case REQUEST_RESERVATIONS_LIST -> handleReservationsList(req, client);
                 case REQUEST_REGISTER_CUSTOMER -> handleRegisterCustomer(req, client);
-                
                 case REQUEST_SUBSCRIBERS_LIST -> handleSubscribersList(req, client);
                 case REQUEST_AGENT_RESERVATIONS_LIST -> handleAgentReservationsList(req, client);
-                
                 case REQUEST_MAKE_RESERVATION -> handleMakeReservation(req, client);
                 case REQUEST_CHECK_AVAILABILITY -> handleCheckAvailability(req, client);
-                
+                case REQUEST_CANCEL_RESERVATION -> handleCancelReservation(req, client);
+
+                // --- LOGIN ---
                 case REQUEST_LOGIN_SUBSCRIBER -> handleLoginSubscriber(req, client);
                 case REQUEST_LOGIN_STAFF      -> handleLoginStaff(req, client);
                 
+                // --- TERMINAL ---
                 case REQUEST_TERMINAL_VALIDATE_CODE -> handleTerminalValidateCode(req, client);
                 case REQUEST_TERMINAL_CHECK_IN -> handleTerminalCheckIn(req, client);
+                case REQUEST_TERMINAL_CANCEL_RESERVATION -> handleTerminalCancelReservation(req, client);
                 
-                case REQUEST_WAITING_LIST -> handleWaitingList(req, client);
+                // --- WAITING LIST (Fixed Logic) ---
+                case REQUEST_WAITING_LIST -> handlgeteWaitingList(req, client); // Agent Viewing List
+                case REQUEST_WAITING_ADD  -> handleWaitingList(req, client); // Customer Joining
+                case REQUEST_LEAVE_WAITING_LIST -> handleLeaveWaitingList(req, client);
+                
+                // --- DASHBOARD: CURRENT DINERS ---
                 case REQUEST_CURRENT_DINERS -> handleCurrentDiners(req, client);
                 
+                // --- DASHBOARD: TABLES ---
                 case REQUEST_TABLES_GET -> handleGetTables(client);
                 case REQUEST_TABLE_ADD -> handleAddTable(req, client);
                 case REQUEST_TABLE_REMOVE -> handleRemoveTable(req, client);
                 case REQUEST_TABLE_UPDATE -> handleUpdateTable(req, client);
                 
+                // --- DASHBOARD: OPENING HOURS ---
                 case REQUEST_OPENING_HOURS_GET -> handleGetOpeningHours(client);
                 case REQUEST_OPENING_HOURS_UPDATE -> handleUpdateOpeningHours(req, client);
                 case REQUEST_OPENING_HOURS_ADD_SPECIAL -> handleAddSpecialHour(req, client);
                 case REQUEST_OPENING_HOURS_REMOVE -> handleRemoveSpecialHour(req, client);
                 case REQUEST_TODAY_HOURS -> handleGetTodayHours(client);
                 
+                // --- DASHBOARD: REPORTS ---
                 case REQUEST_REPORT_PERFORMANCE -> handleReportPerformance(req,client);
                 case REQUEST_REPORT_ACTIVITY -> handleReportActivity(req,client);
-                
-                // TODO later:
-                case REQUEST_CANCEL_RESERVATION -> handleCancelReservation(req, client);
-                case REQUEST_PROFILE_GET -> sendOk(client, OpCode.RESPONSE_PROFILE_GET, null);
-                case REQUEST_PROFILE_UPDATE_CONTACT -> sendOk(client, OpCode.RESPONSE_PROFILE_UPDATE_CONTACT, "NOT_IMPLEMENTED_YET");
+
+                // --- BILLING / HISTORY / PROFILE ---
                 case REQUEST_HISTORY_GET -> sendOk(client, OpCode.RESPONSE_HISTORY_GET, List.of());
-                case REQUEST_BILL_GET_BY_CODE -> sendOk(client, OpCode.RESPONSE_BILL_GET_BY_CODE, null);
-                case REQUEST_PAY_BILL -> sendOk(client, OpCode.RESPONSE_PAY_BILL, "NOT_IMPLEMENTED_YET");
-                case REQUEST_TERMINAL_CHECK_OUT -> sendOk(client, OpCode.RESPONSE_TERMINAL_CHECK_OUT, "NOT_IMPLEMENTED_YET");
-                case REQUEST_TERMINAL_NO_SHOW -> sendOk(client, OpCode.RESPONSE_TERMINAL_NO_SHOW, "NOT_IMPLEMENTED_YET");
+                case REQUEST_BILL_GET_BY_CODE -> handleBillGetByCode(req, client);
+                case REQUEST_PAY_BILL        -> handlePayBill(req, client);
+                
+                case REQUEST_GET_PROFILE -> handleGetProfile(req, client);
+                case REQUEST_UPDATE_PROFILE -> handleUpdateProfile(req, client);
+                case REQUEST_RECOVER_CONFIRMATION_CODE -> handleRecoverConfirmationCode(req, client);
+                case REQUEST_GET_AVAILABLE_TIMES -> handleGetAvailableTimes(req, client);
 
                 default -> sendError(client, OpCode.ERROR, "Unknown op: " + req.getOp());
             }
@@ -201,6 +220,389 @@ public class BistroServer extends AbstractServer {
     }
 
     /* ==================== Handlers ==================== */
+    
+    private void handleGetAvailableTimes(Envelope req, ConnectionToClient client) {
+        try {
+            Object payload = readEnvelopePayload(req);
+
+            // payload is expected: String "YYYY-MM-DD"
+            String dateStr = (payload instanceof String s) ? s.trim() : "";
+            if (dateStr.isBlank()) {
+                sendOk(client, OpCode.RESPONSE_GET_AVAILABLE_TIMES, List.of());
+                return;
+            }
+
+            LocalDate date;
+            try {
+                date = LocalDate.parse(dateStr);
+            } catch (Exception ex) {
+                sendOk(client, OpCode.RESPONSE_GET_AVAILABLE_TIMES, List.of());
+                return;
+            }
+
+            // Slot interval = 30 minutes, dining window = 120 minutes
+            List<String> times = OpeningHoursDAO.getAvailableTimeSlots(date, 30, 120);
+
+            sendOk(client, OpCode.RESPONSE_GET_AVAILABLE_TIMES, times);
+
+        } catch (Exception e) {
+            try {
+                sendOk(client, OpCode.RESPONSE_GET_AVAILABLE_TIMES, List.of());
+            } catch (Exception ignored) {}
+        }
+    }
+    
+    private void handleTerminalCancelReservation(Envelope req, ConnectionToClient client) {
+        try {
+            Object payload = readEnvelopePayload(req);
+            String code = (payload instanceof String s) ? s.trim() : "";
+
+            if (code.isBlank()) {
+                sendOk(client, OpCode.RESPONSE_TERMINAL_CANCEL_RESERVATION, "Missing confirmation code.");
+                return;
+            }
+
+            ReservationDAO.CancelByCodeResult r = ReservationDAO.cancelReservationByCode(code);
+
+            sendOk(client, OpCode.RESPONSE_TERMINAL_CANCEL_RESERVATION, r.message);
+
+        } catch (Exception e) {
+            try {
+                sendOk(client, OpCode.RESPONSE_TERMINAL_CANCEL_RESERVATION,
+                        "Server error: " + e.getMessage());
+            } catch (Exception ignored) {}
+        }
+    }
+    
+    private void handleRecoverConfirmationCode(Envelope req, ConnectionToClient client) {
+        try {
+            Object payload = req.getPayload();
+            String contact = (payload instanceof String s) ? s.trim() : "";
+
+            if (contact.isBlank()) {
+                sendOk(client, OpCode.RESPONSE_RECOVER_CONFIRMATION_CODE,
+                        "Email or phone is required.");
+                return;
+            }
+
+            UserActivityDAO.LostCodeResult r =
+                    UserActivityDAO.findActiveCodeByContact(contact);
+
+            if (r == null) {
+                sendOk(client, OpCode.RESPONSE_RECOVER_CONFIRMATION_CODE,
+                        "No active reservation or waiting list found.");
+                return;
+            }
+
+            if (r.email != null && !r.email.isBlank()) {
+                if ("RESERVATION".equals(r.type)) {
+                    EmailService.sendReservationConfirmation(r.email, r.code);
+                } else {
+                    EmailService.sendWaitingTableReady(r.email, r.code);
+                }
+            }
+
+            sendOk(client, OpCode.RESPONSE_RECOVER_CONFIRMATION_CODE,
+                    "Confirmation code sent to your email.");
+
+        } catch (Exception e) {
+            try {
+                sendOk(client, OpCode.RESPONSE_RECOVER_CONFIRMATION_CODE,
+                        "Server error: " + e.getMessage());
+            } catch (Exception ignored) {}
+        }
+    }
+
+    
+    private void handleBillGetByCode(Envelope req, ConnectionToClient client) {
+        try {
+            Object payload = readEnvelopePayload(req);
+            String code = (payload instanceof String s) ? s.trim() : "";
+
+            BillDAO.BillLookupResult r = BillDAO.getBillByConfirmationCode(code);
+
+            // Object[] { ok, alreadyPaid, message, BillDTO }
+            Object[] resp = new Object[] { r.ok, r.alreadyPaid, r.message, r.bill };
+            sendOk(client, OpCode.RESPONSE_BILL_GET_BY_CODE, resp);
+
+        } catch (Exception e) {
+            try {
+                sendOk(client, OpCode.RESPONSE_BILL_GET_BY_CODE,
+                        new Object[] { false, false, "Server error: " + e.getMessage(), null });
+            } catch (Exception ignored) {}
+        }
+    }
+
+    private void handlePayBill(Envelope req, ConnectionToClient client) {
+        try {
+            Object payload = readEnvelopePayload(req);
+
+            // Accept String code OR Object[] { code, method }
+            String code;
+            if (payload instanceof String s) code = s.trim();
+            else if (payload instanceof Object[] arr && arr.length >= 1) code = String.valueOf(arr[0]).trim();
+            else {
+                sendOk(client, OpCode.RESPONSE_PAY_BILL, new Object[] { false, "Bad payload.", null });
+                return;
+            }
+
+            BillDAO.PayBillResult r = BillDAO.payBillByConfirmationCode(code);
+
+            // Object[] { ok, message, tableId }
+            sendOk(client, OpCode.RESPONSE_PAY_BILL, new Object[] { r.ok, r.message, r.tableId });
+
+        } catch (Exception e) {
+            try {
+                sendOk(client, OpCode.RESPONSE_PAY_BILL, new Object[] { false, "Server error: " + e.getMessage(), null });
+            } catch (Exception ignored) {}
+        }
+    }
+    
+    private void handleGetProfile(Envelope req, ConnectionToClient client) {
+        try {
+            Object payload = readEnvelopePayload(req);
+            String memberCode = (payload instanceof String s) ? s.trim() : null;
+
+            if (memberCode == null || memberCode.isBlank()) {
+                sendOk(client, OpCode.RESPONSE_GET_PROFILE, null);
+                return;
+            }
+
+            ProfileDTO dto = SubscriberDAO.getProfileByMemberCode(memberCode);
+            sendOk(client, OpCode.RESPONSE_GET_PROFILE, dto); // dto may be null
+
+        } catch (Exception e) {
+            try {
+                sendOk(client, OpCode.RESPONSE_GET_PROFILE, null);
+            } catch (Exception ignored) {}
+        }
+    }
+
+
+    private void handleUpdateProfile(Envelope req, ConnectionToClient client) {
+        try {
+            Object payload = readEnvelopePayload(req);
+
+            if (!(payload instanceof ProfileDTO dto)) {
+                sendOk(client, OpCode.RESPONSE_UPDATE_PROFILE, "Bad payload (expected ProfileDTO).");
+                return;
+            }
+
+            // memberNumber is the primary key (unchangeable)
+            String memberNumber = dto.getMemberNumber() == null ? "" : dto.getMemberNumber().trim();
+            if (memberNumber.isBlank()) {
+                sendOk(client, OpCode.RESPONSE_UPDATE_PROFILE, "Missing member number.");
+                return;
+            }
+
+            // basic validation
+            String fullName = dto.getFullName() == null ? "" : dto.getFullName().trim();
+            String phone    = dto.getPhone() == null ? "" : dto.getPhone().trim();
+            String email    = dto.getEmail() == null ? "" : dto.getEmail().trim();
+
+            if (fullName.isBlank() || phone.isBlank() || email.isBlank()) {
+                sendOk(client, OpCode.RESPONSE_UPDATE_PROFILE, "Full name / phone / email are required.");
+                return;
+            }
+
+            boolean ok = SubscriberDAO.updateProfileByMemberCode(dto);
+
+            sendOk(client, OpCode.RESPONSE_UPDATE_PROFILE,
+                    ok ? "✅ Profile updated." : "❌ Update failed.");
+
+        } catch (Exception e) {
+            try {
+                sendOk(client, OpCode.RESPONSE_UPDATE_PROFILE, "Server error: " + e.getMessage());
+            } catch (Exception ignored) {}
+        }
+    }
+
+    
+    private void handleLeaveWaitingList(Envelope req, ConnectionToClient client) {
+        try {
+            Object payload = readEnvelopePayload(req);
+
+            // Expected payload: Object[] { role, username, confirmationCode }
+            if (!(payload instanceof Object[] arr) || arr.length < 3) {
+                sendOk(client, OpCode.RESPONSE_LEAVE_WAITING_LIST, "Bad payload.");
+                return;
+            }
+
+            String role = arr[0] == null ? "" : arr[0].toString();
+            String username = arr[1] == null ? "" : arr[1].toString();
+            String code = arr[2] == null ? "" : arr[2].toString().trim();
+
+            if (code.isBlank()) {
+                sendOk(client, OpCode.RESPONSE_LEAVE_WAITING_LIST, "Missing waiting code.");
+                return;
+            }
+
+            if ("SUBSCRIBER".equalsIgnoreCase(role) && username.isBlank()) {
+                sendOk(client, OpCode.RESPONSE_LEAVE_WAITING_LIST, "Missing subscriber username.");
+                return;
+            }
+
+            // Load entry
+            WaitingListDTO w = WaitingListDAO.getByCode(code);
+            if (w == null) {
+                sendOk(client, OpCode.RESPONSE_LEAVE_WAITING_LIST, "Waiting code not found.");
+                return;
+            }
+
+            String st = w.getStatus() == null ? "" : w.getStatus().trim();
+
+            if ("CANCELED".equalsIgnoreCase(st)) {
+                sendOk(client, OpCode.RESPONSE_LEAVE_WAITING_LIST, "Already canceled.");
+                return;
+            }
+
+            // ✅ Option A: allow cancel in WAITING or ASSIGNED
+            if (!"WAITING".equalsIgnoreCase(st) && !"ASSIGNED".equalsIgnoreCase(st)) {
+                sendOk(client, OpCode.RESPONSE_LEAVE_WAITING_LIST, "Invalid status: " + st);
+                return;
+            }
+
+            // ✅ Block cancel if already checked-in (Visit exists)
+            boolean hasVisit = VisitDAO.existsVisitForWaitingId(w.getId());
+            if (hasVisit) {
+                sendOk(client, OpCode.RESPONSE_LEAVE_WAITING_LIST, "Already checked-in. Can't cancel now.");
+                return;
+            }
+
+            boolean ok = WaitingListDAO.cancelAndReleaseTablesByCode(code);
+            if (!ok) {
+                sendOk(client, OpCode.RESPONSE_LEAVE_WAITING_LIST, "Cancel failed (status changed).");
+                return;
+            }
+
+            w.setStatus("CANCELED");
+            sendOk(client, OpCode.RESPONSE_LEAVE_WAITING_LIST, w);
+
+        } catch (Exception e) {
+            try {
+                sendOk(client, OpCode.RESPONSE_LEAVE_WAITING_LIST, "Server error: " + e.getMessage());
+            } catch (Exception ignored) {}
+        }
+    }
+
+    private void handleWaitingList(Envelope req, ConnectionToClient client) {
+        try {
+            Object payload = readEnvelopePayload(req);
+
+            if (!(payload instanceof Object[] arr) || arr.length < 3 || !(arr[2] instanceof WaitingListDTO dto)) {
+                sendOk(client, OpCode.RESPONSE_WAITING_LIST, "Bad payload.");
+                return;
+            }
+
+            String role = arr[0] == null ? "" : arr[0].toString();
+            String username = arr[1] == null ? "" : arr[1].toString();
+
+            int people = dto.getPeopleCount();
+            if (people <= 0) {
+                sendOk(client, OpCode.RESPONSE_WAITING_LIST, "People count must be > 0.");		
+                return;
+            }
+
+            // ✅ NEW VALIDATION (Option B multi-table):
+            // Waiting list is allowed even if there is no FREE table now.
+            // We only block if the group size is larger than the restaurant TOTAL capacity.
+            int totalSeats = RestaurantTableDAO.getTotalSeats();
+            if (totalSeats <= 0) {
+                sendOk(client, OpCode.RESPONSE_WAITING_LIST, "Restaurant tables are not configured. Please contact staff.");
+                return;
+            }
+
+            if (people > totalSeats) {
+                String msg = "Group size (" + people + ") exceeds restaurant capacity (" + totalSeats + " seats). "
+                        + "Please split into smaller groups or contact staff.";
+                sendOk(client, OpCode.RESPONSE_WAITING_LIST, msg);
+                return;
+            }
+
+            String email;
+            String phone;
+
+            if ("SUBSCRIBER".equalsIgnoreCase(role)) {
+                if (username.isBlank()) {
+                    sendOk(client, OpCode.RESPONSE_WAITING_LIST, "Missing subscriber username.");
+                    return;
+                }
+
+                email = DataBase.dao.SubscriberDAO.getEmailByUsername(username);
+
+                phone = SubscriberDAO.getPhoneByUsername(username);
+                if (phone == null) phone = "";
+
+                if (email == null || email.isBlank()) {
+                    sendOk(client, OpCode.RESPONSE_WAITING_LIST, "Subscriber email not found.");
+                    return;
+                }
+            } else {
+                // CUSTOMER: must send email + phone
+                email = dto.getEmail() == null ? "" : dto.getEmail().trim();
+                phone = dto.getPhone() == null ? "" : dto.getPhone().trim();
+
+                if (email.isBlank() || phone.isBlank()) {
+                    sendOk(client, OpCode.RESPONSE_WAITING_LIST, "Email and phone are required for customers.");
+                    return;
+                }
+            }
+
+            Timestamp now = new Timestamp(System.currentTimeMillis());
+
+            // ✅ Insert ONCE with unique code retry
+            String code = null;
+            int waitingId = -1;
+
+            for (int i = 0; i < 5; i++) {
+                code = "W" + java.util.UUID.randomUUID()
+                        .toString()
+                        .replace("-", "")
+                        .substring(0, 8)
+                        .toUpperCase();
+
+                try {
+                    waitingId = WaitingListDAO.insertWaitingReturnId(
+                            people,
+                            now,
+                            "WAITING",
+                            code
+                    );
+                    if (waitingId > 0) break; // success
+                } catch (Exception ex) {
+                    // if duplicate code, retry
+                    String msg = ex.getMessage() == null ? "" : ex.getMessage().toLowerCase();
+                    if (!msg.contains("duplicate")) {
+                        throw ex;
+                    }
+                }
+            }
+
+            if (waitingId <= 0 || code == null) {
+                sendOk(client, OpCode.RESPONSE_WAITING_LIST, "Failed to generate unique waiting code. Please try again.");
+                return;
+            }
+
+            // ✅ store contact info in user_activity for later email notification
+            UserActivityDAO.insertWaitingActivity(waitingId, email, phone);
+
+            // ✅ build response DTO
+            WaitingListDTO resp = new WaitingListDTO();
+            resp.setId(waitingId);
+            resp.setPeopleCount(people);
+            resp.setStatus("WAITING");
+            resp.setConfirmationCode(code);
+            resp.setEmail(email);
+            resp.setPhone(phone);
+
+            sendOk(client, OpCode.RESPONSE_WAITING_LIST, resp);
+
+        } catch (Exception e) {
+            try {
+                sendOk(client, OpCode.RESPONSE_WAITING_LIST, "Server error: " + e.getMessage());
+            } catch (Exception ignored) {}
+        }
+    }
     
     @SuppressWarnings("unchecked")
     private void handleCancelReservation(Envelope req, ConnectionToClient client) {
@@ -452,6 +854,19 @@ public class BistroServer extends AbstractServer {
     // -----------------------------------------------------------
     // 2. MAKE RESERVATION (From the Main branch)
     // -----------------------------------------------------------
+    
+    private static boolean isValidEmailFormat(String email) {
+        if (email == null) return false;
+        String e = email.trim();
+        return e.matches("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
+    }
+
+    private static boolean isValidPhone10Digits(String phone) {
+        if (phone == null) return false;
+        String p = phone.trim();
+        return p.matches("^05\\d{8}$");
+    }
+
     private void handleMakeReservation(Envelope req, ConnectionToClient client) throws Exception {
 
         Object payloadObj = readEnvelopePayload(req);
@@ -466,8 +881,18 @@ public class BistroServer extends AbstractServer {
         }
 
         if (!dto.isSubscriber()) {
-            if (dto.getGuestEmail() == null || dto.getGuestEmail().isBlank()) {
-                sendOk(client, OpCode.RESPONSE_MAKE_RESERVATION, new MakeReservationResponseDTO(false, -1, null, "Guest email is required."));
+            String ge = dto.getGuestEmail() == null ? "" : dto.getGuestEmail().trim();
+            String gp = dto.getGuestPhone() == null ? "" : dto.getGuestPhone().trim();
+
+            if (!isValidEmailFormat(ge)) {
+                sendOk(client, OpCode.RESPONSE_MAKE_RESERVATION,
+                        new MakeReservationResponseDTO(false, -1, null, "Invalid guest email."));
+                return;
+            }
+
+            if (!isValidPhone10Digits(gp)) {
+                sendOk(client, OpCode.RESPONSE_MAKE_RESERVATION,
+                        new MakeReservationResponseDTO(false, -1, null, "Invalid guest phone (must be 10 digits)."));
                 return;
             }
         }
@@ -479,16 +904,26 @@ public class BistroServer extends AbstractServer {
             sendOk(client, OpCode.RESPONSE_MAKE_RESERVATION, new MakeReservationResponseDTO(false, -1, null, "Reservation can be made up to 1 month ahead."));
             return;
         }
+        
+     // Rule: reservation must be at least 1 hour from now
+        java.time.LocalDateTime nowPlus1Hour = java.time.LocalDateTime.now().plusHours(1);
+        Timestamp minAllowed = Timestamp.valueOf(nowPlus1Hour);
 
-        Timestamp start = dto.getReservationTime();
-        Timestamp expiry = Timestamp.valueOf(dto.getReservationTime().toLocalDateTime().plusMinutes(15)); 
+        if (dto.getReservationTime().before(minAllowed)) {
+            sendOk(client, OpCode.RESPONSE_MAKE_RESERVATION,
+                   new MakeReservationResponseDTO(false, -1, null,
+                           "Reservation must be at least 1 hour from now."));
+            return;
+        }
 
-        int totalSeats = DataBase.dao.RestaurantTableDAO.getTotalSeatsAvailable();
-        int bookedCustomers = DataBase.dao.ReservationDAO.getBookedCustomersInRange(start, expiry);
 
-        if (bookedCustomers + dto.getNumOfCustomers() > totalSeats) {
-            List<Timestamp> suggestions = findAlternativeTimes(dto.getReservationTime(), dto.getNumOfCustomers());
-            sendOk(client, OpCode.RESPONSE_MAKE_RESERVATION, new MakeReservationResponseDTO(false, "No available seats at requested time.", suggestions));
+        boolean canFit = ReservationDAO.canFitAtTime(dto.getReservationTime(), dto.getNumOfCustomers());
+
+        if (!canFit) {
+            List<Timestamp> suggestions =
+                    findAlternativeTimes(dto.getReservationTime(), dto.getNumOfCustomers());
+            sendOk(client, OpCode.RESPONSE_MAKE_RESERVATION,
+                    new MakeReservationResponseDTO(false, "No available seats at requested time.", suggestions));
             return;
         }
 
@@ -498,13 +933,17 @@ public class BistroServer extends AbstractServer {
         // Send Email (Optional, wrapped in try/catch so it doesn't crash server)
         try {
             String toEmail;
+            String phone;
             if (dto.isSubscriber()) {
                 toEmail = DataBase.dao.SubscriberDAO.getEmailByUsername(dto.getSubscriberUsername());
-            } else {
+                phone = SubscriberDAO.getPhoneByUsername(dto.getSubscriberUsername());
+                } else {
                 toEmail = dto.getGuestEmail();
+                phone = dto.getGuestPhone();
             }
             if (toEmail != null && !toEmail.isBlank()) {
-                Server.EmailService.sendReservationConfirmation(toEmail, r.confirmationCode);
+                EmailService.sendReservationConfirmation(toEmail, r.confirmationCode);
+                EmailService.smsStub(phone,"Reservation has been made | code :" + r.confirmationCode);
             }
         } catch (Exception mailEx) {
             System.out.println("[EMAIL] Failed to send email: " + mailEx.getMessage());
@@ -528,34 +967,87 @@ public class BistroServer extends AbstractServer {
             sendOk(client, OpCode.RESPONSE_CHECK_AVAILABILITY, new MakeReservationResponseDTO(false, -1, null, "Invalid input."));
             return;
         }
+        
 
-        Timestamp start = dto.getReservationTime();
-        Timestamp expiry = Timestamp.valueOf(start.toLocalDateTime().plusMinutes(15));
+        boolean canFit = ReservationDAO.canFitAtTime(dto.getReservationTime(), dto.getNumOfCustomers());
 
-        int totalSeats = RestaurantTableDAO.getTotalSeatsAvailable();
-        int booked = ReservationDAO.getBookedCustomersInRange(start, expiry);
-
-        if (booked + dto.getNumOfCustomers() > totalSeats) {
-            List<Timestamp> suggestions = findAlternativeTimes(dto.getReservationTime(), dto.getNumOfCustomers());
-            sendOk(client, OpCode.RESPONSE_CHECK_AVAILABILITY, new MakeReservationResponseDTO(false, "No available seats at requested time.", suggestions));
+        if (!canFit) {
+            List<Timestamp> suggestions =
+                    findAlternativeTimes(dto.getReservationTime(), dto.getNumOfCustomers());
+            sendOk(client, OpCode.RESPONSE_CHECK_AVAILABILITY,
+                    new MakeReservationResponseDTO(false, "No available seats at requested time.", suggestions));
             return;
         }
 
-        sendOk(client, OpCode.RESPONSE_CHECK_AVAILABILITY, new MakeReservationResponseDTO(true, -1, null, "Available"));
+        sendOk(client, OpCode.RESPONSE_CHECK_AVAILABILITY,
+                new MakeReservationResponseDTO(true, -1, null, "Available"));
+
     }
 
     private void handleTerminalValidateCode(Envelope req, ConnectionToClient client) {
         try {
             Object payload = readEnvelopePayload(req);
             String code = (payload instanceof String s) ? s : null;
+
             if (code == null || code.isBlank()) {
-                sendOk( client, OpCode.RESPONSE_TERMINAL_VALIDATE_CODE, new common.dto.TerminalValidateResponseDTO(false, "Invalid confirmation code.") );
+                sendOk(client, OpCode.RESPONSE_TERMINAL_VALIDATE_CODE,
+                        new TerminalValidateResponseDTO(false, "Invalid confirmation code."));
                 return;
             }
-            var info = DataBase.dao.ReservationDAO.getTerminalInfoByCode(code.trim());
-            sendOk(client, OpCode.RESPONSE_TERMINAL_VALIDATE_CODE, info);
+
+            code = code.trim();
+
+            // 1) Try RESERVATION code (existing)
+            TerminalValidateResponseDTO info = DataBase.dao.ReservationDAO.getTerminalInfoByCode(code);
+            if (info != null && info.isValid()) {
+                sendOk(client, OpCode.RESPONSE_TERMINAL_VALIDATE_CODE, info);
+                return;
+            }
+
+         // 2) Try WAITING LIST code (NEW)
+            WaitingListDTO w = WaitingListDAO.getByCode(code);
+            if (w == null) {
+                sendOk(client, OpCode.RESPONSE_TERMINAL_VALIDATE_CODE,
+                        new TerminalValidateResponseDTO(false, "Code not found."));
+                return;
+            }
+
+            TerminalValidateResponseDTO dto = new TerminalValidateResponseDTO();
+
+            // Not a reservation
+            dto.setReservationId(0);
+            dto.setNumOfCustomers(w.getPeopleCount());
+            dto.setStatus(w.getStatus());
+
+            String st = (w.getStatus() == null) ? "" : w.getStatus().trim();
+
+            if ("ASSIGNED".equalsIgnoreCase(st)) {
+                dto.setValid(true);
+                dto.setCheckInAllowed(true);
+                dto.setMessage("Table is assigned. You may check-in now.");
+            } else if ("WAITING".equalsIgnoreCase(st)) {
+                dto.setValid(true);
+                dto.setCheckInAllowed(false);
+                dto.setMessage("You are in the waiting list. Please wait…");
+            } else if ("CANCELED".equalsIgnoreCase(st)) {
+                // ✅ IMPORTANT: expired/canceled should NOT be valid
+                dto.setValid(false);
+                dto.setCheckInAllowed(false);
+                dto.setMessage("This waiting code has expired or was canceled.");
+            } else {
+                // Unknown status -> treat as invalid
+                dto.setValid(false);
+                dto.setCheckInAllowed(false);
+                dto.setMessage("Invalid waiting list status.");
+            }
+
+            sendOk(client, OpCode.RESPONSE_TERMINAL_VALIDATE_CODE, dto);
+            return;
+
         } catch (Exception e) {
-            try { sendError(client, OpCode.RESPONSE_TERMINAL_VALIDATE_CODE, "Server error: " + e.getMessage()); } catch (Exception ignored) {}
+            try {
+                sendError(client, OpCode.RESPONSE_TERMINAL_VALIDATE_CODE, "Server error: " + e.getMessage());
+            } catch (Exception ignored) {}
         }
     }
 
@@ -563,46 +1055,115 @@ public class BistroServer extends AbstractServer {
         try {
             Object payload = readEnvelopePayload(req);
             String code = (payload instanceof String s) ? s : null;
+
             if (code == null || code.isBlank()) {
-                sendOk(client, OpCode.RESPONSE_TERMINAL_CHECK_IN, new common.dto.TerminalValidateResponseDTO(false, "Invalid confirmation code."));
+                sendOk(client, OpCode.RESPONSE_TERMINAL_CHECK_IN,
+                        new TerminalValidateResponseDTO(false, "Invalid confirmation code."));
                 return;
             }
 
-            String tableId = DataBase.dao.ReservationDAO.markArrivedByCodeReturnTableId(code.trim());
-            common.dto.TerminalValidateResponseDTO dto = DataBase.dao.ReservationDAO.getTerminalInfoByCode(code.trim());
+            code = code.trim();
+            
+            // 1) RESERVATION check-in (keep your existing behavior)
+            TerminalValidateResponseDTO info = DataBase.dao.ReservationDAO.getTerminalInfoByCode(code);
+            if (info != null && info.isValid()) {
+            	String tableId = ReservationDAO.markArrivedByCodeReturnTableId(code);
+            	TerminalValidateResponseDTO dto = ReservationDAO.getTerminalInfoByCode(code);
+            	dto.setValid(true);
 
-            dto.setValid(true);
-            dto.setStatus("ARRIVED");
-            dto.setMessage("ARRIVED");
-            dto.setTableId(tableId);
+            	if (tableId == null || tableId.isBlank()) {
+            	    // no table -> the DAO should have switched it to PENDING
+            	    dto.setStatus("PENDING");
+            	    dto.setCheckInAllowed(false);
+            	    dto.setTableId("-");
+            	    dto.setMessage("No suitable table now. Please wait — you will be notified when a table is ready.");
+            	} else {
+            	    dto.setStatus("ARRIVED");
+            	    dto.setCheckInAllowed(false);
+            	    dto.setTableId(tableId);
+            	    dto.setMessage("Checked-in successfully. Table: " + tableId);
+            	}
+
+            	sendOk(client, OpCode.RESPONSE_TERMINAL_CHECK_IN, dto);
+            	return;
+
+            }
+
+            // 2) WAITING LIST check-in (ALL DB WORK INSIDE DAO)
+            TerminalValidateResponseDTO dto = WaitingListDAO.checkInWaitingListByCode(code);
 
             sendOk(client, OpCode.RESPONSE_TERMINAL_CHECK_IN, dto);
+
         } catch (Exception e) {
-            common.dto.TerminalValidateResponseDTO err = new common.dto.TerminalValidateResponseDTO();
+            TerminalValidateResponseDTO err = new TerminalValidateResponseDTO();
             err.setValid(false);
-            err.setMessage(e.getMessage());
-            try { sendOk(client, OpCode.RESPONSE_TERMINAL_CHECK_IN, err); } catch (Exception ignored) {}
+            err.setMessage("Server error: " + e.getMessage());
+            try {
+                sendOk(client, OpCode.RESPONSE_TERMINAL_CHECK_IN, err);
+            } catch (Exception ignored) {}
         }
     }
+
+
 
     private void handleLoginSubscriber(Envelope env, ConnectionToClient client) {
         try {
             var req = (common.dto.LoginRequestDTO) env.getPayload();
+
             boolean ok = DataBase.dao.SubscriberDAO.checkLogin(req.getUsername(), req.getPassword());
-            LoginResponseDTO res = ok
-                    ? new common.dto.LoginResponseDTO(true, "Login success", req.getUsername(), null, "SUBSCRIBER")
-                    : new common.dto.LoginResponseDTO(false, "Invalid username or password", null, null, null);
+
+            LoginResponseDTO res;
+
+            if (ok) {
+                // member_code ONLY flow -> must fetch it and send it back
+                String memberCode = DataBase.dao.SubscriberDAO.getMemberCodeByUsername(req.getUsername());
+
+                if (memberCode == null || memberCode.isBlank()) {
+                    // If member_code missing -> fail (because profile uses member_code)
+                    res = new common.dto.LoginResponseDTO(
+                            false,
+                            "Login failed: member code not found for this user.",
+                            null,
+                            null,
+                            null
+                    );
+                } else {
+                    res = new common.dto.LoginResponseDTO(
+                            true,
+                            "Login success",
+                            req.getUsername(),
+                            "SUBSCRIBER",
+                            memberCode.trim()
+                    );
+                }
+            } else {
+                res = new common.dto.LoginResponseDTO(
+                        false,
+                        "Invalid username or password",
+                        null,
+                        null,
+                        null
+                );
+            }
 
             Envelope reply = Envelope.ok(OpCode.RESPONSE_LOGIN_SUBSCRIBER, res);
             client.sendToClient(new KryoMessage("ENVELOPE", KryoUtil.toBytes(reply)));
+
         } catch (Exception e) {
             try {
-                LoginResponseDTO res = new common.dto.LoginResponseDTO(false, "Server error: " + e.getMessage(), null, null, null);
+                LoginResponseDTO res = new common.dto.LoginResponseDTO(
+                        false,
+                        "Server error: " + e.getMessage(),
+                        null,
+                        null,
+                        null
+                );
                 Envelope reply = Envelope.ok(OpCode.RESPONSE_LOGIN_SUBSCRIBER, res);
                 client.sendToClient(new KryoMessage("ENVELOPE", KryoUtil.toBytes(reply)));
             } catch (Exception ignored) {}
         }
     }
+
 
     private void handleLoginStaff(Envelope env, ConnectionToClient client) {
         try {
@@ -681,7 +1242,7 @@ public class BistroServer extends AbstractServer {
         }
     }
     
-    private void handleWaitingList(Envelope req,ConnectionToClient client) {
+    private void handlgeteWaitingList(Envelope req,ConnectionToClient client) {
         try {
         	List<common.dto.WaitingListDTO> list = DataBase.dao.WaitingListDAO.getAllWaitingList();
             sendOk(client, OpCode.RESPONSE_WAITING_LIST, list); 
@@ -752,15 +1313,19 @@ public class BistroServer extends AbstractServer {
 
     private List<Timestamp> findAlternativeTimes(Timestamp requested, int numCustomers) throws Exception {
         List<Timestamp> alternatives = new ArrayList<>();
-        int[] offsets = { -90, -60, -30, 30, 60, 90 };
+        int[] offsets = { -120 ,-90, -60, -30, 30, 60, 90 ,120};
 
         for (int minutes : offsets) {
             Timestamp candidate = Timestamp.valueOf(requested.toLocalDateTime().plusMinutes(minutes));
             
             int m = candidate.toLocalDateTime().getMinute();
             if (m != 0 && m != 30) continue;
+            
+            if (candidate.before(new Timestamp(System.currentTimeMillis()))) continue;
 
             if (candidate.after(Timestamp.valueOf(java.time.LocalDateTime.now().plusMonths(1)))) continue;
+            
+            if (!OpeningHoursDAO.isOpenForReservation(candidate, 120)) continue;
 
             if (ReservationDAO.canFitAtTime(candidate, numCustomers)) {
                 alternatives.add(candidate);

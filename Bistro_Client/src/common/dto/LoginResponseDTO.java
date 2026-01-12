@@ -11,22 +11,19 @@ public class LoginResponseDTO implements Serializable {
     private String fullName;
     private String role; 
     // role = "SUBSCRIBER", "AGENT", "MANAGER"
+    
+    private String memberCode;
 
     public LoginResponseDTO() {}
 
-    public LoginResponseDTO(
-            boolean ok,
-            String message,
-            String username,
-            String fullName,
-            String role
-    ) {
+    public LoginResponseDTO(boolean ok, String message, String username, String role, String memberCode) {
         this.ok = ok;
         this.message = message;
         this.username = username;
-        this.fullName = fullName;
         this.role = role;
+        this.memberCode = memberCode;
     }
+
 
     public boolean isOk() {
         return ok;
@@ -38,6 +35,10 @@ public class LoginResponseDTO implements Serializable {
 
     public String getUsername() {
         return username;
+    }
+
+    public String getMemberCode() {
+        return memberCode;
     }
 
     public String getFullName() {

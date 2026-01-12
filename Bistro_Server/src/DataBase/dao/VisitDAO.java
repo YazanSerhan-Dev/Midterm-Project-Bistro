@@ -5,13 +5,18 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
 
 import DataBase.MySQLConnectionPool;
 import DataBase.PooledConnection;
 import common.dto.CurrentDinersDTO;
 
 public class VisitDAO {
+
+    // =============================================================
+    // 1. INSERT METHODS (Common)
+    // =============================================================
 
     public static void insertVisit(
             int activityId, String tableId,
@@ -37,12 +42,11 @@ public class VisitDAO {
             pool.releaseConnection(pc);
         }
     }
-    
-    public static void insertVisit(Connection conn, int activityId, String tableId) throws Exception {
 
+    public static void insertVisit(Connection conn, int activityId, String tableId) throws Exception {
         String sql = """
             INSERT INTO visit (activity_id, table_id, actual_start_time, actual_end_time)
-            VALUES (?, ?, NOW(), DATE_ADD(NOW(), INTERVAL 2 HOUR))
+            VALUES (?, ?, NOW(), NULL)
         """;
 
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -51,7 +55,87 @@ public class VisitDAO {
             ps.executeUpdate();
         }
     }
-    
+
+    // =============================================================
+    // 2. CHECK EXISTENCE METHODS (From MAIN Branch)
+    // =============================================================
+
+    public static boolean existsVisitForWaitingId(int waitingId) throws Exception {
+        String sql = """
+            SELECT 1
+            FROM visit v
+            JOIN user_activity ua ON ua.activity_id = v.activity_id
+            WHERE ua.waiting_id = ?
+            LIMIT 1
+        """;
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, waitingId);
+            return ps.executeQuery().next();
+        } finally {
+            pool.releaseConnection(pc);
+        }
+    }
+
+    public static boolean existsVisitForWaitingId(Connection conn, int waitingId) throws Exception {
+        String sql = """
+            SELECT 1
+            FROM visit v
+            JOIN user_activity ua ON ua.activity_id = v.activity_id
+            WHERE ua.waiting_id = ?
+            LIMIT 1
+        """;
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, waitingId);
+            return ps.executeQuery().next();
+        }
+    }
+
+    public static boolean existsVisitForReservationId(int reservationId) throws Exception {
+        String sql = """
+            SELECT 1
+            FROM visit v
+            JOIN user_activity ua ON ua.activity_id = v.activity_id
+            WHERE ua.reservation_id = ?
+            LIMIT 1
+        """;
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, reservationId);
+            return ps.executeQuery().next();
+        } finally {
+            pool.releaseConnection(pc);
+        }
+    }
+
+    public static boolean existsVisitForReservationId(Connection conn, int reservationId) throws Exception {
+        String sql = """
+            SELECT 1
+            FROM visit v
+            JOIN user_activity ua ON ua.activity_id = v.activity_id
+            WHERE ua.reservation_id = ?
+            LIMIT 1
+        """;
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, reservationId);
+            return ps.executeQuery().next();
+        }
+    }
+
+    // =============================================================
+    // 3. UI DISPLAY METHODS (From HEAD/Your Branch)
+    // =============================================================
+
     public static List<CurrentDinersDTO> getActiveDiners() {
         List<CurrentDinersDTO> list = new ArrayList<>();
         
@@ -61,12 +145,12 @@ public class VisitDAO {
                 v.actual_start_time, 
                 r.num_of_customers,
                 s.name AS subscriber_name,
-                ua.guest_email  -- ✅ Valid column from user_activity
+                ua.guest_email
             FROM visit v
             JOIN user_activity ua ON v.activity_id = ua.activity_id
             LEFT JOIN reservation r ON ua.reservation_id = r.reservation_id
             LEFT JOIN subscribers s ON ua.subscriber_username = s.username
-            WHERE v.actual_end_time > NOW()
+            WHERE v.actual_end_time IS NULL OR v.actual_end_time > NOW()
         """;
 
         MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
@@ -92,11 +176,10 @@ public class VisitDAO {
                     String gstEmail = rs.getString("guest_email");
                     
                     String displayName = "Guest";
-                    
                     if (subName != null && !subName.isBlank()) {
-                        displayName = subName; // Display Subscriber Name
+                        displayName = subName; 
                     } else if (gstEmail != null && !gstEmail.isBlank()) {
-                        displayName = gstEmail; // Display Guest Email
+                        displayName = gstEmail;
                     }
 
                     // 3. Other fields

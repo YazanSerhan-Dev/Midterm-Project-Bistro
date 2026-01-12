@@ -7,6 +7,7 @@ public class ClientSession {
     private static int port = 5555;
     private static String role = "CUSTOMER";
     private static String username = "";
+    private static String memberCode; // subscriber primary key (member_code)
  // ===== Guest (Customer) identity (for "My Reservations") =====
     private static String guestEmail;
     private static String guestPhone;
@@ -27,6 +28,9 @@ public class ClientSession {
     public static void setUsername(String u) { username = u; }
     public static String getUsername() { return username; }
     
+    public static String getMemberCode() { return memberCode; }
+    public static void setMemberCode(String code) { memberCode = code; }
+  
 
     public static String getGuestEmail() {
         return guestEmail;
@@ -80,6 +84,15 @@ public class ClientSession {
         guestEmail = null;
         guestPhone = null;
     }
+    
+    public static void clearAllIdentity() {
+        role = "CUSTOMER";
+        username = "";
+        guestEmail = null;
+        guestPhone = null;
+        memberCode = null;
+    }
+
 
 }
 

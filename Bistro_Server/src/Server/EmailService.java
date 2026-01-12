@@ -108,5 +108,62 @@ public class EmailService {
 
         sendEmail(toEmail, subject, body);
     }
+    
+    public static void sendWaitingTableReady(String toEmail, String waitingCode) {
+        String subject = "Bistro - Your table is ready!";
+        String body =
+                "Hello,\n\n" +
+                "A table is now available for you.\n\n" +
+                "Please check in within 15 minutes using this code:\n" +
+                waitingCode + "\n\n" +
+                "See you soon,\n" +
+                "Bistro System";
+
+        sendEmail(toEmail, subject, body);
+    }
+
+    public static void sendBillReminder(String toEmail, String confirmationCode) {
+        String subject = "Reminder: Please complete your payment";
+        String body = """
+            Hi,
+            
+            This is a friendly reminder that your visit has reached the 2-hour limit.
+            Please proceed to payment using your confirmation code:
+
+            Confirmation Code: %s
+
+            Thank you,
+            Bistro
+            """.formatted(confirmationCode);
+
+        sendEmail(toEmail, subject, body); // use your existing internal sendEmail()
+    }
+
+    public static void sendReservationTableReady(String toEmail, String tableId) {
+        if (toEmail == null || toEmail.isBlank()) return;
+
+        String subject = "Bistro: Your table is ready";
+        String body =
+                "Hello,\n\n" +
+                "Your table is ready: " + tableId + ".\n" +
+                "Please go to the table now and scan your confirmation code again at the terminal within 15 minutes to confirm.\n\n" +
+                "Thank you,\n" +
+                "Bistro";
+
+        try {
+            // Use your existing low-level method here.
+            // Replace 'sendEmail' with whatever you already have (sendMail / send / sendTo...).
+            sendEmail(toEmail, subject, body);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+    
+    public static void smsStub(String phone, String msg) {
+        if (phone == null || phone.isBlank()) return;
+        System.out.println("[SMS] phone=" + phone + " | " + msg);
+    }
+
+
 }
 
