@@ -122,13 +122,13 @@ public class ReservationDAO {
             // Total restaurant capacity (you said you already have getAllSeats)
             // If your getAllSeats requires conn, use RestaurantTableDAO.getAllSeats(conn)
             int totalSeats = RestaurantTableDAO.getTotalSeats();
-
             int booked = getBookedCustomersInRange(conn, reservationTime, expiryTime);
 
             if (booked + req.getNumOfCustomers() > totalSeats) {
                 conn.rollback();
                 throw new Exception("No availability at that time (capacity reached).");
             }
+
 
             int reservationId;
             try (PreparedStatement ps = conn.prepareStatement(insertReservationSql, Statement.RETURN_GENERATED_KEYS)) {
@@ -612,10 +612,7 @@ public class ReservationDAO {
 
 
  // inside ReservationDAO
-    public static boolean canFitAtTime(
-            Timestamp start,
-            int numCustomers
-    ) throws Exception {
+    public static boolean canFitAtTime(Timestamp start, int numCustomers) throws Exception {
 
         Timestamp end = Timestamp.valueOf(
                 start.toLocalDateTime().plusMinutes(120)
@@ -624,8 +621,13 @@ public class ReservationDAO {
         int totalSeats = RestaurantTableDAO.getTotalSeats();
         int booked = getBookedCustomersInRange(start, end);
 
-        return booked + numCustomers <= totalSeats;
+        // Fast reject: seat capacity
+        if (booked + numCustomers > totalSeats) return false;
+
+        // ✅ Policy 1: also require table-feasibility
+        return RestaurantTableDAO.canPackReservationsAtTime(start, end, numCustomers);
     }
+
 
     public static String getReservationEmail(int reservationId) throws Exception {
         String sql = """
@@ -638,12 +640,12 @@ public class ReservationDAO {
 
         MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
         PooledConnection pc = pool.getConnection();
-        java.sql.Connection conn = pc.getConnection();
+        Connection conn = pc.getConnection();
 
-        try (java.sql.PreparedStatement ps = conn.prepareStatement(sql)) {
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, reservationId);
 
-            try (java.sql.ResultSet rs = ps.executeQuery()) {
+            try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
                     String email = rs.getString("email");
                     return (email == null || email.isBlank()) ? null : email.trim();
@@ -666,12 +668,12 @@ public class ReservationDAO {
 
         MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
         PooledConnection pc = pool.getConnection();
-        java.sql.Connection conn = pc.getConnection();
+        Connection conn = pc.getConnection();
 
-        try (java.sql.PreparedStatement ps = conn.prepareStatement(sql)) {
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, reservationId);
 
-            try (java.sql.ResultSet rs = ps.executeQuery()) {
+            try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
                     String phone = rs.getString("phone");
                     return (phone == null || phone.isBlank()) ? null : phone.trim();
