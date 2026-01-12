@@ -5,7 +5,7 @@ import java.io.Serializable;
 public class SubscriberDTO implements Serializable {
     private static final long serialVersionUID = 1L;
 
-    private int id; // We might use this for the "Subscriber ID" column
+    private String id; // We might use this for the "Subscriber ID" column
     private String fullName;
     private String phone;
     private String email;
@@ -13,7 +13,7 @@ public class SubscriberDTO implements Serializable {
 
     public SubscriberDTO() {}
 
-    public SubscriberDTO(int id, String fullName, String phone, String email, String status) {
+    public SubscriberDTO(String id, String fullName, String phone, String email, String status) {
         this.id = id;
         this.fullName = fullName;
         this.phone = phone;
@@ -22,8 +22,8 @@ public class SubscriberDTO implements Serializable {
     }
 
     // Getters and Setters
-    public int getId() { return id; }
-    public void setId(int id) { this.id = id; }
+    public String getId() { return id; }
+    public void setId(String id) { this.id = id; }
     
     public String getFullName() { return fullName; }
     public void setFullName(String fullName) { this.fullName = fullName; }

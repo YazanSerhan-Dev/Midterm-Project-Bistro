@@ -19,17 +19,24 @@ import common.KryoUtil;
 import common.OpCode;
 import common.dto.MakeReservationRequestDTO;
 import common.dto.MakeReservationResponseDTO;
+import common.dto.OpeningHoursDTO;
 import common.dto.RegistrationDTO;
 import common.dto.ReservationDTO;
 import common.dto.SubscriberDTO;
 import common.dto.WaitingListDTO;
-// ✅ Add these imports
+import common.dto.RestaurantTableDTO;
 import common.dto.LoginRequestDTO;
 import common.dto.LoginResponseDTO;
 
 import java.io.IOException;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+
+import javafx.scene.chart.BarChart;
+import javafx.scene.chart.XYChart;
+import common.dto.ReportDTO;
+import javafx.scene.chart.NumberAxis;
+import javafx.util.StringConverter;
 
 public class StaffController implements ClientUI {
 
@@ -43,10 +50,35 @@ public class StaffController implements ClientUI {
     @FXML private TableView<CurrentDinersRow> tblCurrentDiners;
     
     // Manager Views
-    @FXML private VBox paneReports;
+    //@FXML private VBox paneReports; to check if to delete
     @FXML private VBox paneWaitingList;
     @FXML private Button btnViewReports;
-    @FXML private Button btnManageEmployees;
+    
+    @FXML private VBox paneTables;
+    @FXML private TableView<RestaurantTableDTO> tblRestaurantTables;
+    @FXML private TextField tfTableId;
+    @FXML private TextField tfTableSeats;
+    
+    @FXML private VBox paneOpeningHours;
+    
+    @FXML private TableView<OpeningHoursDTO> tblRegularHours; // ✅ NEW Table
+    @FXML private Label lblSelectedRegularDay;                // ✅ NEW Label
+    @FXML private TextField tfRegularOpen;
+    @FXML private TextField tfRegularClose;
+
+    // Special Table & Inputs
+    @FXML private TableView<OpeningHoursDTO> tblSpecialHours;
+    @FXML private DatePicker dpSpecialDate;
+    @FXML private TextField tfSpecialOpen;
+    @FXML private TextField tfSpecialClose;
+    @FXML private Label lblTodayHours; 
+    //manager reports
+    @FXML private VBox paneReports;
+    @FXML private BarChart<String, Number> chartPerformance;
+    @FXML private BarChart<String, Number> chartActivity;
+    @FXML private ComboBox<String> cbReportMonth;
+    @FXML private ComboBox<Integer> cbReportYear;
+    @FXML private Label lblManagerSection;
     
     // ✅ REMOVED: private ReservationFormController reservationFormController; 
 
@@ -62,11 +94,83 @@ public class StaffController implements ClientUI {
             btnViewReports.setVisible(isManager);
             btnViewReports.setManaged(isManager);
         }
-        if (btnManageEmployees != null) {
-            btnManageEmployees.setVisible(isManager);
-            btnManageEmployees.setManaged(isManager);
+       
+        if (lblManagerSection != null) {
+            lblManagerSection.setVisible(isManager);
+            lblManagerSection.setManaged(isManager);
         }
+        
+        // Setup Report Dropdowns
+        if (cbReportMonth != null) {
+            cbReportMonth.getItems().addAll(
+                "January", "February", "March", "April", "May", "June", 
+                "July", "August", "September", "October", "November", "December"
+            );
+            // Select current month
+            cbReportMonth.getSelectionModel().select(java.time.LocalDate.now().getMonthValue() - 1);
+        }
+        
+        if (cbReportYear != null) {
+            int currentYear = java.time.LocalDate.now().getYear();
+            cbReportYear.getItems().addAll(currentYear - 1, currentYear, currentYear + 1);
+            cbReportYear.getSelectionModel().select(Integer.valueOf(currentYear));
+        }
+
+        // -------------------------------------------------------------
+        // 1. ACTIVITY CHART (Reservations/Waiting) - Force Integer Axis
+        // -------------------------------------------------------------
+        if (chartActivity != null) {
+        	chartActivity.setAnimated(false);
+            NumberAxis yAxis = (NumberAxis) chartActivity.getYAxis();
+
+            yAxis.setForceZeroInRange(true);
+            yAxis.setMinorTickCount(0);
+            yAxis.setTickUnit(1); // Step by 1
+
+            yAxis.setTickLabelFormatter(new StringConverter<Number>() {
+                @Override
+                public String toString(Number object) {
+                    double val = object.doubleValue();
+                    if (Math.abs(val - Math.round(val)) < 0.1) {
+                        return String.valueOf((int) Math.round(val));
+                    }
+                    return ""; 
+                }
+
+                @Override
+                public Number fromString(String string) {
+                    return Integer.parseInt(string);
+                }
+            });
+        }
+
+        // -------------------------------------------------------------
+        // 2. PERFORMANCE CHART (Overstay) - DYNAMIC HEIGHT + Integer
+        // -------------------------------------------------------------
+        if (chartPerformance != null) {
+        	chartPerformance.setAnimated(false);
+        	NumberAxis yAxisPerf = (NumberAxis) chartPerformance.getYAxis();
+            yAxisPerf.setAutoRanging(true); 
+            yAxisPerf.setForceZeroInRange(true);
+            yAxisPerf.setMinorTickCount(0);
+            yAxisPerf.setTickUnit(1); 
+            
+            yAxisPerf.setTickLabelFormatter(new StringConverter<Number>() {
+                @Override
+                public String toString(Number object) {
+                    double val = object.doubleValue();
+                    if (Math.abs(val - Math.round(val)) < 0.1) {
+                        return String.valueOf((int) Math.round(val));
+                    }
+                    return "";
+                }
+                @Override
+                public Number fromString(String string) { return Integer.parseInt(string); }
+            });
+        }
+
         onViewReservations(null);
+        sendToServer(Envelope.request(OpCode.REQUEST_TODAY_HOURS, null));
     }
 
     // ========================================================
@@ -94,14 +198,12 @@ public class StaffController implements ClientUI {
             Envelope env = unwrapToEnvelope(msg);
             if (env == null || !env.isOk()) return;
             switch (env.getOp()) {
+                // --- Lists Updates ---
                 case RESPONSE_AGENT_RESERVATIONS_LIST:
                     updateReservationsTable((List<?>) env.getPayload());
                     break;
                 case RESPONSE_SUBSCRIBERS_LIST:
                     updateSubscribersTable((List<?>) env.getPayload());
-                    break;
-                case RESPONSE_REGISTER_CUSTOMER:
-                    showAlert("Success", "Customer registered successfully.");
                     break;
                 case RESPONSE_WAITING_LIST:
                     updateWaitingListTable((List<?>) env.getPayload());
@@ -109,27 +211,50 @@ public class StaffController implements ClientUI {
                 case RESPONSE_CURRENT_DINERS:
                     updateCurrentDinersTable((List<?>) env.getPayload());
                     break;
+                case RESPONSE_TABLES_GET:
+                    updateRestaurantTables((List<?>) env.getPayload());
+                    break;
+                case RESPONSE_OPENING_HOURS_GET:
+                    updateOpeningHours((List<?>) env.getPayload());
+                    break;
+
+                // --- Single Updates / Actions ---
+                case RESPONSE_REGISTER_CUSTOMER:
+                    showAlert("Success", "Customer registered successfully.");
+                    break;
+                case RESPONSE_TODAY_HOURS:
+                    updateTodayHours((String) env.getPayload());
+                    break;
+                case RESPONSE_LOGIN_SUBSCRIBER:
+                    handleSubscriberLoginResponse((LoginResponseDTO) env.getPayload());
+                    break;
+
+                // --- Operation Results (Alert + Refresh) ---
                 case RESPONSE_WAITING_ADD:
                 case RESPONSE_WAITING_ASSIGN:
                 case RESPONSE_WAITING_REMOVE:
-                    if (env.getPayload() instanceof String s) showAlert("Success", s);
-                    sendToServer(new Envelope(OpCode.REQUEST_WAITING_LIST));
-                    break;
-                
-                // ✅ ADDED: Handle subscriber login response for redirection
-                case RESPONSE_LOGIN_SUBSCRIBER:
-                    if (env.getPayload() instanceof LoginResponseDTO res) {
-                        if (res.isOk()) {
-                            ClientSession.setRole("SUBSCRIBER");
-                            ClientSession.setUsername(res.getUsername());
-                            SceneManager.showCustomerMain();
-                        } else {
-                            showAlert("Validation Failed", res.getMessage());
-                        }
-                    }
+                    handleWaitingListUpdateResponse((String) env.getPayload());
                     break;
 
-                // ✅ REMOVED: RESPONSE_CHECK_AVAILABILITY and RESPONSE_MAKE_RESERVATION cases
+                case RESPONSE_TABLE_ADD:
+                case RESPONSE_TABLE_REMOVE:
+                case RESPONSE_TABLE_UPDATE:
+                    handleTableUpdateResponse((String) env.getPayload());
+                    break;
+
+                case RESPONSE_OPENING_HOURS_UPDATE:
+                case RESPONSE_OPENING_HOURS_ADD_SPECIAL:
+                case RESPONSE_OPENING_HOURS_REMOVE:
+                    handleOpeningHoursUpdateResponse((String) env.getPayload());
+                    break;
+
+                // --- Reports ---
+                case RESPONSE_REPORT_PERFORMANCE:
+                    populatePerformanceChart((List<ReportDTO>) env.getPayload());
+                    break;
+                case RESPONSE_REPORT_ACTIVITY:
+                    populateActivityChart((List<ReportDTO>) env.getPayload());
+                    break;
 
                 default:
                     System.out.println("StaffController: Unknown Op " + env.getOp());
@@ -305,14 +430,70 @@ public class StaffController implements ClientUI {
     private void onViewReports(ActionEvent event) {
         lblTitle.setText("Manager Reports");
         hideAllViews();
-        paneReports.setVisible(true); paneReports.setManaged(true);
+        paneReports.setVisible(true);
+        paneReports.setManaged(true);
+        
+        onRefreshReports(null);
+    }
+    
+    @FXML
+    private void onRefreshReports(ActionEvent event) {
+        // 1. Get selected values
+        int monthIndex = cbReportMonth.getSelectionModel().getSelectedIndex(); // 0 = Jan
+        Integer year = cbReportYear.getSelectionModel().getSelectedItem();
+        
+        if (monthIndex < 0 || year == null) {
+            showAlert("Selection Error", "Please select both a month and a year.");
+            return;
+        }
+
+        int month = monthIndex + 1; // Convert 0-11 to 1-12
+
+        // 2. Create Request DTO
+        common.dto.ReportRequestDTO req = new common.dto.ReportRequestDTO(month, year);
+        
+        // 3. Send Requests
+        sendToServer(Envelope.request(OpCode.REQUEST_REPORT_PERFORMANCE, req));
+        sendToServer(Envelope.request(OpCode.REQUEST_REPORT_ACTIVITY, req));
+    }
+    
+ // 4. Helper to Fill Performance Chart
+    private void populatePerformanceChart(List<ReportDTO> data) {
+        chartPerformance.getData().clear();
+        
+        XYChart.Series<String, Number> seriesLate = new XYChart.Series<>();
+        seriesLate.setName("Late Arrivals (min)");
+        
+        XYChart.Series<String, Number> seriesOver = new XYChart.Series<>();
+        seriesOver.setName("Overstay (min)");
+
+        for (ReportDTO d : data) {
+            seriesLate.getData().add(new XYChart.Data<>(d.getLabel(), d.getValue1()));
+            seriesOver.getData().add(new XYChart.Data<>(d.getLabel(), d.getValue2()));
+        }
+        
+        chartPerformance.getData().addAll(seriesLate, seriesOver);
     }
 
-    @FXML
-    private void onManageEmployees(ActionEvent event) {
-        lblTitle.setText("Manage Employees");
-        hideAllViews();
+    // 5. Helper to Fill Activity Chart
+    private void populateActivityChart(List<ReportDTO> data) {
+        chartActivity.getData().clear();
+        
+        XYChart.Series<String, Number> seriesRes = new XYChart.Series<>();
+        seriesRes.setName("Reservations");
+        
+        XYChart.Series<String, Number> seriesWait = new XYChart.Series<>();
+        seriesWait.setName("Waiting List");
+
+        for (ReportDTO d : data) {
+            seriesRes.getData().add(new XYChart.Data<>(d.getLabel(), d.getValue1()));
+            seriesWait.getData().add(new XYChart.Data<>(d.getLabel(), d.getValue2()));
+        }
+        
+        chartActivity.getData().addAll(seriesRes, seriesWait);
     }
+    
+   
 
     @FXML
     private void onLogout(ActionEvent event) {
@@ -336,26 +517,47 @@ public class StaffController implements ClientUI {
              tblWaitingList.getParent().setVisible(false);
              tblWaitingList.getParent().setManaged(false);
         }
+        
+        if (paneTables != null) { paneTables.setVisible(false); paneTables.setManaged(false); }
 
+        if (paneOpeningHours != null) { paneOpeningHours.setVisible(false); paneOpeningHours.setManaged(false); }
         tblCurrentDiners.setVisible(false); tblCurrentDiners.setManaged(false);
         if(paneReports != null) { paneReports.setVisible(false); paneReports.setManaged(false); }
     }
 
-    // ... (Keep updateReservationsTable, updateSubscribersTable, setup columns etc.) ...
     private void updateReservationsTable(List<?> data) {
         tblReservations.getItems().clear();
+        
         for (Object obj : data) {
-            if (obj instanceof ReservationDTO dto) {
-                tblReservations.getItems().add(new ReservationRow(dto.getReservationId(), dto.getConfirmationCode(), dto.getReservationTime(), dto.getExpiryTime(), dto.getNumOfCustomers(), dto.getStatus()));
+            if (obj instanceof common.dto.ReservationDTO dto) {
+                // Here we use the NEW 8-argument constructor explicitly
+                // This bypasses dtoToRow entirely for this specific table
+                tblReservations.getItems().add(new ReservationRow(
+                    dto.getReservationId(), 
+                    dto.getConfirmationCode(), 
+                    dto.getReservationTime(), 
+                    dto.getExpiryTime(), 
+                    dto.getNumOfCustomers(), 
+                    dto.getStatus()
+                   
+                ));
             }
         }
     }
 
     private void updateSubscribersTable(List<?> data) {
-        tblSubscribers.getItems().clear(); // Fixed typo: was clearing tblWaitingList
+        tblSubscribers.getItems().clear();
+        
         for (Object obj : data) {
-            if (obj instanceof SubscriberDTO dto) {
-                tblSubscribers.getItems().add(new SubscriberRow(dto.getId(), dto.getFullName(), dto.getPhone(), dto.getEmail(), dto.getStatus()));
+            if (obj instanceof common.dto.SubscriberDTO dto) {
+                // ✅ Use existing "getName()" directly
+                tblSubscribers.getItems().add(new SubscriberRow(
+                    dto.getId(),
+                    dto.getFullName(),  
+                    dto.getPhone(),
+                    dto.getEmail(),
+                    dto.getStatus()
+                ));
             }
         }
     }
@@ -383,6 +585,45 @@ public class StaffController implements ClientUI {
             }
         }
     }
+    
+    private void updateRestaurantTables(List<?> data) {
+        tblRestaurantTables.getItems().clear();
+        for (Object o : data) {
+            if (o instanceof RestaurantTableDTO dto) {
+                tblRestaurantTables.getItems().add(dto);
+            }
+        }
+    }
+
+    private void updateOpeningHours(List<?> data) {
+        tblRegularHours.getItems().clear();
+        tblSpecialHours.getItems().clear();
+
+        // Temporary list to help sort Regular days (Mon, Tue, Wed...)
+        List<OpeningHoursDTO> regularList = new java.util.ArrayList<>();
+
+        for (Object obj : data) {
+            if (obj instanceof OpeningHoursDTO dto) {
+                if (dto.isSpecial()) {
+                    tblSpecialHours.getItems().add(dto);
+                } else {
+                    regularList.add(dto);
+                }
+            }
+        }
+        
+        // Custom Sorter for Days of Week
+        List<String> daysOrder = List.of("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday");
+        regularList.sort((a, b) -> Integer.compare(daysOrder.indexOf(a.getDayOfWeek()), daysOrder.indexOf(b.getDayOfWeek())));
+
+        tblRegularHours.getItems().addAll(regularList);
+    }
+
+    private void updateTodayHours(String hours) {
+        if (hours != null) {
+            lblTodayHours.setText(hours);
+        }
+    }
 
     private void setupWaitingListColumns() {
         if (!tblWaitingList.getColumns().isEmpty()) return;
@@ -401,30 +642,52 @@ public class StaffController implements ClientUI {
     
     private void setupReservationsColumns() {
         if (!tblReservations.getColumns().isEmpty()) return;
-        TableColumn<ReservationRow, Integer> colId = new TableColumn<>("ID"); 
+
+        TableColumn<ReservationRow, Integer> colId = new TableColumn<>("ID");
         colId.setCellValueFactory(new PropertyValueFactory<>("reservationId"));
-        TableColumn<ReservationRow, String> colCode = new TableColumn<>("Code"); 
-        colCode.setCellValueFactory(new PropertyValueFactory<>("confirmationCode"));
-        TableColumn<ReservationRow, String> colTime = new TableColumn<>("Time"); 
+        colId.setPrefWidth(50);
+
+       
+
+        TableColumn<ReservationRow, String> colTime = new TableColumn<>("Time");
         colTime.setCellValueFactory(new PropertyValueFactory<>("reservationTime"));
-        TableColumn<ReservationRow, Integer> colGuests = new TableColumn<>("Guests"); 
+        colTime.setPrefWidth(140);
+
+        TableColumn<ReservationRow, Integer> colGuests = new TableColumn<>("Guests");
         colGuests.setCellValueFactory(new PropertyValueFactory<>("numOfCustomers"));
-        TableColumn<ReservationRow, String> colStatus = new TableColumn<>("Status"); 
+        colGuests.setPrefWidth(60);
+
+        TableColumn<ReservationRow, String> colCode = new TableColumn<>("Code");
+        colCode.setCellValueFactory(new PropertyValueFactory<>("confirmationCode"));
+        colCode.setPrefWidth(80);
+
+        TableColumn<ReservationRow, String> colStatus = new TableColumn<>("Status");
         colStatus.setCellValueFactory(new PropertyValueFactory<>("status"));
-        tblReservations.getColumns().addAll(colId, colCode, colTime, colGuests, colStatus);
+
+        tblReservations.getColumns().addAll(colId, colTime, colGuests, colCode, colStatus);
     }
 
     private void setupSubscriberColumns() {
         if (!tblSubscribers.getColumns().isEmpty()) return;
-        TableColumn<SubscriberRow, Integer> colId = new TableColumn<>("ID"); 
+
+        TableColumn<SubscriberRow, Integer> colId = new TableColumn<>("ID");
         colId.setCellValueFactory(new PropertyValueFactory<>("subscriberId"));
-        TableColumn<SubscriberRow, String> colName = new TableColumn<>("Name"); 
-        colName.setCellValueFactory(new PropertyValueFactory<>("fullName"));
-        TableColumn<SubscriberRow, String> colPhone = new TableColumn<>("Phone"); 
+        colId.setPrefWidth(50);
+
+        
+
+        TableColumn<SubscriberRow, String> colPhone = new TableColumn<>("Phone");
         colPhone.setCellValueFactory(new PropertyValueFactory<>("phone"));
-        TableColumn<SubscriberRow, String> colEmail = new TableColumn<>("Email"); 
+        colPhone.setPrefWidth(120);
+
+        TableColumn<SubscriberRow, String> colEmail = new TableColumn<>("Email");
         colEmail.setCellValueFactory(new PropertyValueFactory<>("email"));
-        tblSubscribers.getColumns().addAll(colId, colName, colPhone, colEmail);
+        colEmail.setPrefWidth(180);
+
+        TableColumn<SubscriberRow, String> colStatus = new TableColumn<>("Status");
+        colStatus.setCellValueFactory(new PropertyValueFactory<>("status"));
+
+        tblSubscribers.getColumns().addAll(colId, colPhone, colEmail, colStatus);
     }
     
     private void setupCurrentDinersColumns() {
@@ -449,8 +712,73 @@ public class StaffController implements ClientUI {
 
         tblCurrentDiners.getColumns().addAll(colTable, colName, colCount, colTime, colStatus);
     }
+    
+    private void setupTableColumns() {
+        if (!tblRestaurantTables.getColumns().isEmpty()) return;
 
-    // ✅ FIXED: Renamed to match FXML (was addWaitingCustomer)
+        TableColumn<RestaurantTableDTO, String> colId = new TableColumn<>("Table ID");
+        colId.setCellValueFactory(new PropertyValueFactory<>("tableId"));
+
+        TableColumn<RestaurantTableDTO, Integer> colSeats = new TableColumn<>("Seats");
+        colSeats.setCellValueFactory(new PropertyValueFactory<>("seats"));
+
+        TableColumn<RestaurantTableDTO, String> colStatus = new TableColumn<>("Status");
+        colStatus.setCellValueFactory(new PropertyValueFactory<>("status"));
+
+        tblRestaurantTables.getColumns().addAll(colId, colSeats, colStatus);
+    }
+    
+    private void setupOpeningHoursTables() {
+        // --- 1. SETUP REGULAR HOURS TABLE (Top) ---
+        if (tblRegularHours.getColumns().isEmpty()) {
+            TableColumn<OpeningHoursDTO, String> colDay = new TableColumn<>("Day");
+            colDay.setCellValueFactory(new PropertyValueFactory<>("dayOfWeek"));
+            colDay.setPrefWidth(120);
+
+            TableColumn<OpeningHoursDTO, String> colOpen = new TableColumn<>("Open");
+            colOpen.setCellValueFactory(new PropertyValueFactory<>("openTime"));
+
+            TableColumn<OpeningHoursDTO, String> colClose = new TableColumn<>("Close");
+            colClose.setCellValueFactory(new PropertyValueFactory<>("closeTime"));
+
+            tblRegularHours.getColumns().addAll(colDay, colOpen, colClose);
+            
+            // ✅ LISTENER: When user clicks a row, fill the Edit Box
+            tblRegularHours.getSelectionModel().selectedItemProperty().addListener((obs, oldVal, newVal) -> {
+                if (newVal != null) {
+                    lblSelectedRegularDay.setText(newVal.getDayOfWeek()); // Show "Monday"
+                    tfRegularOpen.setText(newVal.getOpenTime());
+                    tfRegularClose.setText(newVal.getCloseTime());
+                } else {
+                    lblSelectedRegularDay.setText("Select a day...");
+                    tfRegularOpen.clear();
+                    tfRegularClose.clear();
+                }
+            });
+        }
+
+        // --- 2. SETUP SPECIAL HOURS TABLE (Bottom) ---
+        if (tblSpecialHours.getColumns().isEmpty()) {
+            TableColumn<OpeningHoursDTO, String> colDate = new TableColumn<>("Date");
+            colDate.setCellValueFactory(new PropertyValueFactory<>("specialDate"));
+            colDate.setPrefWidth(120);
+
+            TableColumn<OpeningHoursDTO, String> colOpenS = new TableColumn<>("Open");
+            colOpenS.setCellValueFactory(new PropertyValueFactory<>("openTime"));
+
+            TableColumn<OpeningHoursDTO, String> colCloseS = new TableColumn<>("Close");
+            colCloseS.setCellValueFactory(new PropertyValueFactory<>("closeTime"));
+            
+            TableColumn<OpeningHoursDTO, String> colDayS = new TableColumn<>("Type");
+            colDayS.setCellValueFactory(new PropertyValueFactory<>("dayOfWeek")); // Shows "Special"
+
+            tblSpecialHours.getColumns().addAll(colDate, colOpenS, colCloseS, colDayS);
+        }
+    }
+
+    
+    
+    
     @FXML
     void onAddWaitingCustomer(ActionEvent event) {
         Dialog<MakeReservationRequestDTO> dialog = new Dialog<>();
@@ -539,6 +867,184 @@ public class StaffController implements ClientUI {
             }
         });
     }
+    
+    @FXML
+    private void onManageTables(ActionEvent event) {
+        lblTitle.setText("Manage Restaurant Tables");
+        hideAllViews();
+        
+        paneTables.setVisible(true);
+        paneTables.setManaged(true);
+        
+        setupTableColumns();
+        refreshTableList();
+    }
+    
+    @FXML
+    private void onAddTable(ActionEvent event) {
+        String id = tfTableId.getText().trim();
+        String seatsStr = tfTableSeats.getText().trim();
+
+        if (id.isEmpty() || seatsStr.isEmpty()) {
+            showAlert("Error", "Please enter Table ID and Seat count.");
+            return;
+        }
+
+        try {
+            int seats = Integer.parseInt(seatsStr);
+            // Check if exists to determine if it's update or add (Simple approach: Just Try Add/Update)
+            // Ideally, we check logic, but for now let's assume Add.
+            // If you want Update logic, check if id exists in table list.
+            
+            RestaurantTableDTO dto = new RestaurantTableDTO(id, seats, "FREE");
+            
+            // Send ADD request (If it exists, SQL might throw error, or we can use Replace)
+            sendToServer(Envelope.request(OpCode.REQUEST_TABLE_ADD, dto));
+            
+            tfTableId.clear();
+            tfTableSeats.clear();
+
+        } catch (NumberFormatException e) {
+            showAlert("Error", "Seats must be a number.");
+        }
+    }
+
+    @FXML
+    private void onDeleteTable(ActionEvent event) {
+        RestaurantTableDTO selected = tblRestaurantTables.getSelectionModel().getSelectedItem();
+        if (selected == null) {
+            showAlert("Selection Error", "Select a table to delete.");
+            return;
+        }
+        
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION, "Delete table " + selected.getTableId() + "?", ButtonType.YES, ButtonType.NO);
+        confirm.showAndWait().ifPresent(resp -> {
+            if (resp == ButtonType.YES) {
+                sendToServer(Envelope.request(OpCode.REQUEST_TABLE_REMOVE, selected.getTableId()));
+            }
+        });
+    }
+    
+ // 1. Open the "Manage Opening Hours" Screen
+    @FXML
+    private void onManageOpeningHours(ActionEvent event) {
+        lblTitle.setText("Manage Opening Hours");
+        hideAllViews();
+        paneOpeningHours.setVisible(true);
+        paneOpeningHours.setManaged(true);
+        
+        // Change: Call the new UI setup method
+        setupOpeningHoursTables();
+        
+        sendToServer(Envelope.request(OpCode.REQUEST_OPENING_HOURS_GET, null));
+    }
+
+    // 2. Button: Update Weekly Hour
+    @FXML
+    private void onUpdateRegularHour(ActionEvent event) {
+        // 1. Get selected item from the TABLE
+        OpeningHoursDTO selected = tblRegularHours.getSelectionModel().getSelectedItem();
+        
+        if (selected == null) { 
+            showAlert("Error", "Please select a day from the table first."); 
+            return; 
+        }
+        
+        String newOpen = tfRegularOpen.getText().trim();
+        String newClose = tfRegularClose.getText().trim();
+        
+        if (newOpen.isEmpty() || newClose.isEmpty()) {
+            showAlert("Error", "Times cannot be empty.");
+            return;
+        }
+
+        // 2. Update DTO
+        selected.setOpenTime(newOpen);
+        selected.setCloseTime(newClose);
+        
+        // 3. Send to Server
+        sendToServer(Envelope.request(OpCode.REQUEST_OPENING_HOURS_UPDATE, selected));
+    }
+
+    // 3. Button: Add Special Date Exception
+    @FXML
+    private void onAddSpecialHour(ActionEvent event) {
+        if (dpSpecialDate.getValue() == null) { 
+            showAlert("Error", "Please pick a date."); 
+            return; 
+        }
+        
+        String dateStr = dpSpecialDate.getValue().format(DateTimeFormatter.ISO_LOCAL_DATE);
+        String open = tfSpecialOpen.getText().trim();
+        String close = tfSpecialClose.getText().trim();
+        
+        if (open.isEmpty() || close.isEmpty()) { 
+            showAlert("Error", "Please enter open and close times."); 
+            return; 
+        }
+
+        // Create new DTO for special date
+        // ID is 0 because it's new (DB will assign ID)
+        OpeningHoursDTO dto = new OpeningHoursDTO(0, "Special", open, close, true, dateStr);
+        
+        sendToServer(Envelope.request(OpCode.REQUEST_OPENING_HOURS_ADD_SPECIAL, dto));
+        
+        // Clear inputs after sending
+        dpSpecialDate.setValue(null);
+        tfSpecialOpen.clear();
+        tfSpecialClose.clear();
+    }
+
+    // 4. Button: Remove Special Date
+    @FXML
+    private void onRemoveSpecialHour(ActionEvent event) {
+        OpeningHoursDTO selected = tblSpecialHours.getSelectionModel().getSelectedItem();
+        if (selected == null) { 
+            showAlert("Error", "Select a special date to remove."); 
+            return; 
+        }
+        
+        sendToServer(Envelope.request(OpCode.REQUEST_OPENING_HOURS_REMOVE, selected.getHoursId()));
+    }
+
+    private void refreshTableList() {
+        sendToServer(Envelope.request(OpCode.REQUEST_TABLES_GET, null));
+    }
+    
+    private void handleSubscriberLoginResponse(LoginResponseDTO res) {
+        if (res.isOk()) {
+            ClientSession.setRole("SUBSCRIBER");
+            ClientSession.setUsername(res.getUsername());
+            SceneManager.showCustomerMain();
+        } else {
+            showAlert("Validation Failed", res.getMessage());
+        }
+    }
+
+    private void handleWaitingListUpdateResponse(String msg) {
+        if (msg != null) showAlert("Success", msg);
+        sendToServer(new Envelope(OpCode.REQUEST_WAITING_LIST));
+    }
+
+    private void handleTableUpdateResponse(String msg) {
+        if (msg != null) showAlert("Success", msg);
+        refreshTableList();
+    }
+
+    private void handleOpeningHoursUpdateResponse(String msg) {
+        if (msg != null) showAlert("Success", msg);
+        
+        sendToServer(Envelope.request(OpCode.REQUEST_OPENING_HOURS_GET, null));
+        
+        sendToServer(Envelope.request(OpCode.REQUEST_TODAY_HOURS, null));
+    }
+    
+    
+    
+    
+    
+    
+    
 
     private void sendToServer(Envelope env) {
         try {

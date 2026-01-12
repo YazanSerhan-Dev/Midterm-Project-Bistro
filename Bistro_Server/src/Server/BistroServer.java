@@ -133,8 +133,20 @@ public class BistroServer extends AbstractServer {
                 case REQUEST_WAITING_LIST -> handleWaitingList(req, client);
                 case REQUEST_CURRENT_DINERS -> handleCurrentDiners(req, client);
                 
+                case REQUEST_TABLES_GET -> handleGetTables(client);
+                case REQUEST_TABLE_ADD -> handleAddTable(req, client);
+                case REQUEST_TABLE_REMOVE -> handleRemoveTable(req, client);
+                case REQUEST_TABLE_UPDATE -> handleUpdateTable(req, client);
                 
-
+                case REQUEST_OPENING_HOURS_GET -> handleGetOpeningHours(client);
+                case REQUEST_OPENING_HOURS_UPDATE -> handleUpdateOpeningHours(req, client);
+                case REQUEST_OPENING_HOURS_ADD_SPECIAL -> handleAddSpecialHour(req, client);
+                case REQUEST_OPENING_HOURS_REMOVE -> handleRemoveSpecialHour(req, client);
+                case REQUEST_TODAY_HOURS -> handleGetTodayHours(client);
+                
+                case REQUEST_REPORT_PERFORMANCE -> handleReportPerformance(req,client);
+                case REQUEST_REPORT_ACTIVITY -> handleReportActivity(req,client);
+                
                 // TODO later:
                 case REQUEST_CANCEL_RESERVATION -> handleCancelReservation(req, client);
                 case REQUEST_PROFILE_GET -> sendOk(client, OpCode.RESPONSE_PROFILE_GET, null);
@@ -280,6 +292,126 @@ public class BistroServer extends AbstractServer {
             e.printStackTrace(); // Print error to console
         }
     }
+    
+    private void handleGetTables(ConnectionToClient client) {
+        try {
+            List<common.dto.RestaurantTableDTO> list = DataBase.dao.RestaurantTableDAO.getAllTables();
+            sendOk(client, OpCode.RESPONSE_TABLES_GET, list);
+        } catch (Exception e) {
+            try { sendError(client, OpCode.ERROR, "Fetch tables failed: " + e.getMessage()); } catch (Exception ignored) {}
+        }
+    }
+
+    private void handleAddTable(Envelope req, ConnectionToClient client) {
+        try {
+            if (req.getPayload() instanceof common.dto.RestaurantTableDTO dto) {
+                // Default status FREE if not set
+                String status = (dto.getStatus() == null || dto.getStatus().isEmpty()) ? "FREE" : dto.getStatus();
+                DataBase.dao.RestaurantTableDAO.insertTable(dto.getTableId(), dto.getSeats(), status);
+                sendOk(client, OpCode.RESPONSE_TABLE_ADD, "Table added successfully.");
+            }
+        } catch (Exception e) {
+            try { sendError(client, OpCode.ERROR, "Add table failed: " + e.getMessage()); } catch (Exception ignored) {}
+        }
+    }
+
+    private void handleRemoveTable(Envelope req, ConnectionToClient client) {
+        try {
+            String tableId = (String) req.getPayload();
+            boolean ok = DataBase.dao.RestaurantTableDAO.deleteTable(tableId);
+            if (ok) sendOk(client, OpCode.RESPONSE_TABLE_REMOVE, "Table removed.");
+            else sendError(client, OpCode.ERROR, "Table not found or could not be removed.");
+        } catch (Exception e) {
+            try { sendError(client, OpCode.ERROR, "Remove table failed: " + e.getMessage()); } catch (Exception ignored) {}
+        }
+    }
+
+    private void handleUpdateTable(Envelope req, ConnectionToClient client) {
+        try {
+            common.dto.RestaurantTableDTO dto = (common.dto.RestaurantTableDTO) req.getPayload();
+            boolean ok = DataBase.dao.RestaurantTableDAO.updateTableSeats(dto.getTableId(), dto.getSeats());
+            if (ok) sendOk(client, OpCode.RESPONSE_TABLE_UPDATE, "Table updated.");
+            else sendError(client, OpCode.ERROR, "Update failed.");
+        } catch (Exception e) {
+            try { sendError(client, OpCode.ERROR, "Update table failed: " + e.getMessage()); } catch (Exception ignored) {}
+        }
+    }
+    
+    private void handleGetOpeningHours(ConnectionToClient client) {
+        try {
+            List<common.dto.OpeningHoursDTO> list = DataBase.dao.OpeningHoursDAO.getAllOpeningHours();
+            sendOk(client, OpCode.RESPONSE_OPENING_HOURS_GET, list);
+        } catch (Exception e) {
+            try { sendError(client, OpCode.ERROR, "Fetch hours failed: " + e.getMessage()); } catch (Exception ignored) {}
+        }
+    }
+    private void handleUpdateOpeningHours(Envelope req, ConnectionToClient client) {
+        try {
+            common.dto.OpeningHoursDTO dto = (common.dto.OpeningHoursDTO) req.getPayload();
+            boolean ok = DataBase.dao.OpeningHoursDAO.updateOpeningHour(dto.getHoursId(), dto.getOpenTime(), dto.getCloseTime());
+            if (ok) sendOk(client, OpCode.RESPONSE_OPENING_HOURS_UPDATE, "Hours updated successfully.");
+            else sendError(client, OpCode.ERROR, "Update failed.");
+        } catch (Exception e) {
+            try { sendError(client, OpCode.ERROR, "Update error: " + e.getMessage()); } catch (Exception ignored) {}
+        }
+    }
+    
+    private void handleAddSpecialHour(Envelope req, ConnectionToClient client) {
+        try {
+            common.dto.OpeningHoursDTO dto = (common.dto.OpeningHoursDTO) req.getPayload();
+            // Insert into DB
+            DataBase.dao.OpeningHoursDAO.insertSpecialHour(dto.getSpecialDate(), dto.getDayOfWeek(), dto.getOpenTime(), dto.getCloseTime());
+            sendOk(client, OpCode.RESPONSE_OPENING_HOURS_ADD_SPECIAL, "Special date added.");
+        } catch (Exception e) {
+            try { sendError(client, OpCode.ERROR, "Add special date failed: " + e.getMessage()); } catch (Exception ignored) {}
+        }
+    }
+
+    private void handleRemoveSpecialHour(Envelope req, ConnectionToClient client) {
+        try {
+            int id = (int) req.getPayload();
+            boolean ok = DataBase.dao.OpeningHoursDAO.deleteOpeningHour(id);
+            if (ok) sendOk(client, OpCode.RESPONSE_OPENING_HOURS_REMOVE, "Special date removed.");
+            else sendError(client, OpCode.ERROR, "Could not remove (might differ from ID).");
+        } catch (Exception e) {
+            try { sendError(client, OpCode.ERROR, "Remove failed: " + e.getMessage()); } catch (Exception ignored) {}
+        }
+    }
+    
+    private void handleGetTodayHours(ConnectionToClient client) {
+        try {
+            String hours = DataBase.dao.OpeningHoursDAO.getHoursForDate(java.time.LocalDate.now());
+            sendOk(client, OpCode.RESPONSE_TODAY_HOURS, hours);
+        } catch (Exception e) {
+            try { sendError(client, OpCode.ERROR, "Failed to get today's hours"); } catch (Exception ignored) {}
+        }
+    }
+    
+    private void handleReportPerformance(Envelope req, ConnectionToClient client) {
+        try {
+            // Unpack DTO
+            common.dto.ReportRequestDTO dto = (common.dto.ReportRequestDTO) req.getPayload();
+            // Pass params to DAO
+            List<common.dto.ReportDTO> data = DataBase.dao.ReportDAO.getPerformanceReport(dto.getMonth(), dto.getYear());
+            sendOk(client, OpCode.RESPONSE_REPORT_PERFORMANCE, data);
+        } catch (Exception e) {
+            e.printStackTrace();
+            try { sendError(client, OpCode.ERROR, "Perf Report Failed"); } catch (Exception ignored) {}
+        }
+    }
+
+    private void handleReportActivity(Envelope req, ConnectionToClient client) {
+        try {
+            // Unpack DTO
+            common.dto.ReportRequestDTO dto = (common.dto.ReportRequestDTO) req.getPayload();
+            // Pass params to DAO
+            List<common.dto.ReportDTO> data = DataBase.dao.ReportDAO.getSubscriberActivityReport(dto.getMonth(), dto.getYear());
+            sendOk(client, OpCode.RESPONSE_REPORT_ACTIVITY, data);
+        } catch (Exception e) {
+            e.printStackTrace();
+            try { sendError(client, OpCode.ERROR, "Activity Report Failed"); } catch (Exception ignored) {}
+        }
+    }
 
 
     // -----------------------------------------------------------
@@ -305,8 +437,6 @@ public class BistroServer extends AbstractServer {
                 dto.getFullName(),
                 dto.getPhone(),
                 dto.getEmail(),
-                dto.getMemberCode(),
-                dto.getBarcode(),
                 sqlBirthDate
             );
 

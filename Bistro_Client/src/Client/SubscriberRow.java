@@ -4,13 +4,13 @@ import javafx.beans.property.*;
 
 public class SubscriberRow {
 
-    private final IntegerProperty subscriberId = new SimpleIntegerProperty();
+    private final StringProperty subscriberId = new SimpleStringProperty();
     private final StringProperty fullName = new SimpleStringProperty();
     private final StringProperty phone = new SimpleStringProperty();
     private final StringProperty email = new SimpleStringProperty();
     private final StringProperty status = new SimpleStringProperty();
 
-    public SubscriberRow(int subscriberId,
+    public SubscriberRow(String subscriberId,
                          String fullName,
                          String phone,
                          String email,
@@ -22,8 +22,8 @@ public class SubscriberRow {
         this.status.set(status);
     }
 
-    public int getSubscriberId() { return subscriberId.get(); }
-    public IntegerProperty subscriberIdProperty() { return subscriberId; }
+    public String getSubscriberId() { return subscriberId.get(); }
+    public StringProperty subscriberIdProperty() { return subscriberId; }
 
     public String getFullName() { return fullName.get(); }
     public StringProperty fullNameProperty() { return fullName; }

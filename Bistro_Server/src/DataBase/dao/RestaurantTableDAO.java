@@ -6,6 +6,9 @@ import java.sql.ResultSet;
 
 import DataBase.MySQLConnectionPool;
 import DataBase.PooledConnection;
+import java.util.ArrayList;
+import java.util.List;
+import common.dto.RestaurantTableDTO;
 
 public class RestaurantTableDAO {
 
@@ -135,6 +138,64 @@ public class RestaurantTableDAO {
         }
     }
 
+    public static List<RestaurantTableDTO> getAllTables() throws Exception {
+        List<RestaurantTableDTO> list = new ArrayList<>();
+        String sql = "SELECT * FROM restaurant_table ORDER BY table_id";
 
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
 
+        try (PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+
+            while (rs.next()) {
+                list.add(new RestaurantTableDTO(
+                    rs.getString("table_id"),
+                    rs.getInt("num_of_seats"),
+                    rs.getString("status")
+                ));
+            }
+        } finally {
+            pool.releaseConnection(pc);
+        }
+        return list;
+    }
+
+    // 2. Delete Table
+    public static boolean deleteTable(String tableId) throws Exception {
+        String sql = "DELETE FROM restaurant_table WHERE table_id = ?";
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, tableId);
+            int rows = ps.executeUpdate();
+            return rows > 0;
+        } finally {
+            pool.releaseConnection(pc);
+        }
+    }
+    
+    // 3. Update Table (Seats)
+    public static boolean updateTableSeats(String tableId, int newSeats) throws Exception {
+        String sql = "UPDATE restaurant_table SET num_of_seats = ? WHERE table_id = ?";
+        
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, newSeats);
+            ps.setString(2, tableId);
+            int rows = ps.executeUpdate();
+            return rows > 0;
+        } finally {
+            pool.releaseConnection(pc);
+        }
+    }
 }
+
+

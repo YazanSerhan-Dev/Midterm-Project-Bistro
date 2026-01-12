@@ -6,6 +6,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 import DataBase.MySQLConnectionPool;
 import DataBase.PooledConnection;
@@ -16,7 +17,15 @@ public class SubscriberDAO {
     public static void insertSubscriber(
             String username, String password, String name,
             String phone, String email,
-            String memberCode, String barcode, Date birthDate) throws Exception {
+           Date birthDate) throws Exception {
+    	
+    	String memberCode = generateNextId("member_code", "MEM");
+        String barcode = generateNextId("barcode_data", "BAR");
+
+        // 2. If birthDate is missing from UI, default to today (prevents crash)
+        if (birthDate == null) {
+            birthDate = new Date(System.currentTimeMillis());
+        }
 
         String sql = """
             INSERT INTO subscribers
@@ -43,6 +52,41 @@ public class SubscriberDAO {
             pool.releaseConnection(pc);
         }
     }
+    
+    private static String generateNextId(String columnName, String prefix) throws Exception {
+        String sql = "SELECT " + columnName + " FROM subscribers";
+        
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+        
+        int maxId = 0;
+
+        try (PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+
+            while (rs.next()) {
+                String val = rs.getString(1); // e.g., "MEM12"
+                if (val != null && val.startsWith(prefix)) {
+                    try {
+                        // Extract the number part ("12")
+                        String numPart = val.substring(prefix.length());
+                        int num = Integer.parseInt(numPart);
+                        if (num > maxId) {
+                            maxId = num;
+                        }
+                    } catch (NumberFormatException ignored) {
+                        // Skip if it's not a valid number format
+                    }
+                }
+            }
+        } finally {
+            pool.releaseConnection(pc);
+        }
+
+        // Return the next number (e.g., "MEM13")
+        return prefix + (maxId + 1);
+    }
 
     // ============================================
     // YOUR CODE (From HEAD) - Get List for Agent
@@ -60,17 +104,18 @@ public class SubscriberDAO {
 
             while (rs.next()) {
                 // Adjust ID fetching if you have an actual ID column
-                int id = 0; 
+                //int id = 0; 
                 // int id = rs.getInt("subscriber_id"); // Uncomment if you have this column
-
+                String username = rs.getString("username"); // Get text, not int
                 String name = rs.getString("name"); 
                 String phone = rs.getString("phone");
                 String email = rs.getString("email");
                 
                 // If you don't have a status column yet, default to "Active"
                 String status = "Active"; 
+                
 
-                list.add(new SubscriberDTO(id, name, phone, email, status));
+                list.add(new SubscriberDTO(username, name, phone, email, status));
             }
         } finally {
             pool.releaseConnection(pc);

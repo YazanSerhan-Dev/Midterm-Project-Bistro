@@ -87,4 +87,40 @@ public enum OpCode {
     
     REQUEST_CURRENT_DINERS,
     RESPONSE_CURRENT_DINERS,
+    
+ // ===== Table Management (Agent) =====
+    REQUEST_TABLES_GET,
+    RESPONSE_TABLES_GET,
+
+    REQUEST_TABLE_ADD,
+    RESPONSE_TABLE_ADD,
+
+    REQUEST_TABLE_REMOVE,
+    RESPONSE_TABLE_REMOVE,
+    
+    REQUEST_TABLE_UPDATE,
+    RESPONSE_TABLE_UPDATE,
+    
+ // ===== Opening Hours (Agent) =====
+    REQUEST_OPENING_HOURS_GET,
+    RESPONSE_OPENING_HOURS_GET,
+    
+    REQUEST_OPENING_HOURS_UPDATE,      // Update existing row (Regular or Special)
+    RESPONSE_OPENING_HOURS_UPDATE,
+    
+    REQUEST_OPENING_HOURS_ADD_SPECIAL, // Add new specific date
+    RESPONSE_OPENING_HOURS_ADD_SPECIAL,
+    
+    REQUEST_OPENING_HOURS_REMOVE,      // Remove a special date
+    RESPONSE_OPENING_HOURS_REMOVE,
+    
+    REQUEST_TODAY_HOURS,
+    RESPONSE_TODAY_HOURS,
+    
+ // ===== Reports (Manager Only) =====
+    REQUEST_REPORT_PERFORMANCE,
+    RESPONSE_REPORT_PERFORMANCE,
+    
+    REQUEST_REPORT_ACTIVITY,
+    RESPONSE_REPORT_ACTIVITY,
 }

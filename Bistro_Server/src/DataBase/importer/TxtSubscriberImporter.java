@@ -47,8 +47,6 @@ public class TxtSubscriberImporter {
                         p[2].trim(),
                         p[3].trim(),
                         p[4].trim(),
-                        p[5].trim(),
-                        p[6].trim(),
                         birthDate
                 );
             }
