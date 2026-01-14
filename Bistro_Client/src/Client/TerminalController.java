@@ -195,7 +195,7 @@ public class TerminalController implements ClientUI {
 
             Object[] payload = new Object[] { role, username, dto };
 
-            Envelope env = Envelope.request(OpCode.REQUEST_WAITING_LIST, payload);
+            Envelope env = Envelope.request(OpCode.REQUEST_WAITING_ADD, payload);
             ClientSession.getClient().sendToServer(new KryoMessage("ENVELOPE", KryoUtil.toBytes(env)));
 
             joinWLInFlight = true;

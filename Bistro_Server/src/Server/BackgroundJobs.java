@@ -89,16 +89,23 @@ public class BackgroundJobs {
 
                      assignedCount++;
 
-                     String email = WaitingListDAO.getGuestEmailForWaitingId(next.getId());
-                     String phone = WaitingListDAO.getGuestPhoneForWaitingId(next.getId());
+
                      String code = next.getConfirmationCode();
 
-                     if (email != null && !email.isBlank() && code != null && !code.isBlank()) {
-                         EmailService.sendWaitingTableReady(email, code);
-                         EmailService.smsStub(phone,"[SMS] Waiting assigned to | Code: "+ code);
+                     String email = WaitingListDAO.getEmailForWaitingId(next.getId());
+                     String phone = WaitingListDAO.getPhoneForWaitingId(next.getId());
 
-                         System.out.println("[JOB] Waiting ASSIGNED email sent to: " + email + " | Code: " + code);
+                     if (code != null && !code.isBlank()) {
+
+                         if (email != null && !email.isBlank()) {
+                             EmailService.sendWaitingTableReady(email, code);
+                         }
+
+                         if (phone != null && !phone.isBlank()) {
+                             EmailService.smsStub(phone, "[SMS] Your table is ready! Waiting code: " + code);
+                         }
                      }
+
                  }
 
                  if (assignedCount > 0) {

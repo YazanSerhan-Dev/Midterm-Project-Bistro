@@ -685,4 +685,53 @@ public class WaitingListDAO {
             pool.releaseConnection(pc);
         }
     }
+    
+    public static String getEmailForWaitingId(int waitingId) throws Exception {
+        String sql = """
+            SELECT COALESCE(s.email, ua.guest_email) AS email
+            FROM user_activity ua
+            LEFT JOIN subscribers s ON s.username = ua.subscriber_username
+            WHERE ua.waiting_id = ?
+            ORDER BY ua.activity_id DESC
+            LIMIT 1
+        """;
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, waitingId);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getString("email") : null;
+            }
+        } finally {
+            pool.releaseConnection(pc);
+        }
+    }
+
+    public static String getPhoneForWaitingId(int waitingId) throws Exception {
+        String sql = """
+            SELECT COALESCE(s.phone, ua.guest_phone) AS phone
+            FROM user_activity ua
+            LEFT JOIN subscribers s ON s.username = ua.subscriber_username
+            WHERE ua.waiting_id = ?
+            ORDER BY ua.activity_id DESC
+            LIMIT 1
+        """;
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, waitingId);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getString("phone") : null;
+            }
+        } finally {
+            pool.releaseConnection(pc);
+        }
+    }
+
 }
