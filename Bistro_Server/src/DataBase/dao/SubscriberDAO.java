@@ -139,7 +139,7 @@ public class SubscriberDAO {
     }
 
     public static ProfileDTO getProfileByMemberCode(String memberCode) throws Exception {
-        String sql = "SELECT member_code, name, phone, email " +
+        String sql = "SELECT member_code, name, phone, email, barcode_data " +
                      "FROM subscribers WHERE member_code = ? LIMIT 1";
 
         MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
@@ -156,7 +156,8 @@ public class SubscriberDAO {
                     rs.getString("member_code"), // maps to ProfileDTO.memberNumber
                     rs.getString("name"),        // maps to ProfileDTO.fullName
                     rs.getString("phone"),
-                    rs.getString("email")
+                    rs.getString("email"),
+                    rs.getString("barcode_data")
                 );
             }
         } finally {

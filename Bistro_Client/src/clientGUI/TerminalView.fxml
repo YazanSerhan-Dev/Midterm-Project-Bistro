@@ -125,7 +125,7 @@
 						<Button fx:id="btnScanSubscriberQR"
 						        text="Scan Subscriber QR"
 						        onAction="#onScanSubscriberQR"
-						        styleClass="secondary-btn"
+						        styleClass="primary-button"
 						        mnemonicParsing="false"/> 
                     </HBox>
 

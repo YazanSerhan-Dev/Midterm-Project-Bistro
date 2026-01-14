@@ -337,7 +337,7 @@ public class UserActivityDAO {
 	        JOIN reservation r ON r.reservation_id = ua.reservation_id
 	        WHERE ua.subscriber_username = ?
 	          AND ua.reservation_id IS NOT NULL
-	          AND r.status IN ('CONFIRMED','PENDING','ARRIVED')
+	          AND r.status IN ('CONFIRMED','PENDING')
 	        ORDER BY
 	          CASE WHEN r.reservation_time >= NOW() THEN 0 ELSE 1 END,
 	          ABS(TIMESTAMPDIFF(SECOND, r.reservation_time, NOW())) ASC
