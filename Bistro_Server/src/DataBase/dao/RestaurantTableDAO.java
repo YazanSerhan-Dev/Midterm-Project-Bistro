@@ -746,6 +746,115 @@ public class RestaurantTableDAO {
         }
     }
 
+	// ====== Policy 1: Table-feasibility planning (NO status changes) ======
+
+	/**
+	 * Load ALL restaurant tables (capacity list), regardless of status.
+	 * Planning assumes the table inventory is the "container set".
+	 */
+	private static List<TableCandidate> getAllTablesForPlanning(Connection conn) throws Exception {
+	    String sql = """
+	        SELECT table_id, num_of_seats
+	        FROM restaurant_table
+	        ORDER BY num_of_seats DESC
+	    """;
+	    List<TableCandidate> out = new ArrayList<>();
+	    try (PreparedStatement ps = conn.prepareStatement(sql);
+	         ResultSet rs = ps.executeQuery()) {
+	        while (rs.next()) {
+	            out.add(new TableCandidate(rs.getString("table_id"), rs.getInt("num_of_seats")));
+	        }
+	    }
+	    return out;
+	}
+
+	/**
+	 * Load overlapping reservation party sizes for [start, end) window.
+	 * Only statuses that truly occupy seating capacity are included.
+	 */
+	private static List<Integer> getOverlappingConfirmedArrivedPartySizes(Connection conn,
+	                                                                     java.sql.Timestamp start,
+	                                                                     java.sql.Timestamp end) throws Exception {
+	    String sql = """
+	        SELECT num_of_customers
+	        FROM reservation
+	        WHERE status IN ('CONFIRMED','ARRIVED')
+	          AND reservation_time < ?
+	          AND expiry_time > ?
+	        ORDER BY num_of_customers DESC
+	    """;
+
+	    List<Integer> parties = new ArrayList<>();
+	    try (PreparedStatement ps = conn.prepareStatement(sql)) {
+	        ps.setTimestamp(1, end);
+	        ps.setTimestamp(2, start);
+	        try (ResultSet rs = ps.executeQuery()) {
+	            while (rs.next()) {
+	                int p = rs.getInt(1);
+	                if (p > 0) parties.add(p);
+	            }
+	        }
+	    }
+	    return parties;
+	}
+
+	/**
+	 * POLICY 1 core:
+	 * Can we pack ALL overlapping reservations + newParty into the table inventory,
+	 * allowing MULTI-table per reservation, but NOT sharing a table between reservations?
+	 *
+	 * This does NOT touch restaurant_table.status (planning only).
+	 */
+	public static boolean canPackReservationsAtTime(Connection conn,
+	                                                java.sql.Timestamp start,
+	                                                java.sql.Timestamp end,
+	                                                int newParty) throws Exception {
+	    if (newParty <= 0) return false;
+
+	    // 1) load table inventory
+	    List<TableCandidate> remainingTables = getAllTablesForPlanning(conn);
+	    if (remainingTables.isEmpty()) return false;
+
+	    // 2) load overlapping parties (CONFIRMED + ARRIVED)
+	    List<Integer> parties = getOverlappingConfirmedArrivedPartySizes(conn, start, end);
+	    parties.add(newParty);
+
+	    // 3) pack biggest parties first (greedy order improves success)
+	    parties.sort(Collections.reverseOrder());
+
+	    // 4) for each party, choose subset of remaining tables via your DP best-fit
+	    for (int partySize : parties) {
+	        List<TableCandidate> chosen = chooseBestFit(remainingTables, partySize);
+	        if (chosen == null || chosen.isEmpty()) {
+	            return false; // cannot seat this party with remaining tables
+	        }
+
+	        // remove chosen tables from remaining (no reuse allowed)
+	        // use table_id matching for safe removal
+	        for (TableCandidate c : chosen) {
+	            remainingTables.removeIf(t -> t.tableId.equals(c.tableId));
+	        }
+	    }
+
+	    return true;
+	}
+
+	/**
+	 * Convenience overload that opens its own connection.
+	 */
+	public static boolean canPackReservationsAtTime(java.sql.Timestamp start,
+	                                                java.sql.Timestamp end,
+	                                                int newParty) throws Exception {
+	    MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+	    PooledConnection pc = pool.getConnection();
+	    Connection conn = pc.getConnection();
+	    try {
+	        return canPackReservationsAtTime(conn, start, end, newParty);
+	    } finally {
+	        pool.releaseConnection(pc);
+	    }
+	}
+
 
 
 }

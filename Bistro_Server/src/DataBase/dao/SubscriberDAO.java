@@ -184,7 +184,7 @@ public class SubscriberDAO {
     }
 
     public static ProfileDTO getProfileByMemberCode(String memberCode) throws Exception {
-        String sql = "SELECT member_code, name, phone, email " +
+        String sql = "SELECT member_code, name, phone, email, barcode_data " +
                      "FROM subscribers WHERE member_code = ? LIMIT 1";
 
         MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
@@ -201,7 +201,8 @@ public class SubscriberDAO {
                     rs.getString("member_code"), // maps to ProfileDTO.memberNumber
                     rs.getString("name"),        // maps to ProfileDTO.fullName
                     rs.getString("phone"),
-                    rs.getString("email")
+                    rs.getString("email"),
+                    rs.getString("barcode_data")
                 );
             }
         } finally {
@@ -244,6 +245,26 @@ public class SubscriberDAO {
                 if (!rs.next()) return null;
                 return rs.getString("member_code");
             }
+        } finally {
+            pool.releaseConnection(pc);
+        }
+    }
+
+    public static String getUsernameByBarcodeData(String barcodeData) throws Exception {
+        String sql = "SELECT username FROM subscribers WHERE barcode_data = ? LIMIT 1";
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, barcodeData);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) return null;
+                return rs.getString("username");
+            }
+
         } finally {
             pool.releaseConnection(pc);
         }

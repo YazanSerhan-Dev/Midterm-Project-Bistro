@@ -122,6 +122,11 @@
                         <TextField fx:id="txtConfirmationCode" promptText="Enter code (e.g., A1B2C3)" HBox.hgrow="ALWAYS"/>
                         <Button text="Validate" onAction="#onValidateCode" styleClass="primary-button"/>
                         <Button text="Clear" onAction="#onClear" styleClass="secondary-button"/>
+						<Button fx:id="btnScanSubscriberQR"
+						        text="Scan Subscriber QR"
+						        onAction="#onScanSubscriberQR"
+						        styleClass="primary-button"
+						        mnemonicParsing="false"/> 
                     </HBox>
 
                     <Label text="Note: If no suitable table is free, customer will be asked to wait." styleClass="hint-text"/>

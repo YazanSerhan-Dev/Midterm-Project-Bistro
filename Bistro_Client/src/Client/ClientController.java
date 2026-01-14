@@ -71,6 +71,7 @@ public class ClientController implements ClientUI {
     @FXML private TextField txtFullName;
     @FXML private TextField txtPhone;
     @FXML private TextField txtEmail;
+    @FXML private TextField txtBarcodeData;
     
     @FXML private TableColumn<ReservationRow, Number> colHistResId;
     @FXML private TableColumn<ReservationRow, String> colHistConfCode;
@@ -453,11 +454,6 @@ public class ClientController implements ClientUI {
 
 
     private void handleGetProfileResponse(Object payload) {
-        if (payload == null) {
-            lblStatus.setText("Profile not found for this member code.");
-            return;
-        }
-
         if (!(payload instanceof ProfileDTO dto)) {
             lblStatus.setText("Bad profile payload.");
             return;
@@ -468,8 +464,15 @@ public class ClientController implements ClientUI {
         txtPhone.setText(dto.getPhone() == null ? "" : dto.getPhone());
         txtEmail.setText(dto.getEmail() == null ? "" : dto.getEmail());
 
+        // ✅ NEW
+        if (txtBarcodeData != null) {
+            txtBarcodeData.setText(dto.getBarcodeData() == null ? "" : dto.getBarcodeData());
+            txtBarcodeData.setEditable(false);
+        }
+
         lblStatus.setText("Profile loaded.");
     }
+
 
 
     private void handleUpdateProfileResponse(Object payload) {
@@ -950,6 +953,23 @@ public class ClientController implements ClientUI {
             lblStatus.setText("Failed to load profile: " + ex.getMessage());
         }
 
+    }
+    
+    @FXML
+    private void onCopyBarcode() {
+        if (txtBarcodeData == null) return;
+
+        String code = txtBarcodeData.getText();
+        if (code == null || code.isBlank()) {
+            lblStatus.setText("No barcode to copy.");
+            return;
+        }
+
+        javafx.scene.input.ClipboardContent cc = new javafx.scene.input.ClipboardContent();
+        cc.putString(code);
+        javafx.scene.input.Clipboard.getSystemClipboard().setContent(cc);
+
+        lblStatus.setText("Barcode copied ✅");
     }
 
     @FXML private void onNavHistory() { if (isSubscriber) showPane(paneHistory); }

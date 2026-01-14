@@ -20,6 +20,7 @@ import common.OpCode;
 // Imports from HEAD (Registration)
 import common.dto.RegistrationDTO;
 import common.dto.ReservationDTO;
+import common.dto.ResolveSubscriberQrResponseDTO;
 import common.dto.SubscriberDTO;
 import common.dto.TerminalValidateResponseDTO;
 import common.dto.WaitingListDTO;
@@ -179,6 +180,8 @@ public class BistroServer extends AbstractServer {
                 
                 case REQUEST_SUBSCRIBER_HISTORY -> handleSubscriberHistory(req, client);
                 
+                case REQUEST_TERMINAL_RESOLVE_SUBSCRIBER_QR -> handleTerminalResolveSubscriberQR(req, client);
+
 
                 default -> sendError(client, OpCode.ERROR, "Unknown op: " + req.getOp());
             }
@@ -224,6 +227,50 @@ public class BistroServer extends AbstractServer {
     }
 
     /* ==================== Handlers ==================== */
+    
+    private void handleTerminalResolveSubscriberQR(Envelope req, ConnectionToClient client) {
+        try {
+            Object payload = readEnvelopePayload(req);
+
+            String barcode = (payload instanceof String s) ? s.trim() : "";
+            if (barcode.isBlank()) {
+                sendOk(client, OpCode.RESPONSE_TERMINAL_RESOLVE_SUBSCRIBER_QR,
+                        new ResolveSubscriberQrResponseDTO(false, "", "", "Missing subscriber QR value."));
+                return;
+            }
+
+            // 1) Resolve barcode_data -> username
+            String username = DataBase.dao.SubscriberDAO.getUsernameByBarcodeData(barcode);
+
+            if (username == null || username.isBlank()) {
+                sendOk(client, OpCode.RESPONSE_TERMINAL_RESOLVE_SUBSCRIBER_QR,
+                        new ResolveSubscriberQrResponseDTO(false, "", "", "Subscriber not found."));
+                return;
+            }
+
+            // 2) Resolve username -> closest active reservation/waiting confirmation code
+            UserActivityDAO.ActiveCodeResult r =
+                    UserActivityDAO.findActiveCodeBySubscriberUsername(username);
+
+            if (r == null || r.code == null || r.code.isBlank()) {
+                sendOk(client, OpCode.RESPONSE_TERMINAL_RESOLVE_SUBSCRIBER_QR,
+                        new ResolveSubscriberQrResponseDTO(false, "", "", "No active reservation or waiting list for this subscriber."));
+                return;
+            }
+
+            // 3) Return confirmation code (Terminal will reuse existing validate flow)
+            sendOk(client, OpCode.RESPONSE_TERMINAL_RESOLVE_SUBSCRIBER_QR,
+                    new ResolveSubscriberQrResponseDTO(true, r.type, r.code, "Found " + r.type + "."));
+
+        } catch (Exception e) {
+            try {
+                sendOk(client, OpCode.RESPONSE_TERMINAL_RESOLVE_SUBSCRIBER_QR,
+                        new ResolveSubscriberQrResponseDTO(false, "", "", "Server error: " + e.getMessage()));
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
     
     private void handleGetAvailableTimes(Envelope req, ConnectionToClient client) {
         try {
@@ -616,7 +663,11 @@ public class BistroServer extends AbstractServer {
             }
 
             // ✅ store contact info in user_activity for later email notification
-            UserActivityDAO.insertWaitingActivity(waitingId, email, phone);
+            if ("SUBSCRIBER".equalsIgnoreCase(role)) {
+                UserActivityDAO.insertSubscriberWaitingActivity(waitingId, username);
+            } else {
+                UserActivityDAO.insertWaitingActivity(waitingId, email, phone);
+            }
 
             // ✅ build response DTO
             WaitingListDTO resp = new WaitingListDTO();
