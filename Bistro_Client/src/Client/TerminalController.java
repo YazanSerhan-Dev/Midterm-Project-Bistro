@@ -38,6 +38,7 @@ public class TerminalController implements ClientUI {
     @FXML private Label lblWaitMessage;
 
     @FXML private Button btnCheckIn;
+    @FXML private Button btnScanSubscriberQR;
     @FXML private Label lblTerminalStatus;
 
     // Lost code
@@ -66,6 +67,7 @@ public class TerminalController implements ClientUI {
     private volatile boolean checkedIn = false;
     private volatile boolean cancelResInFlight = false;
     private volatile boolean lastValidatedIsReservation = false;
+    private volatile boolean resolveQrInFlight = false;
     private volatile String lastCheckedInCode = "";
     private volatile String lastValidatedCode = "";
 
@@ -79,6 +81,7 @@ public class TerminalController implements ClientUI {
         // Register this screen as the current UI receiver
         ClientSession.bindUI(this);
 
+        applyRoleVisibility();
         // Buttons stay enabled always by design (no setDisable calls here)
     }
 
@@ -325,6 +328,40 @@ public class TerminalController implements ClientUI {
     }
 
     @FXML
+    private void onScanSubscriberQR() {
+
+        if (resolveQrInFlight) {
+            lblTerminalStatus.setText("QR resolve already in progress...");
+            return;
+        }
+
+        if (!isConnected()) {
+            lblTerminalStatus.setText("Not connected.");
+            return;
+        }
+
+        // Fake scan dialog: the subscriber types/pastes barcode_data
+        TextInputDialog d = new TextInputDialog();
+        d.setTitle("Scan Subscriber QR");
+        d.setHeaderText("Simulated scan");
+        d.setContentText("Paste subscriber barcode_data:");
+
+        d.showAndWait().ifPresent(barcode -> {
+            barcode = safeTrim(barcode);
+            if (barcode.isEmpty()) {
+                lblTerminalStatus.setText("Scan cancelled / empty.");
+                return;
+            }
+
+            resolveQrInFlight = true;
+            lblTerminalStatus.setText("Resolving subscriber QR...");
+
+            // Send barcode_data to server
+            sendToServer(OpCode.REQUEST_TERMINAL_RESOLVE_SUBSCRIBER_QR, barcode);
+        });
+    }
+
+    @FXML
     private void onRecoverCode() {
         String key = safeTrim(txtRecoverPhoneOrEmail.getText());
         if (key.isEmpty()) {
@@ -408,6 +445,7 @@ public class TerminalController implements ClientUI {
             joinWLInFlight = false;
             leaveWLInFlight = false;
             cancelResInFlight = false;
+            resolveQrInFlight = false;
         });
     }
 
@@ -423,6 +461,7 @@ public class TerminalController implements ClientUI {
             joinWLInFlight = false;
             leaveWLInFlight = false;
             cancelResInFlight = false;
+            resolveQrInFlight = false;
         });
     }
 
@@ -641,6 +680,35 @@ public class TerminalController implements ClientUI {
                         
                         txtConfirmationCode.clear();
                     }
+                    
+                    case RESPONSE_TERMINAL_RESOLVE_SUBSCRIBER_QR -> {
+                        resolveQrInFlight = false;
+
+                        Object payload = env.getPayload();
+
+                        if (payload instanceof common.dto.ResolveSubscriberQrResponseDTO dto) {
+
+                            if (!dto.isFound()) {
+                                lblTerminalStatus.setText(nonEmptyOr(dto.getMessage(), "No active reservation/waiting list for this subscriber."));
+                                return;
+                            }
+
+                            String code = safeTrim(dto.getConfirmationCode());
+                            if (code.isEmpty()) {
+                                lblTerminalStatus.setText("Resolved, but server returned empty code.");
+                                return;
+                            }
+
+                            // ✅ Reuse your existing validation pipeline
+                            txtConfirmationCode.setText(code);
+                            lblTerminalStatus.setText("Resolved " + dto.getType() + ". Validating code...");
+                            onValidateCode(); // calls REQUEST_TERMINAL_VALIDATE_CODE
+
+                        } else {
+                            lblTerminalStatus.setText("Invalid QR resolve response.");
+                        }
+                    }
+
 
                     default -> {
                         // ignore
@@ -949,4 +1017,14 @@ public class TerminalController implements ClientUI {
                 .filter(n -> n > 0)
                 .orElse(null);
     }
+    
+    private void applyRoleVisibility() {
+        String role = ClientSession.getRole();   // you already use this pattern
+
+        boolean isSubscriber = role != null && role.equalsIgnoreCase("SUBSCRIBER");
+
+        btnScanSubscriberQR.setVisible(isSubscriber);
+        btnScanSubscriberQR.setManaged(isSubscriber);
+    }
+
 }

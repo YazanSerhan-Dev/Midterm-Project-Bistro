@@ -139,6 +139,26 @@ public class UserActivityDAO {
             pool.releaseConnection(pc);
         }
     }
+    
+    public static void insertSubscriberWaitingActivity(int waitingId, String subscriberUsername) throws Exception {
+        String sql = """
+            INSERT INTO user_activity (subscriber_username, waiting_id, activity_date)
+            VALUES (?, ?, NOW())
+        """;
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, subscriberUsername);
+            ps.setInt(2, waitingId);
+            ps.executeUpdate();
+        } finally {
+            pool.releaseConnection(pc);
+        }
+    }
+
 
     public static int insertWaitingActivityReturnActivityId(Connection conn, int waitingId, String email, String phone) throws Exception {
         String sql = """
@@ -285,5 +305,107 @@ public class UserActivityDAO {
          }
      }
  }
+
+ public static class ActiveCodeResult {
+	    public final String type;  // "RESERVATION" or "WAITING_LIST"
+	    public final String code;  // confirmation_code
+
+	    public ActiveCodeResult(String type, String code) {
+	        this.type = type;
+	        this.code = code;
+	    }
+	}
+
+ public static ActiveCodeResult findActiveCodeBySubscriberUsername(String subscriberUsername) throws Exception {
+
+	    // 1) Priority: ASSIGNED waiting list (urgent now)
+	    String sqlAssignedWaiting = """
+	        SELECT w.confirmation_code
+	        FROM user_activity ua
+	        JOIN waiting_list w ON w.waiting_id = ua.waiting_id
+	        WHERE ua.subscriber_username = ?
+	          AND ua.waiting_id IS NOT NULL
+	          AND w.status = 'ASSIGNED'
+	        ORDER BY w.request_time DESC
+	        LIMIT 1
+	    """;
+
+	    // 2) Closest upcoming active reservation
+	    String sqlClosestReservation = """
+	        SELECT r.confirmation_code
+	        FROM user_activity ua
+	        JOIN reservation r ON r.reservation_id = ua.reservation_id
+	        WHERE ua.subscriber_username = ?
+	          AND ua.reservation_id IS NOT NULL
+	          AND r.status IN ('CONFIRMED','PENDING')
+	        ORDER BY
+	          CASE WHEN r.reservation_time >= NOW() THEN 0 ELSE 1 END,
+	          ABS(TIMESTAMPDIFF(SECOND, r.reservation_time, NOW())) ASC
+	        LIMIT 1
+	    """;
+
+	    // 3) Fallback: latest WAITING waiting list
+	    String sqlLatestWaiting = """
+	        SELECT w.confirmation_code
+	        FROM user_activity ua
+	        JOIN waiting_list w ON w.waiting_id = ua.waiting_id
+	        WHERE ua.subscriber_username = ?
+	          AND ua.waiting_id IS NOT NULL
+	          AND w.status = 'WAITING'
+	        ORDER BY w.request_time DESC
+	        LIMIT 1
+	    """;
+
+	    MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+	    PooledConnection pc = pool.getConnection();
+	    Connection conn = pc.getConnection();
+
+	    try {
+	        // Step 1: ASSIGNED waiting list
+	        try (PreparedStatement ps = conn.prepareStatement(sqlAssignedWaiting)) {
+	            ps.setString(1, subscriberUsername);
+	            try (ResultSet rs = ps.executeQuery()) {
+	                if (rs.next()) {
+	                    String code = rs.getString("confirmation_code");
+	                    if (code != null && !code.isBlank()) {
+	                        return new ActiveCodeResult("WAITING_LIST", code.trim());
+	                    }
+	                }
+	            }
+	        }
+
+	        // Step 2: closest reservation
+	        try (PreparedStatement ps = conn.prepareStatement(sqlClosestReservation)) {
+	            ps.setString(1, subscriberUsername);
+	            try (ResultSet rs = ps.executeQuery()) {
+	                if (rs.next()) {
+	                    String code = rs.getString("confirmation_code");
+	                    if (code != null && !code.isBlank()) {
+	                        return new ActiveCodeResult("RESERVATION", code.trim());
+	                    }
+	                }
+	            }
+	        }
+
+	        // Step 3: latest WAITING list
+	        try (PreparedStatement ps = conn.prepareStatement(sqlLatestWaiting)) {
+	            ps.setString(1, subscriberUsername);
+	            try (ResultSet rs = ps.executeQuery()) {
+	                if (rs.next()) {
+	                    String code = rs.getString("confirmation_code");
+	                    if (code != null && !code.isBlank()) {
+	                        return new ActiveCodeResult("WAITING_LIST", code.trim());
+	                    }
+	                }
+	            }
+	        }
+
+	        return null;
+
+	    } finally {
+	        pool.releaseConnection(pc);
+	    }
+	}
+
 
 }

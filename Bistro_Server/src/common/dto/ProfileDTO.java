@@ -5,18 +5,22 @@ import java.io.Serializable;
 public class ProfileDTO implements Serializable {
     private static final long serialVersionUID = 1L;
 
-    private String memberNumber; // not editable
-    private String fullName;     // not editable
-    private String phone;        // editable
-    private String email;        // editable
+    private String memberNumber;
+    private String fullName;
+    private String phone;
+    private String email;
+
+    // ✅ NEW
+    private String barcodeData;
 
     public ProfileDTO() {}
 
-    public ProfileDTO(String memberNumber, String fullName, String phone, String email) {
+    public ProfileDTO(String memberNumber, String fullName, String phone, String email, String barcodeData) {
         this.memberNumber = memberNumber;
         this.fullName = fullName;
         this.phone = phone;
         this.email = email;
+        this.barcodeData = barcodeData;
     }
 
     public String getMemberNumber() { return memberNumber; }
@@ -30,5 +34,10 @@ public class ProfileDTO implements Serializable {
 
     public String getEmail() { return email; }
     public void setEmail(String email) { this.email = email; }
+
+    // ✅ NEW
+    public String getBarcodeData() { return barcodeData; }
+    public void setBarcodeData(String barcodeData) { this.barcodeData = barcodeData; }
 }
+
 

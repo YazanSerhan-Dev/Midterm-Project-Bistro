@@ -284,15 +284,26 @@
                         <children>
                             <Label text="Member #:" GridPane.rowIndex="0" GridPane.columnIndex="0"/>
                             <TextField fx:id="txtMemberNumber" editable="false" GridPane.rowIndex="0" GridPane.columnIndex="1"/>
+                            
+							<Label text="Barcode:" GridPane.rowIndex="1" GridPane.columnIndex="0"/>
+							<TextField fx:id="txtBarcodeData"
+							           editable="false"
+							           promptText="Not loaded"
+							           GridPane.rowIndex="1" GridPane.columnIndex="1"/>
+							
+							<Button text="Copy Barcode"
+							        onAction="#onCopyBarcode"
+							        styleClass="secondary-btn"
+							        GridPane.rowIndex="1" GridPane.columnIndex="2"/>
 
-                            <Label text="Full Name:" GridPane.rowIndex="1" GridPane.columnIndex="0"/>
-                            <TextField fx:id="txtFullName" editable="true" GridPane.rowIndex="1" GridPane.columnIndex="1"/>
+                            <Label text="Full Name:" GridPane.rowIndex="2" GridPane.columnIndex="0"/>
+                            <TextField fx:id="txtFullName" editable="true" GridPane.rowIndex="2" GridPane.columnIndex="1"/>
 
-                            <Label text="Phone:" GridPane.rowIndex="2" GridPane.columnIndex="0"/>
-                            <TextField fx:id="txtPhone" GridPane.rowIndex="2" GridPane.columnIndex="1"/>
+                            <Label text="Phone:" GridPane.rowIndex="3" GridPane.columnIndex="0"/>
+                            <TextField fx:id="txtPhone" GridPane.rowIndex="3" GridPane.columnIndex="1"/>
 
-                            <Label text="Email:" GridPane.rowIndex="3" GridPane.columnIndex="0"/>
-                            <TextField fx:id="txtEmail" GridPane.rowIndex="3" GridPane.columnIndex="1"/>
+                            <Label text="Email:" GridPane.rowIndex="4" GridPane.columnIndex="0"/>
+                            <TextField fx:id="txtEmail" GridPane.rowIndex="4" GridPane.columnIndex="1"/>
                         </children>
                     </GridPane>
 
