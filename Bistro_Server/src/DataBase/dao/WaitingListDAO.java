@@ -5,14 +5,20 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Savepoint;
 import java.sql.Timestamp;
+import java.util.ArrayList;
 import java.util.List;
 
 import DataBase.MySQLConnectionPool;
 import DataBase.PooledConnection;
+import common.dto.SubscriberDTO;
 import common.dto.TerminalValidateResponseDTO;
 import common.dto.WaitingListDTO;
 
 public class WaitingListDAO {
+
+    // =============================================================
+    // 1. METHODS FROM HEAD (Your Dashboard Logic)
+    // =============================================================
 
     public static void insertWaiting(
             int numOfCustomers,
@@ -21,10 +27,10 @@ public class WaitingListDAO {
             String confirmationCode) throws Exception {
 
         String sql = """
-            INSERT INTO waiting_list
-            (num_of_customers, request_time, status, confirmation_code)
-            VALUES (?, ?, ?, ?)
-        """;
+                INSERT INTO waiting_list
+                (num_of_customers, request_time, status, confirmation_code)
+                VALUES (?, ?, ?, ?)
+            """;
 
         MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
         PooledConnection pc = pool.getConnection();
@@ -40,8 +46,42 @@ public class WaitingListDAO {
             pool.releaseConnection(pc);
         }
     }
+    
+    public static List<WaitingListDTO> getAllWaitingList() {
+        List<WaitingListDTO> list = new ArrayList<>();
 
-    // ✅ NEW: fetch waiting list entry by its code
+        String sql = "SELECT waiting_id, num_of_customers, request_time, status, confirmation_code FROM waiting_list WHERE status = 'WAITING' ORDER BY request_time ASC";
+
+        try {
+            MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+            PooledConnection pc = pool.getConnection();
+            Connection conn = pc.getConnection();
+            PreparedStatement ps = conn.prepareStatement(sql);
+            ResultSet rs = ps.executeQuery();
+
+            while (rs.next()) {
+                int id = rs.getInt("waiting_id");
+                int count = rs.getInt("num_of_customers");
+                String status = rs.getString("status");
+                String code = rs.getString("confirmation_code");
+                
+                java.sql.Timestamp ts = rs.getTimestamp("request_time");
+                String timeStr = (ts != null) ? ts.toString() : "";
+
+                list.add(new WaitingListDTO(id, count, timeStr, status, code));
+            }
+
+            pool.releaseConnection(pc);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return list;
+    }
+
+    // =============================================================
+    // 2. METHODS FROM MAIN (The Complex Logic)
+    // =============================================================
+
     public static WaitingListDTO getByCode(String code) throws Exception {
         String sql = """
             SELECT waiting_id, num_of_customers, request_time, status, confirmation_code
@@ -64,8 +104,6 @@ public class WaitingListDAO {
                 dto.setPeopleCount(rs.getInt("num_of_customers"));
                 dto.setStatus(rs.getString("status"));
                 dto.setConfirmationCode(rs.getString("confirmation_code"));
-
-                // note: DB table doesn’t store email/phone per your schema, so we don’t fill them here.
                 return dto;
             }
         } finally {
@@ -73,7 +111,6 @@ public class WaitingListDAO {
         }
     }
 
-    // ✅ NEW: update waiting status by code (WAITING / ASSIGNED / CANCELED)
     public static boolean updateStatusByCode(String code, String newStatus) throws Exception {
         String sql = """
             UPDATE waiting_list
@@ -95,7 +132,6 @@ public class WaitingListDAO {
     }
 
     public static int cancelAssignedOver15Minutes() throws Exception {
-
         // 1) Cancel assigned waiting_list rows older than 15 minutes
         String cancelSql = """
             UPDATE waiting_list
@@ -104,8 +140,7 @@ public class WaitingListDAO {
               AND request_time < (NOW() - INTERVAL 15 MINUTE)
         """;
 
-        // 2) Release tables that were reserved for waiting_list and their reserved_until already passed
-        // (This is the REAL "no-show" cleanup)
+        // 2) Release tables
         String releaseTablesSql = """
             UPDATE restaurant_table
             SET status = 'FREE',
@@ -123,30 +158,23 @@ public class WaitingListDAO {
 
         try {
             conn.setAutoCommit(false);
-
             int canceled;
             try (PreparedStatement ps = conn.prepareStatement(cancelSql)) {
                 canceled = ps.executeUpdate();
             }
-
-            // Release any expired reserved tables (even if canceled=0, still good to clean)
             try (PreparedStatement ps = conn.prepareStatement(releaseTablesSql)) {
                 ps.executeUpdate();
             }
-
             conn.commit();
             return canceled;
-
         } catch (Exception e) {
             try { conn.rollback(); } catch (Exception ignored) {}
             throw e;
-
         } finally {
             try { conn.setAutoCommit(true); } catch (Exception ignored) {}
             pool.releaseConnection(pc);
         }
     }
-
 
     public static String getGuestEmailForWaitingId(int waitingId) throws Exception {
         String sql = """
@@ -193,7 +221,6 @@ public class WaitingListDAO {
             pool.releaseConnection(pc);
         }
     }
-
 
     public static int insertWaitingReturnId(
             int numOfCustomers,
@@ -247,6 +274,7 @@ public class WaitingListDAO {
         }
     }
     
+    // Used inside transactions
     public static WaitingListDTO getByCode(Connection conn, String code) throws Exception {
         String sql = """
             SELECT waiting_id, num_of_customers, request_time, status, confirmation_code
@@ -270,6 +298,7 @@ public class WaitingListDAO {
         }
     }
 
+    // Used inside transactions
     public static boolean updateStatusByCode(Connection conn, String code, String newStatus) throws Exception {
         String sql = """
             UPDATE waiting_list
@@ -313,7 +342,6 @@ public class WaitingListDAO {
 
             String st = (w.getStatus() == null) ? "" : w.getStatus().trim();
 
-            // only ASSIGNED can check-in
             if (!"ASSIGNED".equalsIgnoreCase(st)) {
                 conn.rollback();
                 dto.setValid(true);
@@ -325,7 +353,6 @@ public class WaitingListDAO {
                 return dto;
             }
 
-            // If already checked-in, block
             if (VisitDAO.existsVisitForWaitingId(conn, w.getId())) {
                 conn.rollback();
                 dto.setValid(false);
@@ -333,13 +360,8 @@ public class WaitingListDAO {
                 return dto;
             }
 
-            // ===============================
-            // ✅ OPTION B: MULTI-TABLE SUPPORT
-            // ===============================
-
-            // Get ALL reserved tables for this waiting id
-            java.util.List<String> reservedTables =
-                    RestaurantTableDAO.getReservedTablesForWaiting(conn, w.getId());
+            // Multi-table support
+            List<String> reservedTables = RestaurantTableDAO.getReservedTablesForWaiting(conn, w.getId());
 
             if (reservedTables == null || reservedTables.isEmpty()) {
                 conn.rollback();
@@ -352,7 +374,6 @@ public class WaitingListDAO {
                 return dto;
             }
 
-            // Occupy ALL reserved tables (atomic)
             int occupied = RestaurantTableDAO.occupyReservedTablesForWaiting(conn, w.getId());
             if (occupied <= 0) {
                 conn.rollback();
@@ -365,7 +386,6 @@ public class WaitingListDAO {
                 return dto;
             }
 
-            // Get existing activity or create if missing
             Integer activityId = null;
             try (PreparedStatement ps = conn.prepareStatement("""
                 SELECT activity_id
@@ -392,12 +412,10 @@ public class WaitingListDAO {
                 return dto;
             }
 
-            // ✅ INSERT VISITS FOR *ALL* TABLES
             for (String t : reservedTables) {
                 VisitDAO.insertVisit(conn, activityId, t);
             }
 
-            // Waiting list: ASSIGNED -> ARRIVED
             WaitingListDAO.updateStatusByCode(conn, code, "ARRIVED");
 
             conn.commit();
@@ -407,18 +425,14 @@ public class WaitingListDAO {
             dto.setNumOfCustomers(w.getPeopleCount());
             dto.setCheckInAllowed(false);
             dto.setMessage("Checked-in successfully (waiting list).");
-
-            // UI compatibility – show first table only
             dto.setTableId(reservedTables.get(0));
             return dto;
 
         } catch (Exception ex) {
             try { conn.rollback(); } catch (Exception ignored) {}
-
             dto.setValid(false);
             dto.setMessage("Server error: " + ex.getMessage());
             return dto;
-
         } finally {
             try { conn.setAutoCommit(true); } catch (Exception ignored) {}
             pool.releaseConnection(pc);
@@ -437,18 +451,14 @@ public class WaitingListDAO {
         try {
             conn.setAutoCommit(false);
 
-            // ✅ FREE seats using SAME connection
             int freeSeatsNow = RestaurantTableDAO.getTotalSeatsAvailable(conn);
             if (freeSeatsNow <= 0) {
                 conn.rollback();
                 return null;
             }
 
-            // Seats requested by reservations we must protect
             int pendingNeed = ReservationDAO.sumPendingSeats(conn, 20);
             int confirmedNeed = ReservationDAO.sumConfirmedDueSoonSeats(conn, RESERVATION_LOOKAHEAD_MINUTES);
-
-            // ✅ Key fix: seats already RESERVED for pending are already protected
             int pendingReservedSeats = RestaurantTableDAO.sumReservedSeatsForPendingReservations(conn);
 
             int effectivePendingNeed = Math.max(0, pendingNeed - pendingReservedSeats);
@@ -472,16 +482,13 @@ public class WaitingListDAO {
                     int people = rs.getInt("num_of_customers");
                     String code = rs.getString("confirmation_code");
 
-                    // ✅ If already reserved somehow, skip (safety)
                     List<String> existing = RestaurantTableDAO.getReservedTablesForWaiting(conn, waitingId);
                     if (existing != null && !existing.isEmpty()) {
                         continue;
                     }
 
-                    // Savepoint so we can revert only this attempt
                     Savepoint sp = conn.setSavepoint("WL_TRY_" + waitingId);
 
-                    // Reserve tables for waiting entry
                     List<String> tableIds = RestaurantTableDAO.reserveFreeTablesBestFitForWaiting(
                             conn, waitingId, people, HOLD_MINUTES);
 
@@ -490,18 +497,12 @@ public class WaitingListDAO {
                         continue;
                     }
 
-                    // ✅ Real seats consumed (tables might exceed people count)
-                    int consumedSeats = RestaurantTableDAO.sumSeatsForTables(conn, tableIds);
-
-                    // ✅ Reservation protection check (AFTER reserving)
-                    // remaining FREE seats must still cover protectedNeed
                     int freeAfter = RestaurantTableDAO.getTotalSeatsAvailable(conn);
                     if (freeAfter < protectedNeed) {
                         conn.rollback(sp);
                         continue;
                     }
 
-                    // Mark WAITING -> ASSIGNED
                     int updated;
                     try (PreparedStatement up = conn.prepareStatement("""
                         UPDATE waiting_list
@@ -549,7 +550,6 @@ public class WaitingListDAO {
         try {
             conn.setAutoCommit(false);
 
-            // 1) Lock + get waiting entry
             WaitingListDTO w;
             try (PreparedStatement ps = conn.prepareStatement("""
                 SELECT waiting_id, status
@@ -572,13 +572,11 @@ public class WaitingListDAO {
 
             String st = (w.getStatus() == null) ? "" : w.getStatus().trim().toUpperCase();
 
-            // If already ARRIVED (checked-in), do NOT allow "leave waiting list"
             if ("ARRIVED".equals(st)) {
                 conn.rollback();
                 return false;
             }
 
-            // 2) Cancel only if WAITING or ASSIGNED
             int updated;
             try (PreparedStatement ps = conn.prepareStatement("""
                 UPDATE waiting_list
@@ -595,7 +593,6 @@ public class WaitingListDAO {
                 return false;
             }
 
-            // 3) Release any reserved tables for that waiting id (IMMEDIATE)
             try (PreparedStatement ps = conn.prepareStatement("""
                 UPDATE restaurant_table
                 SET status = 'FREE',
@@ -605,7 +602,7 @@ public class WaitingListDAO {
                   AND reserved_for_waiting_id = ?
             """)) {
                 ps.setInt(1, w.getId());
-                ps.executeUpdate(); // could be 0 if none reserved, that's fine
+                ps.executeUpdate();
             }
 
             conn.commit();
@@ -620,8 +617,72 @@ public class WaitingListDAO {
             pool.releaseConnection(pc);
         }
     }
+    
+ // =============================================================
+    // 3. STAFF REMOVAL METHODS (Fixes "Remove / Cancel" button)
+    // =============================================================
+
+    public static boolean cancelWaitingById(int waitingId) throws Exception {
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try {
+            conn.setAutoCommit(false);
+
+            // 1. Lock and Check Status
+            String status = null;
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "SELECT status FROM waiting_list WHERE waiting_id = ? FOR UPDATE")) {
+                ps.setInt(1, waitingId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) {
+                        status = rs.getString("status");
+                    } else {
+                        conn.rollback();
+                        return false; // ID not found
+                    }
+                }
+            }
+
+            // 2. If already arrived or canceled, do not remove again
+            if ("ARRIVED".equalsIgnoreCase(status) || "CANCELED".equalsIgnoreCase(status)) {
+                conn.rollback();
+                return false;
+            }
+
+            // 3. Update Status to CANCELED
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "UPDATE waiting_list SET status = 'CANCELED' WHERE waiting_id = ?")) {
+                ps.setInt(1, waitingId);
+                int rows = ps.executeUpdate();
+                if (rows <= 0) {
+                    conn.rollback();
+                    return false;
+                }
+            }
+
+            // 4. Release any tables reserved for this waiting ID
+            try (PreparedStatement ps = conn.prepareStatement("""
+                UPDATE restaurant_table
+                SET status = 'FREE',
+                    reserved_for_waiting_id = NULL,
+                    reserved_until = NULL
+                WHERE reserved_for_waiting_id = ?
+            """)) {
+                ps.setInt(1, waitingId);
+                ps.executeUpdate();
+            }
+
+            conn.commit();
+            return true;
+
+        } catch (Exception e) {
+            try { conn.rollback(); } catch (Exception ignored) {}
+            throw e;
+        } finally {
+            try { conn.setAutoCommit(true); } catch (Exception ignored) {}
+            pool.releaseConnection(pc);
+        }
+    }
 }
-
-
-
-

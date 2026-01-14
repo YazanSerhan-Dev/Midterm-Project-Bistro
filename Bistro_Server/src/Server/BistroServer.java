@@ -7,6 +7,8 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
+import javax.sql.CommonDataSource;
+
 import ocsf.server.AbstractServer;
 import ocsf.server.ConnectionToClient;
 
@@ -26,6 +28,9 @@ import common.dto.WaitingListDTO;
 import common.dto.LoginResponseDTO;
 import common.dto.MakeReservationRequestDTO;
 import common.dto.MakeReservationResponseDTO;
+import common.dto.CurrentDinersDTO; // Make sure to import this
+
+import DataBase.dao.VisitDAO;
 import common.dto.ProfileDTO;
 import DataBase.Reservation;
 import DataBase.dao.BillDAO;
@@ -119,27 +124,51 @@ public class BistroServer extends AbstractServer {
             }
 
             switch (req.getOp()) {
+                // --- RESERVATIONS ---
                 case REQUEST_RESERVATIONS_LIST -> handleReservationsList(req, client);
                 case REQUEST_REGISTER_CUSTOMER -> handleRegisterCustomer(req, client);
-                case REQUEST_SUBSCRIBERS_LIST -> handleSubscribersList(client);
-                case REQUEST_AGENT_RESERVATIONS_LIST -> handleAgentReservationsList(client);
-                
+                case REQUEST_SUBSCRIBERS_LIST -> handleSubscribersList(req, client);
+                case REQUEST_AGENT_RESERVATIONS_LIST -> handleAgentReservationsList(req, client);
                 case REQUEST_MAKE_RESERVATION -> handleMakeReservation(req, client);
                 case REQUEST_CHECK_AVAILABILITY -> handleCheckAvailability(req, client);
-                
+                case REQUEST_CANCEL_RESERVATION -> handleCancelReservation(req, client);
+
+                // --- LOGIN ---
                 case REQUEST_LOGIN_SUBSCRIBER -> handleLoginSubscriber(req, client);
                 case REQUEST_LOGIN_STAFF      -> handleLoginStaff(req, client);
                 
+                // --- TERMINAL ---
                 case REQUEST_TERMINAL_VALIDATE_CODE -> handleTerminalValidateCode(req, client);
                 case REQUEST_TERMINAL_CHECK_IN -> handleTerminalCheckIn(req, client);
+                case REQUEST_TERMINAL_CANCEL_RESERVATION -> handleTerminalCancelReservation(req, client);
                 
-                //updated from Yazan for the waiting list
-                case REQUEST_WAITING_LIST -> handleWaitingList(req, client);
-                
+                // --- WAITING LIST (Fixed Logic) ---
+                case REQUEST_WAITING_LIST -> handlgeteWaitingList(req, client); // Agent Viewing List
+                case REQUEST_WAITING_ADD  -> handleWaitingList(req, client); // Customer Joining
+                case REQUEST_WAITING_REMOVE -> handleRemoveWaitingCustomer(req, client); // <--- ADD THIS
                 case REQUEST_LEAVE_WAITING_LIST -> handleLeaveWaitingList(req, client);
+                
+                // --- DASHBOARD: CURRENT DINERS ---
+                case REQUEST_CURRENT_DINERS -> handleCurrentDiners(req, client);
+                
+                // --- DASHBOARD: TABLES ---
+                case REQUEST_TABLES_GET -> handleGetTables(client);
+                case REQUEST_TABLE_ADD -> handleAddTable(req, client);
+                case REQUEST_TABLE_REMOVE -> handleRemoveTable(req, client);
+                case REQUEST_TABLE_UPDATE -> handleUpdateTable(req, client);
+                
+                // --- DASHBOARD: OPENING HOURS ---
+                case REQUEST_OPENING_HOURS_GET -> handleGetOpeningHours(client);
+                case REQUEST_OPENING_HOURS_UPDATE -> handleUpdateOpeningHours(req, client);
+                case REQUEST_OPENING_HOURS_ADD_SPECIAL -> handleAddSpecialHour(req, client);
+                case REQUEST_OPENING_HOURS_REMOVE -> handleRemoveSpecialHour(req, client);
+                case REQUEST_TODAY_HOURS -> handleGetTodayHours(client);
+                
+                // --- DASHBOARD: REPORTS ---
+                case REQUEST_REPORT_PERFORMANCE -> handleReportPerformance(req,client);
+                case REQUEST_REPORT_ACTIVITY -> handleReportActivity(req,client);
 
-                // TODO later:
-                case REQUEST_CANCEL_RESERVATION -> handleCancelReservation(req, client);
+                // --- BILLING / HISTORY / PROFILE ---
                 case REQUEST_HISTORY_GET -> sendOk(client, OpCode.RESPONSE_HISTORY_GET, List.of());
                 case REQUEST_BILL_GET_BY_CODE -> handleBillGetByCode(req, client);
                 case REQUEST_PAY_BILL        -> handlePayBill(req, client);
@@ -147,9 +176,12 @@ public class BistroServer extends AbstractServer {
                 case REQUEST_GET_PROFILE -> handleGetProfile(req, client);
                 case REQUEST_UPDATE_PROFILE -> handleUpdateProfile(req, client);
                 case REQUEST_RECOVER_CONFIRMATION_CODE -> handleRecoverConfirmationCode(req, client);
-                case REQUEST_TERMINAL_CANCEL_RESERVATION -> handleTerminalCancelReservation(req, client);
                 case REQUEST_GET_AVAILABLE_TIMES -> handleGetAvailableTimes(req, client);
+                
+                case REQUEST_SUBSCRIBER_HISTORY -> handleSubscriberHistory(req, client);
+                
                 case REQUEST_TERMINAL_RESOLVE_SUBSCRIBER_QR -> handleTerminalResolveSubscriberQR(req, client);
+
 
                 default -> sendError(client, OpCode.ERROR, "Unknown op: " + req.getOp());
             }
@@ -267,6 +299,36 @@ public class BistroServer extends AbstractServer {
         } catch (Exception e) {
             try {
                 sendOk(client, OpCode.RESPONSE_GET_AVAILABLE_TIMES, List.of());
+            } catch (Exception ignored) {}
+        }
+    }
+    
+    private void handleSubscriberHistory(Envelope req, ConnectionToClient client) {
+        try {
+            Object payload = readEnvelopePayload(req);
+            String username = (payload instanceof String s) ? s.trim() : null;
+
+            if (username == null || username.isEmpty()) {
+                // Send empty history if no username
+                sendOk(client, OpCode.RESPONSE_SUBSCRIBER_HISTORY, 
+                       new common.dto.HistoryDTO(new ArrayList<>(), new ArrayList<>()));
+                return;
+            }
+
+            // 1. Fetch Reservations (Using the JOIN query)
+            List<ReservationDTO> reservations = ReservationDAO.getReservationsBySubscriberForStaff(username);
+
+            // 2. Fetch Visits (Using the JOIN query)
+            List<String> visits = VisitDAO.getVisitsBySubscriber(username);
+
+            // 3. Send Response
+            common.dto.HistoryDTO history = new common.dto.HistoryDTO(reservations, visits);
+            sendOk(client, OpCode.RESPONSE_SUBSCRIBER_HISTORY, history);
+
+        } catch (Exception e) {
+            log("Error fetching history: " + e.getMessage());
+            try {
+                sendError(client, OpCode.RESPONSE_SUBSCRIBER_HISTORY, "Server error: " + e.getMessage());
             } catch (Exception ignored) {}
         }
     }
@@ -518,13 +580,11 @@ public class BistroServer extends AbstractServer {
 
             int people = dto.getPeopleCount();
             if (people <= 0) {
-                sendOk(client, OpCode.RESPONSE_WAITING_LIST, "People count must be > 0.");
+                sendOk(client, OpCode.RESPONSE_WAITING_LIST, "People count must be > 0.");		
                 return;
             }
 
-            // ✅ NEW VALIDATION (Option B multi-table):
-            // Waiting list is allowed even if there is no FREE table now.
-            // We only block if the group size is larger than the restaurant TOTAL capacity.
+            
             int totalSeats = RestaurantTableDAO.getTotalSeats();
             if (totalSeats <= 0) {
                 sendOk(client, OpCode.RESPONSE_WAITING_LIST, "Restaurant tables are not configured. Please contact staff.");
@@ -702,6 +762,139 @@ public class BistroServer extends AbstractServer {
             }
         }
     }
+    
+    private void handleCurrentDiners(Envelope req, ConnectionToClient client) {
+        try {
+            // Log that we started the request (This helps debug!)
+            log("Received request for Current Diners from " + host(client));
+
+            List<common.dto.CurrentDinersDTO> list = DataBase.dao.VisitDAO.getActiveDiners();
+            sendOk(client, OpCode.RESPONSE_CURRENT_DINERS, list);
+            
+            log("Sent " + list.size() + " current diners.");
+        } catch (Exception e) {
+            log("Error fetching current diners: " + e.getMessage());
+            e.printStackTrace(); // Print error to console
+        }
+    }
+    
+    private void handleGetTables(ConnectionToClient client) {
+        try {
+            List<common.dto.RestaurantTableDTO> list = DataBase.dao.RestaurantTableDAO.getAllTables();
+            sendOk(client, OpCode.RESPONSE_TABLES_GET, list);
+        } catch (Exception e) {
+            try { sendError(client, OpCode.ERROR, "Fetch tables failed: " + e.getMessage()); } catch (Exception ignored) {}
+        }
+    }
+
+    private void handleAddTable(Envelope req, ConnectionToClient client) {
+        try {
+            if (req.getPayload() instanceof common.dto.RestaurantTableDTO dto) {
+                // Default status FREE if not set
+                String status = (dto.getStatus() == null || dto.getStatus().isEmpty()) ? "FREE" : dto.getStatus();
+                DataBase.dao.RestaurantTableDAO.insertTable(dto.getTableId(), dto.getSeats(), status);
+                sendOk(client, OpCode.RESPONSE_TABLE_ADD, "Table added/updated successfully.");
+            }
+        } catch (Exception e) {
+            try { sendError(client, OpCode.ERROR, "Add table failed: " + e.getMessage()); } catch (Exception ignored) {}
+        }
+    }
+
+    private void handleRemoveTable(Envelope req, ConnectionToClient client) {
+        try {
+            String tableId = (String) req.getPayload();
+            boolean ok = DataBase.dao.RestaurantTableDAO.deleteTable(tableId);
+            if (ok) sendOk(client, OpCode.RESPONSE_TABLE_REMOVE, "Table removed.");
+            else sendError(client, OpCode.ERROR, "Table not found or could not be removed.");
+        } catch (Exception e) {
+            try { sendError(client, OpCode.ERROR, "Remove table failed: " + e.getMessage()); } catch (Exception ignored) {}
+        }
+    }
+
+    private void handleUpdateTable(Envelope req, ConnectionToClient client) {
+        try {
+            common.dto.RestaurantTableDTO dto = (common.dto.RestaurantTableDTO) req.getPayload();
+            boolean ok = DataBase.dao.RestaurantTableDAO.updateTableSeats(dto.getTableId(), dto.getSeats());
+            if (ok) sendOk(client, OpCode.RESPONSE_TABLE_UPDATE, "Table updated.");
+            else sendError(client, OpCode.ERROR, "Update failed.");
+        } catch (Exception e) {
+            try { sendError(client, OpCode.ERROR, "Update table failed: " + e.getMessage()); } catch (Exception ignored) {}
+        }
+    }
+    
+    private void handleGetOpeningHours(ConnectionToClient client) {
+        try {
+            List<common.dto.OpeningHoursDTO> list = DataBase.dao.OpeningHoursDAO.getAllOpeningHours();
+            sendOk(client, OpCode.RESPONSE_OPENING_HOURS_GET, list);
+        } catch (Exception e) {
+            try { sendError(client, OpCode.ERROR, "Fetch hours failed: " + e.getMessage()); } catch (Exception ignored) {}
+        }
+    }
+    private void handleUpdateOpeningHours(Envelope req, ConnectionToClient client) {
+        try {
+            common.dto.OpeningHoursDTO dto = (common.dto.OpeningHoursDTO) req.getPayload();
+            boolean ok = DataBase.dao.OpeningHoursDAO.updateOpeningHour(dto.getHoursId(), dto.getOpenTime(), dto.getCloseTime());
+            if (ok) sendOk(client, OpCode.RESPONSE_OPENING_HOURS_UPDATE, "Hours updated successfully.");
+            else sendError(client, OpCode.ERROR, "Update failed.");
+        } catch (Exception e) {
+            try { sendError(client, OpCode.ERROR, "Update error: " + e.getMessage()); } catch (Exception ignored) {}
+        }
+    }
+    
+    private void handleAddSpecialHour(Envelope req, ConnectionToClient client) {
+        try {
+            common.dto.OpeningHoursDTO dto = (common.dto.OpeningHoursDTO) req.getPayload();
+            // Insert into DB
+            DataBase.dao.OpeningHoursDAO.insertSpecialHour(dto.getSpecialDate(), dto.getDayOfWeek(), dto.getOpenTime(), dto.getCloseTime());
+            sendOk(client, OpCode.RESPONSE_OPENING_HOURS_ADD_SPECIAL, "Special date added.");
+        } catch (Exception e) {
+            try { sendError(client, OpCode.ERROR, "Add special date failed: " + e.getMessage()); } catch (Exception ignored) {}
+        }
+    }
+
+    private void handleRemoveSpecialHour(Envelope req, ConnectionToClient client) {
+        try {
+            int id = (int) req.getPayload();
+            boolean ok = DataBase.dao.OpeningHoursDAO.deleteOpeningHour(id);
+            if (ok) sendOk(client, OpCode.RESPONSE_OPENING_HOURS_REMOVE, "Special date removed.");
+            else sendError(client, OpCode.ERROR, "Could not remove (might differ from ID).");
+        } catch (Exception e) {
+            try { sendError(client, OpCode.ERROR, "Remove failed: " + e.getMessage()); } catch (Exception ignored) {}
+        }
+    }
+    
+    private void handleGetTodayHours(ConnectionToClient client) {
+        try {
+            String hours = DataBase.dao.OpeningHoursDAO.getHoursForDate(java.time.LocalDate.now());
+            sendOk(client, OpCode.RESPONSE_TODAY_HOURS, hours);
+        } catch (Exception e) {
+            try { sendError(client, OpCode.ERROR, "Failed to get today's hours"); } catch (Exception ignored) {}
+        }
+    }
+    
+    
+    
+    private void handleReportPerformance(Envelope req, ConnectionToClient client) {
+        try {
+            common.dto.ReportRequestDTO dto = (common.dto.ReportRequestDTO) req.getPayload();
+            List<common.dto.ReportDTO> data = DataBase.dao.ReportDAO.getPerformanceReport(dto.getMonth(), dto.getYear());
+            sendOk(client, OpCode.RESPONSE_REPORT_PERFORMANCE, data);
+        } catch (Exception e) {
+            e.printStackTrace();
+            try { sendError(client, OpCode.ERROR, "Perf Report Failed"); } catch (Exception ignored) {}
+        }
+    }
+
+    private void handleReportActivity(Envelope req, ConnectionToClient client) {
+        try {
+            common.dto.ReportRequestDTO dto = (common.dto.ReportRequestDTO) req.getPayload();
+            List<common.dto.ReportDTO> data = DataBase.dao.ReportDAO.getSubscriberActivityReport(dto.getMonth(), dto.getYear());
+            sendOk(client, OpCode.RESPONSE_REPORT_ACTIVITY, data);
+        } catch (Exception e) {
+            e.printStackTrace();
+            try { sendError(client, OpCode.ERROR, "Activity Report Failed"); } catch (Exception ignored) {}
+        }
+    }
 
 
     // -----------------------------------------------------------
@@ -727,8 +920,6 @@ public class BistroServer extends AbstractServer {
                 dto.getFullName(),
                 dto.getPhone(),
                 dto.getEmail(),
-                dto.getMemberCode(),
-                dto.getBarcode(),
                 sqlBirthDate
             );
 
@@ -1059,8 +1250,9 @@ public class BistroServer extends AbstractServer {
         try {
             var req = (common.dto.LoginRequestDTO) env.getPayload();
             String role = DataBase.dao.StaffDAO.checkLoginAndGetRole(req.getUsername(), req.getPassword());
+
             LoginResponseDTO res = (role != null)
-                    ? new common.dto.LoginResponseDTO(true, "Login success", req.getUsername(), null, role)
+                    ? new common.dto.LoginResponseDTO(true, "Login success", req.getUsername(), role.trim(), null)
                     : new common.dto.LoginResponseDTO(false, "Invalid username or password", null, null, null);
 
             Envelope reply = Envelope.ok(OpCode.RESPONSE_LOGIN_STAFF, res);
@@ -1073,6 +1265,7 @@ public class BistroServer extends AbstractServer {
             } catch (Exception ignored) {}
         }
     }
+
 
     private void handleReservationsList(Envelope req, ConnectionToClient client) throws Exception {
         Object payload = readEnvelopePayload(req);
@@ -1097,7 +1290,7 @@ public class BistroServer extends AbstractServer {
         sendOk(client, OpCode.RESPONSE_RESERVATIONS_LIST, dtoList);
     }
 
-    private void handleSubscribersList(ConnectionToClient client) {
+    private void handleSubscribersList(Envelope req,ConnectionToClient client) {
         try {
             List<SubscriberDTO> list = DataBase.dao.SubscriberDAO.getAllSubscribers();
             sendOk(client, OpCode.RESPONSE_SUBSCRIBERS_LIST, list);
@@ -1108,7 +1301,7 @@ public class BistroServer extends AbstractServer {
         }
     }
 
-    private void handleAgentReservationsList(ConnectionToClient client) {
+    private void handleAgentReservationsList(Envelope req,ConnectionToClient client) {
         try {
             List<Reservation> rows = reservationDAO.getAllReservations();
             List<ReservationDTO> dtoList = new ArrayList<>();
@@ -1129,6 +1322,50 @@ public class BistroServer extends AbstractServer {
             log("Sent all reservations to Agent.");
         } catch (Exception e) {
             e.printStackTrace();
+        }
+    }
+    
+    private void handleRemoveWaitingCustomer(Envelope req, ConnectionToClient client) {
+        try {
+            Object payload = readEnvelopePayload(req);
+            
+            // Staff sends just the ID (Integer)
+            int waitingId = -1;
+            if (payload instanceof Integer i) waitingId = i;
+            else if (payload instanceof String s) waitingId = Integer.parseInt(s);
+            
+            if (waitingId <= 0) {
+                sendOk(client, OpCode.RESPONSE_WAITING_REMOVE, "Invalid waiting ID.");
+                return;
+            }
+
+            // Call the new DAO method
+            boolean success = DataBase.dao.WaitingListDAO.cancelWaitingById(waitingId);
+
+            if (success) {
+                sendOk(client, OpCode.RESPONSE_WAITING_REMOVE, "Customer removed from waiting list.");
+            } else {
+                sendOk(client, OpCode.RESPONSE_WAITING_REMOVE, "Could not remove (already arrived or not found).");
+            }
+
+        } catch (Exception e) {
+            try {
+                sendOk(client, OpCode.RESPONSE_WAITING_REMOVE, "Server error: " + e.getMessage());
+            } catch (Exception ignored) {}
+        }
+    }
+    
+    private void handlgeteWaitingList(Envelope req,ConnectionToClient client) {
+        try {
+        	List<common.dto.WaitingListDTO> list = DataBase.dao.WaitingListDAO.getAllWaitingList();
+            sendOk(client, OpCode.RESPONSE_WAITING_LIST, list); 
+            log("Sent "+list.size()+" Waiting List items to Agent.");
+        } catch (Exception e) {
+            log("Error fetching waiting list: " + e.getMessage());
+            e.printStackTrace(); // Good for debugging
+            try { 
+                sendError(client, OpCode.ERROR, "Fetch waiting list failed: " + e.getMessage()); 
+            } catch (Exception ignored) {}
         }
     }
 

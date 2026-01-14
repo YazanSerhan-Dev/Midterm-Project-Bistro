@@ -4,26 +4,26 @@ import javafx.beans.property.*;
 
 public class SubscriberRow {
 
-    private final IntegerProperty subscriberId = new SimpleIntegerProperty();
+    private final StringProperty subscriberId = new SimpleStringProperty();
     private final StringProperty fullName = new SimpleStringProperty();
     private final StringProperty phone = new SimpleStringProperty();
     private final StringProperty email = new SimpleStringProperty();
-    private final StringProperty status = new SimpleStringProperty();
+    private final StringProperty birthDate = new SimpleStringProperty(); // ✅ Added Property
 
-    public SubscriberRow(int subscriberId,
+    public SubscriberRow(String subscriberId,
                          String fullName,
                          String phone,
                          String email,
-                         String status) {
+                         String birthDate) {
         this.subscriberId.set(subscriberId);
         this.fullName.set(fullName);
         this.phone.set(phone);
         this.email.set(email);
-        this.status.set(status);
+        this.birthDate.set(birthDate);
     }
 
-    public int getSubscriberId() { return subscriberId.get(); }
-    public IntegerProperty subscriberIdProperty() { return subscriberId; }
+    public String getSubscriberId() { return subscriberId.get(); }
+    public StringProperty subscriberIdProperty() { return subscriberId; }
 
     public String getFullName() { return fullName.get(); }
     public StringProperty fullNameProperty() { return fullName; }
@@ -34,6 +34,6 @@ public class SubscriberRow {
     public String getEmail() { return email.get(); }
     public StringProperty emailProperty() { return email; }
 
-    public String getStatus() { return status.get(); }
-    public StringProperty statusProperty() { return status; }
+    public String getBirthDate() { return birthDate.get(); }
+    public StringProperty birthDateProperty() { return birthDate; }
 }

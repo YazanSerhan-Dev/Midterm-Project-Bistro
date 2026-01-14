@@ -70,7 +70,7 @@ public enum OpCode {
     REQUEST_TERMINAL_CANCEL_RESERVATION,
     RESPONSE_TERMINAL_CANCEL_RESERVATION,
     
- // ===== Agent – Subscriber Registration =====
+    // ===== Agent Operations =====
     REQUEST_REGISTER_CUSTOMER,
     RESPONSE_REGISTER_CUSTOMER,
     
@@ -82,8 +82,60 @@ public enum OpCode {
     
     REQUEST_LEAVE_WAITING_LIST,
     RESPONSE_LEAVE_WAITING_LIST,
-    
+
     REQUEST_AGENT_RESERVATIONS_LIST,
     RESPONSE_AGENT_RESERVATIONS_LIST,
+    
+    
+    REQUEST_WAITING_ADD,    // Agent adds a walk-in customer
+    RESPONSE_WAITING_ADD,
+    
+    REQUEST_WAITING_REMOVE, // Agent cancels a waiting customer
+    RESPONSE_WAITING_REMOVE,
+    
+   
+    REQUEST_CURRENT_DINERS,
+    RESPONSE_CURRENT_DINERS,
+    
+    REQUEST_SUBSCRIBER_HISTORY,  // New
+    RESPONSE_SUBSCRIBER_HISTORY, // New
+    
+ // ===== Table Management (Agent) =====
+    REQUEST_TABLES_GET,
+    RESPONSE_TABLES_GET,
 
+    REQUEST_TABLE_ADD,
+    RESPONSE_TABLE_ADD,
+
+    REQUEST_TABLE_REMOVE,
+    RESPONSE_TABLE_REMOVE,
+    
+    REQUEST_TABLE_UPDATE,
+    RESPONSE_TABLE_UPDATE,
+    
+ // ===== Opening Hours (Agent) =====
+    REQUEST_OPENING_HOURS_GET,
+    RESPONSE_OPENING_HOURS_GET,
+    
+    REQUEST_OPENING_HOURS_UPDATE,      // Update existing row (Regular or Special)
+    RESPONSE_OPENING_HOURS_UPDATE,
+    
+    REQUEST_OPENING_HOURS_ADD_SPECIAL, // Add new specific date
+    RESPONSE_OPENING_HOURS_ADD_SPECIAL,
+    
+    REQUEST_OPENING_HOURS_REMOVE,      // Remove a special date
+    RESPONSE_OPENING_HOURS_REMOVE,
+    
+    REQUEST_TODAY_HOURS,
+    RESPONSE_TODAY_HOURS,
+    
+ // ===== Reports (Manager Only) =====
+    REQUEST_REPORT_PERFORMANCE,
+    RESPONSE_REPORT_PERFORMANCE,
+    
+    REQUEST_REPORT_ACTIVITY,
+    RESPONSE_REPORT_ACTIVITY,
+    
+    REQUEST_PERFORMANCE_LOGS,  
+    RESPONSE_PERFORMANCE_LOGS,
 }

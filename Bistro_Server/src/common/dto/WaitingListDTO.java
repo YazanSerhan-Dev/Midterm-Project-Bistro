@@ -12,6 +12,7 @@ public class WaitingListDTO implements Serializable {
     private int peopleCount;
     private String status;
     private String confirmationCode;
+    private String requestTime;
 
     public WaitingListDTO() {}
 
@@ -24,6 +25,18 @@ public class WaitingListDTO implements Serializable {
         this.peopleCount = peopleCount;
         this.status = status;
         this.confirmationCode = confirmationCode;
+    }
+    
+    public WaitingListDTO(int id, int peopleCount, String requestTime, String status, String confirmationCode) {
+        this.id = id;
+        this.peopleCount = peopleCount;
+        this.requestTime = requestTime;
+        this.status = status;
+        this.confirmationCode = confirmationCode;
+        // Leave optional fields null
+        this.name = null;
+        this.phone = null;
+        this.email = null;
     }
 
     // Getters and Setters
@@ -47,4 +60,7 @@ public class WaitingListDTO implements Serializable {
 
     public String getConfirmationCode() { return confirmationCode; }
     public void setConfirmationCode(String code) { this.confirmationCode = code; }
+    
+    public String getRequestTime() { return requestTime; }
+    public void setRequestTime(String requestTime) { this.requestTime = requestTime; }
 }
