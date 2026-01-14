@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.UUID;
 
 import common.dto.MakeReservationRequestDTO;
+import common.dto.ReservationDTO;
 
 public class ReservationDAO {
 
@@ -1181,7 +1182,39 @@ public class ReservationDAO {
             pool.releaseConnection(pc);
         }
     }
+    
+    public static List<ReservationDTO> getReservationsBySubscriberForStaff(String username) {
+        List<ReservationDTO> list = new ArrayList<>();
+        // ✅ JOIN with user_activity to find the username
+        String sql = "SELECT r.* FROM reservation r " +
+                     "JOIN user_activity ua ON r.reservation_id = ua.reservation_id " +
+                     "WHERE ua.subscriber_username = ?";
 
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, username);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    list.add(new ReservationDTO(
+                        rs.getInt("reservation_id"), 
+                        rs.getString("confirmation_code"),
+                        rs.getString("reservation_time"),
+                        rs.getString("expiry_time"),
+                        rs.getInt("num_of_customers"),
+                        rs.getString("status")
+                    ));
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        } finally {
+            pool.releaseConnection(pc);
+        }
+        return list;
+    }
 
 
 }

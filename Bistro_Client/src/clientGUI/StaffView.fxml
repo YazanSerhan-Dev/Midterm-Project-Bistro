@@ -44,7 +44,7 @@
             <Button maxWidth="1.7976931348623157E308" mnemonicParsing="false" onAction="#onViewReservations" style="-fx-alignment: CENTER-LEFT;" text="Reservations" />
             <Button maxWidth="1.7976931348623157E308" mnemonicParsing="false" onAction="#onViewWaitingList" style="-fx-alignment: CENTER-LEFT;" text="Waiting List" />
             <Button maxWidth="1.7976931348623157E308" mnemonicParsing="false" onAction="#onViewCurrentDiners" style="-fx-alignment: CENTER-LEFT;" text="Current Diners" />
-            <Button maxWidth="1.7976931348623157E308" mnemonicParsing="false" onAction="#onViewSubscribers" style="-fx-alignment: CENTER-LEFT;" text="Manage Subscribers" />
+            <Button maxWidth="1.7976931348623157E308" mnemonicParsing="false" onAction="#onViewSubscribers" style="-fx-alignment: CENTER-LEFT;" text="Subscribers Info" />
             
             <Button maxWidth="1.7976931348623157E308" mnemonicParsing="false" onAction="#onManageTables" style="-fx-alignment: CENTER-LEFT;" text="Manage Tables" />
             <Button maxWidth="1.7976931348623157E308" mnemonicParsing="false" onAction="#onManageOpeningHours" style="-fx-alignment: CENTER-LEFT;" text="Manage Opening Hours" />

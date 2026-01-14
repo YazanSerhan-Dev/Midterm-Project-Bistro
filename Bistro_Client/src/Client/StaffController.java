@@ -103,21 +103,8 @@ public class StaffController implements ClientUI {
             lblManagerSection.setManaged(isManager);
         }
         
-        // Setup Report Dropdowns
-        if (cbReportMonth != null) {
-            cbReportMonth.getItems().addAll(
-                "January", "February", "March", "April", "May", "June", 
-                "July", "August", "September", "October", "November", "December"
-            );
-            // Select current month
-            cbReportMonth.getSelectionModel().select(java.time.LocalDate.now().getMonthValue() - 1);
-        }
         
-        if (cbReportYear != null) {
-            int currentYear = java.time.LocalDate.now().getYear();
-            cbReportYear.getItems().addAll(currentYear - 1, currentYear, currentYear + 1);
-            cbReportYear.getSelectionModel().select(Integer.valueOf(currentYear));
-        }
+       
 
         // -------------------------------------------------------------
         // 1. ACTIVITY CHART (Reservations/Waiting) - Force Integer Axis
@@ -145,6 +132,24 @@ public class StaffController implements ClientUI {
                     return Integer.parseInt(string);
                 }
             });
+        }
+        
+        if (cbReportMonth != null) {
+            cbReportMonth.getItems().clear(); 
+            cbReportMonth.getItems().addAll(
+                "January", "February", "March", "April", "May", "June", 
+                "July", "August", "September", "October", "November", "December"
+            );
+            // Select current month
+            cbReportMonth.getSelectionModel().select(java.time.LocalDate.now().getMonthValue() - 1);
+        }
+        
+        if (cbReportYear != null) {
+            cbReportYear.getItems().clear();
+            int currentYear = java.time.LocalDate.now().getYear();
+            // Add Last Year, Current Year, Next Year
+            cbReportYear.getItems().addAll(currentYear - 1, currentYear, currentYear + 1);
+            cbReportYear.getSelectionModel().select(Integer.valueOf(currentYear));
         }
 
         // -------------------------------------------------------------
@@ -200,66 +205,40 @@ public class StaffController implements ClientUI {
         Platform.runLater(() -> {
             Envelope env = unwrapToEnvelope(msg);
             if (env == null || !env.isOk()) return;
+
             switch (env.getOp()) {
                 // --- Lists Updates ---
-                case RESPONSE_AGENT_RESERVATIONS_LIST:
-                    updateReservationsTable((List<?>) env.getPayload());
-                    break;
-                case RESPONSE_SUBSCRIBERS_LIST:
-                    updateSubscribersTable((List<?>) env.getPayload());
-                    break;
-                case RESPONSE_WAITING_LIST:
-                    updateWaitingListTable((List<?>) env.getPayload());
-                    break;
-                case RESPONSE_CURRENT_DINERS:
-                    updateCurrentDinersTable((List<?>) env.getPayload());
-                    break;
-                case RESPONSE_TABLES_GET:
-                    updateRestaurantTables((List<?>) env.getPayload());
-                    break;
-                case RESPONSE_OPENING_HOURS_GET:
-                    updateOpeningHours((List<?>) env.getPayload());
-                    break;
+                case RESPONSE_AGENT_RESERVATIONS_LIST -> updateReservationsTable((List<?>) env.getPayload());
+                case RESPONSE_SUBSCRIBERS_LIST        -> updateSubscribersTable((List<?>) env.getPayload());
+                case RESPONSE_WAITING_LIST            -> updateWaitingListTable((List<?>) env.getPayload());
+                case RESPONSE_CURRENT_DINERS          -> updateCurrentDinersTable((List<?>) env.getPayload());
+                case RESPONSE_TABLES_GET              -> updateRestaurantTables((List<?>) env.getPayload());
+                case RESPONSE_OPENING_HOURS_GET       -> updateOpeningHours((List<?>) env.getPayload());
+                case RESPONSE_SUBSCRIBER_HISTORY      -> showHistoryPopup((common.dto.HistoryDTO) env.getPayload());
 
                 // --- Single Updates / Actions ---
-                case RESPONSE_REGISTER_CUSTOMER:
-                    showAlert("Success", "Customer registered successfully.");
-                    break;
-                case RESPONSE_TODAY_HOURS:
-                    updateTodayHours((String) env.getPayload());
-                    break;
-                case RESPONSE_LOGIN_SUBSCRIBER:
-                    handleSubscriberLoginResponse((LoginResponseDTO) env.getPayload());
-                    break;
+                case RESPONSE_REGISTER_CUSTOMER -> showAlert("Success", "Customer registered successfully.");
+                case RESPONSE_TODAY_HOURS       -> updateTodayHours((String) env.getPayload());
+                case RESPONSE_LOGIN_SUBSCRIBER  -> handleSubscriberLoginResponse((LoginResponseDTO) env.getPayload());
 
-                // --- Operation Results (Alert + Refresh) ---
-                case RESPONSE_WAITING_ADD:
-                case RESPONSE_WAITING_REMOVE:
-                    handleWaitingListUpdateResponse((String) env.getPayload());
-                    break;
+                // --- Operation Results (Shared Handlers) ---
+                // For multiple cases sharing one action, separate them with commas
+                case RESPONSE_WAITING_ADD, 
+                     RESPONSE_WAITING_REMOVE -> handleWaitingListUpdateResponse((String) env.getPayload());
 
-                case RESPONSE_TABLE_ADD:
-                case RESPONSE_TABLE_REMOVE:
-                case RESPONSE_TABLE_UPDATE:
-                    handleTableUpdateResponse((String) env.getPayload());
-                    break;
+                case RESPONSE_TABLE_ADD, 
+                     RESPONSE_TABLE_REMOVE, 
+                     RESPONSE_TABLE_UPDATE -> handleTableUpdateResponse((String) env.getPayload());
 
-                case RESPONSE_OPENING_HOURS_UPDATE:
-                case RESPONSE_OPENING_HOURS_ADD_SPECIAL:
-                case RESPONSE_OPENING_HOURS_REMOVE:
-                    handleOpeningHoursUpdateResponse((String) env.getPayload());
-                    break;
+                case RESPONSE_OPENING_HOURS_UPDATE, 
+                     RESPONSE_OPENING_HOURS_ADD_SPECIAL, 
+                     RESPONSE_OPENING_HOURS_REMOVE -> handleOpeningHoursUpdateResponse((String) env.getPayload());
 
                 // --- Reports ---
-                case RESPONSE_REPORT_PERFORMANCE:
-                    populatePerformanceChart((List<ReportDTO>) env.getPayload());
-                    break;
-                case RESPONSE_REPORT_ACTIVITY:
-                    populateActivityChart((List<ReportDTO>) env.getPayload());
-                    break;
+                case RESPONSE_REPORT_PERFORMANCE -> handleReportPerformanceResponse(env);
+                case RESPONSE_REPORT_ACTIVITY    -> handleReportActivityResponse(env);
 
-                default:
-                    System.out.println("StaffController: Unknown Op " + env.getOp());
+                default -> System.out.println("StaffController: Unknown Op " + env.getOp());
             }
         });
     }
@@ -267,7 +246,48 @@ public class StaffController implements ClientUI {
     // ========================================================
     // ACTIONS
     // ========================================================
+    
+    private void showHistoryPopup(common.dto.HistoryDTO history) {
+        Dialog<Void> dialog = new Dialog<>();
+        dialog.setTitle("Subscriber History");
+        dialog.setHeaderText("Reservations & Visits History");
+        dialog.getDialogPane().getButtonTypes().add(ButtonType.CLOSE);
 
+        // 1. Reservations Table
+        TableView<ReservationDTO> tblRes = new TableView<>();
+        tblRes.setPrefHeight(200);
+        
+        TableColumn<ReservationDTO, String> colDate = new TableColumn<>("Time");
+        colDate.setCellValueFactory(new PropertyValueFactory<>("reservationTime"));
+        colDate.setPrefWidth(150);
+        
+        TableColumn<ReservationDTO, Integer> colGuests = new TableColumn<>("Guests");
+        colGuests.setCellValueFactory(new PropertyValueFactory<>("numOfCustomers"));
+        
+        TableColumn<ReservationDTO, String> colStatus = new TableColumn<>("Status");
+        colStatus.setCellValueFactory(new PropertyValueFactory<>("status"));
+        
+        tblRes.getColumns().addAll(colDate, colGuests, colStatus);
+        tblRes.getItems().addAll(history.getReservations());
+
+        // 2. Visits List (Simple List View for now)
+        ListView<String> listVisits = new ListView<>();
+        listVisits.setPrefHeight(200);
+        listVisits.getItems().addAll(history.getVisits());
+
+        // Layout
+        VBox content = new VBox(10);
+        content.getChildren().addAll(
+            new Label("Reservations:"), tblRes, 
+            new Separator(), 
+            new Label("Past Visits:"), listVisits
+        );
+        content.setPadding(new javafx.geometry.Insets(10));
+        
+        dialog.getDialogPane().setContent(content);
+        dialog.showAndWait();
+    }
+    
     // ✅ ADDED: "Act as Customer" logic replacing onNewReservation
     @FXML
     public void onActAsCustomer(ActionEvent event) {
@@ -432,16 +452,19 @@ public class StaffController implements ClientUI {
     private void onViewReports(ActionEvent event) {
         lblTitle.setText("Manager Reports");
         hideAllViews();
+        
+        // Show the Report Pane (Charts + Combo Boxes)
         paneReports.setVisible(true);
         paneReports.setManaged(true);
         
+        // Load data for the default selected month
         onRefreshReports(null);
     }
     
     @FXML
     private void onRefreshReports(ActionEvent event) {
-        // 1. Get selected values
-        int monthIndex = cbReportMonth.getSelectionModel().getSelectedIndex(); // 0 = Jan
+        // 1. Get selected values from ComboBoxes
+        int monthIndex = cbReportMonth.getSelectionModel().getSelectedIndex(); 
         Integer year = cbReportYear.getSelectionModel().getSelectedItem();
         
         if (monthIndex < 0 || year == null) {
@@ -449,15 +472,18 @@ public class StaffController implements ClientUI {
             return;
         }
 
-        int month = monthIndex + 1; // Convert 0-11 to 1-12
+        int month = monthIndex + 1; // Convert 0-index to 1-12
 
-        // 2. Create Request DTO
+        // 2. Send Requests for this specific month
         common.dto.ReportRequestDTO req = new common.dto.ReportRequestDTO(month, year);
-        
-        // 3. Send Requests
         sendToServer(Envelope.request(OpCode.REQUEST_REPORT_PERFORMANCE, req));
         sendToServer(Envelope.request(OpCode.REQUEST_REPORT_ACTIVITY, req));
     }
+    
+
+    
+    
+   
     
  // 4. Helper to Fill Performance Chart
     private void populatePerformanceChart(List<ReportDTO> data) {
@@ -552,13 +578,13 @@ public class StaffController implements ClientUI {
         
         for (Object obj : data) {
             if (obj instanceof common.dto.SubscriberDTO dto) {
-                // ✅ Use existing "getName()" directly
+                // ✅ Pass dto.getBirthDate() to the Row
                 tblSubscribers.getItems().add(new SubscriberRow(
                     dto.getId(),
                     dto.getFullName(),  
                     dto.getPhone(),
                     dto.getEmail(),
-                    dto.getStatus()
+                    dto.getBirthDate() // ✅ New argument
                 ));
             }
         }
@@ -669,27 +695,73 @@ public class StaffController implements ClientUI {
         tblReservations.getColumns().addAll(colId, colTime, colGuests, colCode, colStatus);
     }
 
+ // In Client/StaffController.java
+
     private void setupSubscriberColumns() {
         if (!tblSubscribers.getColumns().isEmpty()) return;
 
-        TableColumn<SubscriberRow, Integer> colId = new TableColumn<>("ID");
-        colId.setCellValueFactory(new PropertyValueFactory<>("subscriberId"));
-        colId.setPrefWidth(50);
-
+        // ... (Keep your existing columns: Username, Name, Phone, Email, BirthDate) ...
+        TableColumn<SubscriberRow, String> colUsername = new TableColumn<>("Username");
+        colUsername.setCellValueFactory(new PropertyValueFactory<>("subscriberId"));
         
-
+        TableColumn<SubscriberRow, String> colName = new TableColumn<>("Name");
+        colName.setCellValueFactory(new PropertyValueFactory<>("fullName"));
+        
         TableColumn<SubscriberRow, String> colPhone = new TableColumn<>("Phone");
         colPhone.setCellValueFactory(new PropertyValueFactory<>("phone"));
-        colPhone.setPrefWidth(120);
-
+        
         TableColumn<SubscriberRow, String> colEmail = new TableColumn<>("Email");
         colEmail.setCellValueFactory(new PropertyValueFactory<>("email"));
-        colEmail.setPrefWidth(180);
 
-        TableColumn<SubscriberRow, String> colStatus = new TableColumn<>("Status");
-        colStatus.setCellValueFactory(new PropertyValueFactory<>("status"));
+        TableColumn<SubscriberRow, String> colBirthDate = new TableColumn<>("Birth Date");
+        colBirthDate.setCellValueFactory(new PropertyValueFactory<>("birthDate"));
 
-        tblSubscribers.getColumns().addAll(colId, colPhone, colEmail, colStatus);
+        // ✅ NEW: History Button Column
+        TableColumn<SubscriberRow, Void> colAction = new TableColumn<>("History");
+        
+        // This 'Callback' creates a cell with a button inside it
+        javafx.util.Callback<TableColumn<SubscriberRow, Void>, TableCell<SubscriberRow, Void>> cellFactory = 
+            new javafx.util.Callback<>() {
+                @Override
+                public TableCell<SubscriberRow, Void> call(final TableColumn<SubscriberRow, Void> param) {
+                    return new TableCell<>() {
+                        private final Button btn = new Button("View");
+
+                        {
+                            // Style the button
+                            btn.setStyle("-fx-background-color: #3498db; -fx-text-fill: white; -fx-font-size: 10px;");
+                            btn.setOnAction((ActionEvent event) -> {
+                                // 1. Get the subscriber from this row
+                                SubscriberRow row = getTableView().getItems().get(getIndex());
+                                // 2. Trigger the history view
+                                onRequestHistory(row.getSubscriberId());
+                            });
+                        }
+
+                        @Override
+                        public void updateItem(Void item, boolean empty) {
+                            super.updateItem(item, empty);
+                            if (empty) {
+                                setGraphic(null);
+                            } else {
+                                setGraphic(btn);
+                            }
+                        }
+                    };
+                }
+            };
+
+        colAction.setCellFactory(cellFactory);
+        colAction.setPrefWidth(80);
+
+        // ✅ Add all columns including colAction
+        tblSubscribers.getColumns().addAll(colUsername, colName, colPhone, colEmail, colBirthDate, colAction);
+    }
+    
+    private void onRequestHistory(String username) {
+        if (username == null || username.isEmpty()) return;
+        // Send request with the username (String) as payload
+        sendToServer(Envelope.request(OpCode.REQUEST_SUBSCRIBER_HISTORY, username));
     }
     
     private void setupCurrentDinersColumns() {
@@ -777,6 +849,8 @@ public class StaffController implements ClientUI {
             tblSpecialHours.getColumns().addAll(colDate, colOpenS, colCloseS, colDayS);
         }
     }
+    
+    
 
     
     
@@ -994,6 +1068,19 @@ public class StaffController implements ClientUI {
         sendToServer(Envelope.request(OpCode.REQUEST_TABLES_GET, null));
     }
     
+    
+   
+
+    private void handleReportPerformanceResponse(Envelope env) {
+        List<ReportDTO> data = (List<ReportDTO>) env.getPayload();
+        populatePerformanceChart(data);
+    }
+
+    private void handleReportActivityResponse(Envelope env) {
+        List<ReportDTO> data = (List<ReportDTO>) env.getPayload();
+        populateActivityChart(data);
+    }
+    
     private void handleSubscriberLoginResponse(LoginResponseDTO res) {
         if (res.isOk()) {
             ClientSession.setRole("SUBSCRIBER");
@@ -1027,7 +1114,7 @@ public class StaffController implements ClientUI {
     
     
     
-    
+
 
     private void sendToServer(Envelope env) {
         try {

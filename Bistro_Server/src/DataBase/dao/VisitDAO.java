@@ -198,4 +198,35 @@ public class VisitDAO {
         }
         return list;
     }
+    
+    public static List<String> getVisitsBySubscriber(String username) {
+        List<String> list = new ArrayList<>();
+        // ✅ JOIN with user_activity to find the username
+        String sql = "SELECT v.* FROM visit v " +
+                     "JOIN user_activity ua ON v.activity_id = ua.activity_id " +
+                     "WHERE ua.subscriber_username = ?";
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, username);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String start = rs.getString("actual_start_time");
+                    String end = rs.getString("actual_end_time");
+                    String table = rs.getString("table_id");
+                    
+                    // Simple summary string
+                    list.add("Table: " + table + " | Date: " + start);
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        } finally {
+            pool.releaseConnection(pc);
+        }
+        return list;
+    }
 }

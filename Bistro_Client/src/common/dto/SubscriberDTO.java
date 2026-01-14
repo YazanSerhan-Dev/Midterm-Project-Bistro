@@ -9,16 +9,16 @@ public class SubscriberDTO implements Serializable {
     private String fullName;
     private String phone;
     private String email;
-    private String status; // e.g., "Active", "Frozen"
+    private String birthDate;
 
     public SubscriberDTO() {}
 
-    public SubscriberDTO(String id, String fullName, String phone, String email, String status) {
+    public SubscriberDTO(String id, String fullName, String phone, String email, String birthDate) {
         this.id = id;
         this.fullName = fullName;
         this.phone = phone;
         this.email = email;
-        this.status = status;
+        this.birthDate = birthDate;
     }
 
     // Getters and Setters
@@ -34,6 +34,6 @@ public class SubscriberDTO implements Serializable {
     public String getEmail() { return email; }
     public void setEmail(String email) { this.email = email; }
     
-    public String getStatus() { return status; }
-    public void setStatus(String status) { this.status = status; }
+    public String getBirthDate() { return birthDate; }
+    public void setBirthDate(String birthDate) { this.birthDate = birthDate; }
 }

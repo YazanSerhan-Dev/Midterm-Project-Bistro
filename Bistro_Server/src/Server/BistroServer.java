@@ -176,6 +176,9 @@ public class BistroServer extends AbstractServer {
                 case REQUEST_UPDATE_PROFILE -> handleUpdateProfile(req, client);
                 case REQUEST_RECOVER_CONFIRMATION_CODE -> handleRecoverConfirmationCode(req, client);
                 case REQUEST_GET_AVAILABLE_TIMES -> handleGetAvailableTimes(req, client);
+                
+                case REQUEST_SUBSCRIBER_HISTORY -> handleSubscriberHistory(req, client);
+                
 
                 default -> sendError(client, OpCode.ERROR, "Unknown op: " + req.getOp());
             }
@@ -249,6 +252,36 @@ public class BistroServer extends AbstractServer {
         } catch (Exception e) {
             try {
                 sendOk(client, OpCode.RESPONSE_GET_AVAILABLE_TIMES, List.of());
+            } catch (Exception ignored) {}
+        }
+    }
+    
+    private void handleSubscriberHistory(Envelope req, ConnectionToClient client) {
+        try {
+            Object payload = readEnvelopePayload(req);
+            String username = (payload instanceof String s) ? s.trim() : null;
+
+            if (username == null || username.isEmpty()) {
+                // Send empty history if no username
+                sendOk(client, OpCode.RESPONSE_SUBSCRIBER_HISTORY, 
+                       new common.dto.HistoryDTO(new ArrayList<>(), new ArrayList<>()));
+                return;
+            }
+
+            // 1. Fetch Reservations (Using the JOIN query)
+            List<ReservationDTO> reservations = ReservationDAO.getReservationsBySubscriberForStaff(username);
+
+            // 2. Fetch Visits (Using the JOIN query)
+            List<String> visits = VisitDAO.getVisitsBySubscriber(username);
+
+            // 3. Send Response
+            common.dto.HistoryDTO history = new common.dto.HistoryDTO(reservations, visits);
+            sendOk(client, OpCode.RESPONSE_SUBSCRIBER_HISTORY, history);
+
+        } catch (Exception e) {
+            log("Error fetching history: " + e.getMessage());
+            try {
+                sendError(client, OpCode.RESPONSE_SUBSCRIBER_HISTORY, "Server error: " + e.getMessage());
             } catch (Exception ignored) {}
         }
     }
@@ -709,7 +742,7 @@ public class BistroServer extends AbstractServer {
                 // Default status FREE if not set
                 String status = (dto.getStatus() == null || dto.getStatus().isEmpty()) ? "FREE" : dto.getStatus();
                 DataBase.dao.RestaurantTableDAO.insertTable(dto.getTableId(), dto.getSeats(), status);
-                sendOk(client, OpCode.RESPONSE_TABLE_ADD, "Table added successfully.");
+                sendOk(client, OpCode.RESPONSE_TABLE_ADD, "Table added/updated successfully.");
             }
         } catch (Exception e) {
             try { sendError(client, OpCode.ERROR, "Add table failed: " + e.getMessage()); } catch (Exception ignored) {}
@@ -787,6 +820,8 @@ public class BistroServer extends AbstractServer {
             try { sendError(client, OpCode.ERROR, "Failed to get today's hours"); } catch (Exception ignored) {}
         }
     }
+    
+    
     
     private void handleReportPerformance(Envelope req, ConnectionToClient client) {
         try {

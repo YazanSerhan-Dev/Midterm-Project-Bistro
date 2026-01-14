@@ -13,15 +13,11 @@ import common.dto.RestaurantTableDTO;
 
 public class RestaurantTableDAO {
 
-    public static void insertTable(
-            String tableId,
-            int seats,
-            String status) throws Exception {
-
+	public static void insertTable(String tableId, int seats, String status) throws Exception {
         String sql = """
-            INSERT INTO restaurant_table
-            (table_id, num_of_seats, status)
+            INSERT INTO restaurant_table (table_id, num_of_seats, status)
             VALUES (?, ?, ?)
+            ON DUPLICATE KEY UPDATE num_of_seats = VALUES(num_of_seats)
         """;
 
         MySQLConnectionPool pool = MySQLConnectionPool.getInstance();

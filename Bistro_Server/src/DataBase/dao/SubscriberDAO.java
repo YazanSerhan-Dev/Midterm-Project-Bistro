@@ -92,6 +92,8 @@ public class SubscriberDAO {
     // ============================================
     // YOUR CODE (From HEAD) - Get List for Agent
     // ============================================
+ // In getAllSubscribers() method:
+
     public static List<SubscriberDTO> getAllSubscribers() throws Exception {
         List<SubscriberDTO> list = new ArrayList<>();
         String sql = "SELECT * FROM subscribers"; 
@@ -104,19 +106,17 @@ public class SubscriberDAO {
              ResultSet rs = ps.executeQuery()) {
 
             while (rs.next()) {
-                // Adjust ID fetching if you have an actual ID column
-                //int id = 0; 
-                // int id = rs.getInt("subscriber_id"); // Uncomment if you have this column
-                String username = rs.getString("username"); // Get text, not int
-                String name = rs.getString("name"); 
+                String username = rs.getString("username");
+                String name = rs.getString("name");
                 String phone = rs.getString("phone");
                 String email = rs.getString("email");
                 
-                // If you don't have a status column yet, default to "Active"
-                String status = "Active"; 
-                
+                // ✅ Fetch birth_date (handling potential nulls if necessary)
+                String birthDate = rs.getString("birth_date"); 
+                if (birthDate == null) birthDate = "";
 
-                list.add(new SubscriberDTO(username, name, phone, email, status));
+                // ✅ Pass birthDate to the new DTO constructor
+                list.add(new SubscriberDTO(username, name, phone, email, birthDate));
             }
         } finally {
             pool.releaseConnection(pc);

@@ -8,18 +8,18 @@ public class SubscriberRow {
     private final StringProperty fullName = new SimpleStringProperty();
     private final StringProperty phone = new SimpleStringProperty();
     private final StringProperty email = new SimpleStringProperty();
-    private final StringProperty status = new SimpleStringProperty();
+    private final StringProperty birthDate = new SimpleStringProperty(); // ✅ Added Property
 
     public SubscriberRow(String subscriberId,
                          String fullName,
                          String phone,
                          String email,
-                         String status) {
+                         String birthDate) {
         this.subscriberId.set(subscriberId);
         this.fullName.set(fullName);
         this.phone.set(phone);
         this.email.set(email);
-        this.status.set(status);
+        this.birthDate.set(birthDate);
     }
 
     public String getSubscriberId() { return subscriberId.get(); }
@@ -34,6 +34,6 @@ public class SubscriberRow {
     public String getEmail() { return email.get(); }
     public StringProperty emailProperty() { return email; }
 
-    public String getStatus() { return status.get(); }
-    public StringProperty statusProperty() { return status; }
+    public String getBirthDate() { return birthDate.get(); }
+    public StringProperty birthDateProperty() { return birthDate; }
 }
