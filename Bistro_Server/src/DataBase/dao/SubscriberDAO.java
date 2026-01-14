@@ -204,5 +204,25 @@ public class SubscriberDAO {
         }
     }
 
+    public static String getUsernameByBarcodeData(String barcodeData) throws Exception {
+        String sql = "SELECT username FROM subscribers WHERE barcode_data = ? LIMIT 1";
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, barcodeData);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                if (!rs.next()) return null;
+                return rs.getString("username");
+            }
+
+        } finally {
+            pool.releaseConnection(pc);
+        }
+    }
+
 
 }
