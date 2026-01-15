@@ -5,9 +5,12 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Timestamp;
 import java.sql.Types;
+import java.util.ArrayList;
+import java.util.List;
 
 import DataBase.MySQLConnectionPool;
 import DataBase.PooledConnection;
+import common.dto.TerminalActiveItemDTO;
 
 public class UserActivityDAO {
 
@@ -406,6 +409,131 @@ public class UserActivityDAO {
 	        pool.releaseConnection(pc);
 	    }
 	}
+ 
+ 
+ public static List<TerminalActiveItemDTO> listActiveItemsBySubscriberUsername(String subscriberUsername) throws Exception {
 
+     List<TerminalActiveItemDTO> out = new ArrayList<>();
+
+     if (subscriberUsername == null) return out;
+     subscriberUsername = subscriberUsername.trim();
+     if (subscriberUsername.isEmpty()) return out;
+
+     // 1) ASSIGNED waiting list (urgent now)
+     String sqlAssignedWaiting = """
+         SELECT
+             w.confirmation_code AS code,
+             w.status AS status,
+             w.request_time AS time,
+             w.num_of_customers AS people
+         FROM user_activity ua
+         JOIN waiting_list w ON w.waiting_id = ua.waiting_id
+         WHERE ua.subscriber_username = ?
+           AND ua.waiting_id IS NOT NULL
+           AND w.status = 'ASSIGNED'
+         ORDER BY w.request_time DESC
+     """;
+
+     // 2) Closest upcoming active reservations
+     String sqlClosestReservation = """
+         SELECT
+             r.confirmation_code AS code,
+             r.status AS status,
+             r.reservation_time AS time,
+             r.num_of_customers AS people
+         FROM user_activity ua
+         JOIN reservation r ON r.reservation_id = ua.reservation_id
+         WHERE ua.subscriber_username = ?
+           AND ua.reservation_id IS NOT NULL
+           AND r.status IN ('CONFIRMED','PENDING','ARRIVED')
+         ORDER BY
+           CASE WHEN r.reservation_time >= NOW() THEN 0 ELSE 1 END,
+           ABS(TIMESTAMPDIFF(SECOND, r.reservation_time, NOW())) ASC
+     """;
+
+     // 3) WAITING waiting list (fallback)
+     String sqlLatestWaiting = """
+         SELECT
+             w.confirmation_code AS code,
+             w.status AS status,
+             w.request_time AS time,
+             w.num_of_customers AS people
+         FROM user_activity ua
+         JOIN waiting_list w ON w.waiting_id = ua.waiting_id
+         WHERE ua.subscriber_username = ?
+           AND ua.waiting_id IS NOT NULL
+           AND w.status = 'WAITING'
+         ORDER BY w.request_time DESC
+     """;
+
+     MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+     PooledConnection pc = pool.getConnection();
+     Connection conn = pc.getConnection();
+
+     try {
+
+         // Step 1: ASSIGNED waiting
+         try (PreparedStatement ps = conn.prepareStatement(sqlAssignedWaiting)) {
+             ps.setString(1, subscriberUsername);
+             try (ResultSet rs = ps.executeQuery()) {
+                 while (rs.next()) {
+                     String code = rs.getString("code");
+                     if (code == null || code.isBlank()) continue;
+
+                     out.add(new TerminalActiveItemDTO(
+                         "WAITING",
+                         code.trim(),
+                         rs.getString("status"),
+                         rs.getTimestamp("time"),
+                         rs.getInt("people")
+                     ));
+                 }
+             }
+         }
+
+         // Step 2: reservations
+         try (PreparedStatement ps = conn.prepareStatement(sqlClosestReservation)) {
+             ps.setString(1, subscriberUsername);
+             try (ResultSet rs = ps.executeQuery()) {
+                 while (rs.next()) {
+                     String code = rs.getString("code");
+                     if (code == null || code.isBlank()) continue;
+
+                     out.add(new TerminalActiveItemDTO(
+                         "RESERVATION",
+                         code.trim(),
+                         rs.getString("status"),
+                         rs.getTimestamp("time"),
+                         rs.getInt("people")
+                     ));
+                 }
+             }
+         }
+
+         // Step 3: WAITING waiting list
+         try (PreparedStatement ps = conn.prepareStatement(sqlLatestWaiting)) {
+             ps.setString(1, subscriberUsername);
+             try (ResultSet rs = ps.executeQuery()) {
+                 while (rs.next()) {
+                     String code = rs.getString("code");
+                     if (code == null || code.isBlank()) continue;
+
+                     out.add(new TerminalActiveItemDTO(
+                         "WAITING",
+                         code.trim(),
+                         rs.getString("status"),
+                         rs.getTimestamp("time"),
+                         rs.getInt("people")
+                     ));
+                 }
+             }
+         }
+
+         return out;
+
+     } finally {
+         pool.releaseConnection(pc);
+     }
+ }
 
 }

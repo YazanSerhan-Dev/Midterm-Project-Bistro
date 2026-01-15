@@ -141,6 +141,7 @@ public class BistroServer extends AbstractServer {
                 case REQUEST_TERMINAL_VALIDATE_CODE -> handleTerminalValidateCode(req, client);
                 case REQUEST_TERMINAL_CHECK_IN -> handleTerminalCheckIn(req, client);
                 case REQUEST_TERMINAL_CANCEL_RESERVATION -> handleTerminalCancelReservation(req, client);
+                case REQUEST_TERMINAL_GET_SUBSCRIBER_ACTIVE_CODES ->handleTerminalGetSubscriberActiveCodes(req, client);
                 
                 // --- WAITING LIST (Fixed Logic) ---
                 case REQUEST_WAITING_LIST -> handlgeteWaitingList(req, client); // Agent Viewing List
@@ -227,6 +228,32 @@ public class BistroServer extends AbstractServer {
     }
 
     /* ==================== Handlers ==================== */
+    
+    private void handleTerminalGetSubscriberActiveCodes(Envelope req, ConnectionToClient client) {
+        try {
+            String username = (String) req.getPayload();
+            if (username == null || username.isBlank()) {
+                sendOk(client,
+                    OpCode.RESPONSE_TERMINAL_GET_SUBSCRIBER_ACTIVE_CODES,
+                    java.util.List.of());
+                return;
+            }
+
+            var items = DataBase.dao.UserActivityDAO
+                    .listActiveItemsBySubscriberUsername(username);
+
+            sendOk(client,
+                OpCode.RESPONSE_TERMINAL_GET_SUBSCRIBER_ACTIVE_CODES,
+                items == null ? java.util.List.of() : items);
+
+        } catch (Exception e) {
+            try {
+                sendOk(client,
+                    OpCode.RESPONSE_TERMINAL_GET_SUBSCRIBER_ACTIVE_CODES,
+                    java.util.List.of());
+            } catch (Exception ignored) {}
+        }
+    }
     
     private void handleTerminalResolveSubscriberQR(Envelope req, ConnectionToClient client) {
         try {

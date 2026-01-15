@@ -4,12 +4,14 @@ import common.Envelope;
 import common.KryoMessage;
 import common.KryoUtil;
 import common.OpCode;
+import common.dto.TerminalActiveItemDTO;
 import common.dto.TerminalValidateResponseDTO;
 import common.dto.WaitingListDTO;
 import javafx.application.Platform;
 import javafx.fxml.FXML;
 import javafx.scene.Node;
 import javafx.scene.control.*;
+import javafx.scene.layout.VBox;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -53,6 +55,10 @@ public class TerminalController implements ClientUI {
     @FXML private Label lblWaitPeople;
     @FXML private Label lblWaitEmail;
     @FXML private Label lblWaitPhone;
+    
+    @FXML private ListView<TerminalActiveItemDTO> lstSubscriberActive;
+    @FXML private VBox subscriberActiveBox;
+
 
     // Logic flags (business state)
     private volatile boolean validated = false;
@@ -82,6 +88,26 @@ public class TerminalController implements ClientUI {
         ClientSession.bindUI(this);
 
         applyRoleVisibility();
+        if ("SUBSCRIBER".equalsIgnoreCase(ClientSession.getRole())) {
+            sendToServer(
+                OpCode.REQUEST_TERMINAL_GET_SUBSCRIBER_ACTIVE_CODES,
+                ClientSession.getUsername()
+            );
+        }
+        
+        if (lstSubscriberActive != null) {
+            lstSubscriberActive.setOnMouseClicked(e -> {
+                var dto = lstSubscriberActive.getSelectionModel().getSelectedItem();
+                if (dto == null) return;
+
+                txtConfirmationCode.setText(dto.getConfirmationCode());
+                lblTerminalStatus.setText(
+                    "Selected " + dto.getType() + ". Validating..."
+                );
+
+                onValidateCode(); // 🔥 reuse existing logic
+            });
+        }
         // Buttons stay enabled always by design (no setDisable calls here)
     }
 
@@ -507,6 +533,7 @@ public class TerminalController implements ClientUI {
                                     nonEmptyOr(dto.getMessage(), "Invalid code."));
                         }
                     }
+                    refreshSubscriberActiveListIfNeeded();
                 }
 
                     // =========================
@@ -542,6 +569,9 @@ public class TerminalController implements ClientUI {
                         if (checkedIn) {
                             lastCheckedInCode = safeTrim(txtConfirmationCode.getText());
                             lblValidationResult.setText("CHECKED-IN ✅");
+                        }
+                        if (checkedIn) {
+                            refreshSubscriberActiveListIfNeeded();
                         }
 
                         // Reset ability to reuse validated state (same as your original)
@@ -589,6 +619,9 @@ public class TerminalController implements ClientUI {
                             lastCheckedInCode = safeTrim(txtConfirmationCode.getText());
                             lblValidationResult.setText("CHECKED-IN ✅");
                         }
+                        if (checkedIn) {
+                            refreshSubscriberActiveListIfNeeded();
+                        }
 
                     } else {
                         lblTerminalStatus.setText(msg.isBlank() ? "Check-in failed." : msg);
@@ -605,6 +638,7 @@ public class TerminalController implements ClientUI {
                         String msg = (payload == null) ? "" : payload.toString();
                         lblRecoverResult.setText(msg.isBlank() ? "Recovery response received." : msg);
                         lblTerminalStatus.setText("Recovery done.");
+                        refreshSubscriberActiveListIfNeeded();
                     }
 
                     case RESPONSE_WAITING_LIST -> {
@@ -632,6 +666,7 @@ public class TerminalController implements ClientUI {
                             String msg = (payload == null) ? "" : payload.toString();
                             lblTerminalStatus.setText(msg.isBlank() ? "Waiting list response received." : msg);
                         }
+                        refreshSubscriberActiveListIfNeeded();
                     }
 
                     case RESPONSE_LEAVE_WAITING_LIST -> {
@@ -656,6 +691,7 @@ public class TerminalController implements ClientUI {
 
                             resetWaitingDetails();
                         }
+                        refreshSubscriberActiveListIfNeeded();
                     }
                     
                     case RESPONSE_TERMINAL_CANCEL_RESERVATION -> {
@@ -679,6 +715,7 @@ public class TerminalController implements ClientUI {
                         lblRecoverResult.setText("");
                         
                         txtConfirmationCode.clear();
+                        refreshSubscriberActiveListIfNeeded();
                     }
                     
                     case RESPONSE_TERMINAL_RESOLVE_SUBSCRIBER_QR -> {
@@ -706,6 +743,32 @@ public class TerminalController implements ClientUI {
 
                         } else {
                             lblTerminalStatus.setText("Invalid QR resolve response.");
+                        }
+                        refreshSubscriberActiveListIfNeeded();
+                    }
+                    
+                    case RESPONSE_TERMINAL_GET_SUBSCRIBER_ACTIVE_CODES -> {
+
+                        if (lstSubscriberActive == null) return;
+
+                        lstSubscriberActive.getItems().clear();
+
+                        Object payload = env.getPayload();
+                        if (!(payload instanceof java.util.List<?> list)) {
+                            lblTerminalStatus.setText("No active items.");
+                            return;
+                        }
+
+                        for (Object o : list) {
+                            if (o instanceof common.dto.TerminalActiveItemDTO dto) {
+                                lstSubscriberActive.getItems().add(dto);
+                            }
+                        }
+
+                        if (lstSubscriberActive.getItems().isEmpty()) {
+                            lblTerminalStatus.setText("No active reservation or waiting list.");
+                        } else {
+                            lblTerminalStatus.setText("Select an item to auto-fill the code.");
                         }
                     }
 
@@ -1025,6 +1088,18 @@ public class TerminalController implements ClientUI {
 
         btnScanSubscriberQR.setVisible(isSubscriber);
         btnScanSubscriberQR.setManaged(isSubscriber);
+        subscriberActiveBox.setVisible(isSubscriber);
+        subscriberActiveBox.setManaged(isSubscriber);
+
+    }
+    private void refreshSubscriberActiveListIfNeeded() {
+        if (!"SUBSCRIBER".equalsIgnoreCase(ClientSession.getRole())) return;
+        if (!isConnected()) return;
+
+        sendToServer(
+            OpCode.REQUEST_TERMINAL_GET_SUBSCRIBER_ACTIVE_CODES,
+            ClientSession.getUsername()
+        );
     }
 
 }

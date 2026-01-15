@@ -221,6 +221,13 @@
                             </HBox>
                         </children>
                     </VBox>
+                    
+					<VBox spacing="10" fx:id="subscriberActiveBox" styleClass="card"
+					      GridPane.rowIndex="1" GridPane.columnIndex="0">
+					    <Label text="Your Active Reservations / Waiting List" styleClass="card-title"/>
+					    <ListView fx:id="lstSubscriberActive" prefHeight="160"/>
+					</VBox>
+          
                 </children>
             </GridPane>
 
