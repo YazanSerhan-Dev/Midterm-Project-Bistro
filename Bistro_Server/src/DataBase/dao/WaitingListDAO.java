@@ -50,7 +50,7 @@ public class WaitingListDAO {
     public static List<WaitingListDTO> getAllWaitingList() {
         List<WaitingListDTO> list = new ArrayList<>();
 
-        String sql = "SELECT waiting_id, num_of_customers, request_time, status, confirmation_code FROM waiting_list WHERE status = 'WAITING' ORDER BY request_time ASC";
+        String sql = "SELECT waiting_id, num_of_customers, request_time, status, confirmation_code FROM waiting_list WHERE status IN ('WAITING', 'ASSIGNED') ORDER BY request_time ASC";
 
         try {
             MySQLConnectionPool pool = MySQLConnectionPool.getInstance();

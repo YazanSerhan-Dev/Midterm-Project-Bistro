@@ -88,9 +88,20 @@
             <VBox VBox.vgrow="ALWAYS">
                <children>
                   
-                  <TableView fx:id="tblReservations" visible="false" managed="false" VBox.vgrow="ALWAYS" />
-                  
-                  <TableView fx:id="tblSubscribers" visible="false" managed="false" VBox.vgrow="ALWAYS" />
+                 <VBox fx:id="paneReservations" visible="false" managed="false" spacing="10" VBox.vgrow="ALWAYS">
+					   <children>
+					       <HBox spacing="10" alignment="CENTER_LEFT">
+					           <children>
+					               <Button text="+ Add Reservation" onAction="#onAddReservation" 
+					                       style="-fx-background-color: #2980b9; -fx-text-fill: white; -fx-font-weight: bold;"/>
+					               <Button text="Cancel Selected" onAction="#onRemoveReservation" 
+					                       style="-fx-background-color: #c0392b; -fx-text-fill: white;"/>
+					           </children>
+					       </HBox>
+					       <TableView fx:id="tblReservations" VBox.vgrow="ALWAYS" />
+					   </children>
+					</VBox>
+				  <TableView fx:id="tblSubscribers" visible="false" managed="false" VBox.vgrow="ALWAYS" />
                   
                   <VBox fx:id="paneWaitingList" visible="false" managed="false" spacing="10" VBox.vgrow="ALWAYS">
                       <children>

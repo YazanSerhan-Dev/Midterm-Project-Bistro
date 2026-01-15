@@ -46,6 +46,7 @@ public class StaffController implements ClientUI {
     // Tables
     @FXML private TableView<WaitingListRow> tblWaitingList;
     @FXML private TableView<ReservationRow> tblReservations;
+    @FXML private VBox paneReservations;
     @FXML private TableView<SubscriberRow> tblSubscribers;
     @FXML private TableView<CurrentDinersRow> tblCurrentDiners;
     
@@ -209,8 +210,43 @@ public class StaffController implements ClientUI {
             switch (env.getOp()) {
                 // --- Lists Updates ---
                 case RESPONSE_AGENT_RESERVATIONS_LIST -> updateReservationsTable((List<?>) env.getPayload());
+                case RESPONSE_MAKE_RESERVATION -> {
+                    // Server returns MakeReservationResponseDTO
+                    Object p = env.getPayload();
+                    if (p instanceof MakeReservationResponseDTO res) {
+                        if (res.isOk()) {
+                            showAlert("Success", "Reservation Created! Code: " + res.getConfirmationCode());
+                            // Refresh the list
+                            sendToServer(Envelope.request(OpCode.REQUEST_AGENT_RESERVATIONS_LIST, null));
+                        } else {
+                            showAlert("Failed", res.getMessage());
+                        }
+                    }
+                }
+
+                case RESPONSE_TERMINAL_CANCEL_RESERVATION -> {
+                    // Server sends a simple String message
+                    showAlert("Info", (String) env.getPayload());
+                    // ✅ REFRESH: Ask for the fresh list immediately
+                    sendToServer(Envelope.request(OpCode.REQUEST_AGENT_RESERVATIONS_LIST, null));
+                }
+                
                 case RESPONSE_SUBSCRIBERS_LIST        -> updateSubscribersTable((List<?>) env.getPayload());
-                case RESPONSE_WAITING_LIST            -> updateWaitingListTable((List<?>) env.getPayload());
+                
+                case RESPONSE_WAITING_LIST -> {
+                    Object p = env.getPayload();
+                    if (p instanceof List) {
+                        // Normal behavior: Update the table with the list
+                        updateWaitingListTable((List<?>) p);
+                    } else {
+                        // Unexpected behavior (Server sent single item): Just refresh the full list
+                        sendToServer(Envelope.request(OpCode.REQUEST_WAITING_LIST, null));
+                    }
+                }       
+                case RESPONSE_WAITING_ADD, 
+                RESPONSE_WAITING_REMOVE -> handleWaitingListUpdateResponse((String) env.getPayload());
+
+                
                 case RESPONSE_CURRENT_DINERS          -> updateCurrentDinersTable((List<?>) env.getPayload());
                 case RESPONSE_TABLES_GET              -> updateRestaurantTables((List<?>) env.getPayload());
                 case RESPONSE_OPENING_HOURS_GET       -> updateOpeningHours((List<?>) env.getPayload());
@@ -221,11 +257,8 @@ public class StaffController implements ClientUI {
                 case RESPONSE_TODAY_HOURS       -> updateTodayHours((String) env.getPayload());
                 case RESPONSE_LOGIN_SUBSCRIBER  -> handleSubscriberLoginResponse((LoginResponseDTO) env.getPayload());
 
-                // --- Operation Results (Shared Handlers) ---
-                // For multiple cases sharing one action, separate them with commas
-                case RESPONSE_WAITING_ADD, 
-                     RESPONSE_WAITING_REMOVE -> handleWaitingListUpdateResponse((String) env.getPayload());
-
+               
+               
                 case RESPONSE_TABLE_ADD, 
                      RESPONSE_TABLE_REMOVE, 
                      RESPONSE_TABLE_UPDATE -> handleTableUpdateResponse((String) env.getPayload());
@@ -359,7 +392,13 @@ public class StaffController implements ClientUI {
         lblTitle.setText("Reservations");
         hideAllViews();
         setupReservationsColumns();
-        tblReservations.setVisible(true); tblReservations.setManaged(true);
+        if (paneReservations != null) {
+            paneReservations.setVisible(true);
+            paneReservations.setManaged(true);
+        }
+        // ensure table itself is visible
+        tblReservations.setVisible(true); 
+
         sendToServer(Envelope.request(OpCode.REQUEST_AGENT_RESERVATIONS_LIST, null));
     }
 
@@ -533,8 +572,11 @@ public class StaffController implements ClientUI {
     // ========================================================
     
     private void hideAllViews() {
-        tblReservations.setVisible(false); tblReservations.setManaged(false);
-        tblSubscribers.setVisible(false); tblSubscribers.setManaged(false);
+    	if (paneReservations != null) {
+            paneReservations.setVisible(false); 
+            paneReservations.setManaged(false);
+        }        
+    	tblSubscribers.setVisible(false); tblSubscribers.setManaged(false);
         
         // ✅ FIX: Hide the wrapper pane
         if (paneWaitingList != null) {
@@ -857,55 +899,94 @@ public class StaffController implements ClientUI {
     
     @FXML
     void onAddWaitingCustomer(ActionEvent event) {
-        Dialog<MakeReservationRequestDTO> dialog = new Dialog<>();
+        Dialog<WaitingListDTO> dialog = new Dialog<>();
         dialog.setTitle("Add Walk-in Customer");
         dialog.setHeaderText("Enter Walk-in Details");
         
-        ButtonType loginButtonType= new ButtonType("Add to Waiting List", ButtonBar.ButtonData.OK_DONE);
-        dialog.getDialogPane().getButtonTypes().addAll(loginButtonType, ButtonType.CANCEL);
+        ButtonType addButtonType = new ButtonType("Add to Waiting List", ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(addButtonType, ButtonType.CANCEL);
         
         GridPane grid = new GridPane();
         grid.setHgap(10); grid.setVgap(10);
         
-        TextField tfName = new TextField();
         TextField tfSize = new TextField();
-        TextField tfPhone = new TextField();
-        CheckBox IsSubscriber = new CheckBox();
+        
+        TextField tfEmail = new TextField(); tfEmail.setPromptText("guest@example.com");
+        TextField tfPhone = new TextField(); tfPhone.setPromptText("0500000000");
+        
+        CheckBox IsSubscriber = new CheckBox("Subscriber?");
         TextField tfSubscriberId = new TextField();
-        tfSubscriberId.setPromptText("Subscriber Id");
+        tfSubscriberId.setPromptText("Subscriber ID");
         tfSubscriberId.setDisable(true);
         
         IsSubscriber.setOnAction(e -> {
-            tfSubscriberId.setDisable(!IsSubscriber.isSelected());
-            tfName.setDisable(IsSubscriber.isSelected());
-            tfPhone.setDisable(IsSubscriber.isSelected());
+            boolean isSub = IsSubscriber.isSelected();
+            tfSubscriberId.setDisable(!isSub);
+            tfEmail.setDisable(isSub);
+            tfPhone.setDisable(isSub);
+            if (isSub) { tfEmail.clear(); tfPhone.clear(); }
         });
         
         grid.add(new Label("Group Size:"), 0, 0); grid.add(tfSize, 1, 0);
         grid.add(IsSubscriber, 0, 1);             grid.add(tfSubscriberId, 1, 1);
-        grid.add(new Label("Name/Phone (Guest):"), 0, 2); grid.add(tfPhone, 1, 2);
+        grid.add(new Label("Email:"), 0, 2);      grid.add(tfEmail, 1, 2);
+        grid.add(new Label("Phone:"), 0, 3);      grid.add(tfPhone, 1, 3);
 
         dialog.getDialogPane().setContent(grid);
+
+        // Validation Filter
+        final Button addBtn = (Button) dialog.getDialogPane().lookupButton(addButtonType);
+        addBtn.addEventFilter(ActionEvent.ACTION, ae -> {
+            if (!IsSubscriber.isSelected()) {
+                String p = tfPhone.getText().trim();
+                String e = tfEmail.getText().trim();
+                
+                // Require at least one, and validate if present
+                if (p.isEmpty() && e.isEmpty()) {
+                    showAlert("Invalid Input", "Enter at least a Phone OR Email.");
+                    ae.consume(); return;
+                }
+                if (!p.isEmpty() && !isValidPhone(p)) {
+                    showAlert("Invalid Input", "Invalid Phone Number.");
+                    ae.consume(); return;
+                }
+                if (!e.isEmpty() && !isValidEmail(e)) {
+                    showAlert("Invalid Input", "Invalid Email Address.");
+                    ae.consume(); return;
+                }
+            }
+            try {
+                int s = Integer.parseInt(tfSize.getText().trim());
+                if (s <= 0) throw new NumberFormatException();
+            } catch (Exception ex) {
+                showAlert("Invalid Input", "Invalid Group Size.");
+                ae.consume();
+            }
+        });
         
         dialog.setResultConverter(dialogButton -> {
-            if (dialogButton == loginButtonType) {
+            if (dialogButton == addButtonType) {
                 try {
-                    int size = Integer.parseInt(tfSize.getText());
-                    String subId = IsSubscriber.isSelected() ? tfSubscriberId.getText() : null;
-                    String phone = !IsSubscriber.isSelected() ? tfPhone.getText() : null;
-                    return new MakeReservationRequestDTO(subId, phone, null, size, null); 
-                } catch (NumberFormatException e) {
-                    return null;
-                }
+                    int size = Integer.parseInt(tfSize.getText().trim());
+                    WaitingListDTO dto = new WaitingListDTO();
+                    dto.setPeopleCount(size);
+                    if (!IsSubscriber.isSelected()) {
+                        dto.setEmail(tfEmail.getText().trim());
+                        dto.setPhone(tfPhone.getText().trim());
+                    }
+                    return dto; 
+                } catch (Exception e) { return null; }
             }
             return null;
         });
 
         dialog.showAndWait().ifPresent(dto -> {
-        	sendToServer(Envelope.request(OpCode.REQUEST_WAITING_ADD, dto));
-        	});
+            String role = "STAFF";
+            String username = IsSubscriber.isSelected() ? tfSubscriberId.getText().trim() : "Guest";
+            Object[] payload = new Object[] { role, username, dto };
+            sendToServer(Envelope.request(OpCode.REQUEST_WAITING_ADD, payload));
+        });
     }
-    
 
     @FXML
     void onRemoveWaitingCustomer(ActionEvent event) {
@@ -920,7 +1001,129 @@ public class StaffController implements ClientUI {
         
         confirm.showAndWait().ifPresent(response -> {
             if (response == ButtonType.YES) {
-            	sendToServer(Envelope.request(OpCode.REQUEST_WAITING_REMOVE, selected.getWaitingId()));
+                // Send request to server
+                sendToServer(Envelope.request(OpCode.REQUEST_WAITING_REMOVE, selected.getWaitingId()));
+            }
+        });
+    }
+    
+ // ========================================================
+    // RESERVATION MANAGEMENT (Add / Remove)
+    // ========================================================
+
+    @FXML
+    void onAddReservation(ActionEvent event) {
+        Dialog<MakeReservationRequestDTO> dialog = new Dialog<>();
+        dialog.setTitle("Add Reservation");
+        dialog.setHeaderText("New Reservation Details");
+
+        ButtonType confirmBtnType = new ButtonType("Confirm", ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(confirmBtnType, ButtonType.CANCEL);
+
+        GridPane grid = new GridPane();
+        grid.setHgap(10); grid.setVgap(10);
+
+        DatePicker dpDate = new DatePicker(java.time.LocalDate.now());
+        ComboBox<String> cbTime = new ComboBox<>();
+        for (int h = 10; h < 24; h++) {
+            cbTime.getItems().add(String.format("%02d:00", h));
+            cbTime.getItems().add(String.format("%02d:30", h));
+        }
+        cbTime.getSelectionModel().select("19:00");
+
+        TextField tfSize = new TextField(); tfSize.setPromptText("Ex: 4");
+        CheckBox chkSubscriber = new CheckBox("Is Subscriber?");
+        
+        TextField tfSubId = new TextField(); tfSubId.setPromptText("Subscriber ID");
+        tfSubId.setDisable(true);
+        
+        TextField tfPhone = new TextField(); tfPhone.setPromptText("0501234567");
+        TextField tfEmail = new TextField(); tfEmail.setPromptText("mail@example.com");
+
+        chkSubscriber.setOnAction(e -> {
+            boolean isSub = chkSubscriber.isSelected();
+            tfSubId.setDisable(!isSub);
+            tfPhone.setDisable(isSub);
+            tfEmail.setDisable(isSub);
+            if (isSub) { tfPhone.clear(); tfEmail.clear(); }
+        });
+
+        grid.add(new Label("Date:"), 0, 0);       grid.add(dpDate, 1, 0);
+        grid.add(new Label("Time:"), 0, 1);       grid.add(cbTime, 1, 1);
+        grid.add(new Label("Party Size:"), 0, 2); grid.add(tfSize, 1, 2);
+        grid.add(chkSubscriber, 0, 3);            grid.add(tfSubId, 1, 3);
+        grid.add(new Label("Phone:"), 0, 4);      grid.add(tfPhone, 1, 4);
+        grid.add(new Label("Email:"), 0, 5);      grid.add(tfEmail, 1, 5);
+
+        dialog.getDialogPane().setContent(grid);
+
+        // Prevent closing if input is invalid
+        final Button confirmBtn = (Button) dialog.getDialogPane().lookupButton(confirmBtnType);
+        confirmBtn.addEventFilter(ActionEvent.ACTION, ae -> {
+            if (!chkSubscriber.isSelected()) {
+                String p = tfPhone.getText().trim();
+                String e = tfEmail.getText().trim();
+                
+                if (!isValidPhone(p)) {
+                    showAlert("Invalid Input", "Phone must start with '05' and be 10 digits.");
+                    ae.consume(); return;
+                }
+                if (!isValidEmail(e)) {
+                    showAlert("Invalid Input", "Please enter a valid email address.");
+                    ae.consume(); return;
+                }
+            }
+            try {
+                int size = Integer.parseInt(tfSize.getText().trim());
+                if (size <= 0) throw new NumberFormatException();
+            } catch (Exception ex) {
+                showAlert("Invalid Input", "Party size must be a number > 0.");
+                ae.consume();
+            }
+        });
+
+        dialog.setResultConverter(btn -> {
+            if (btn == confirmBtnType) {
+                try {
+                    int size = Integer.parseInt(tfSize.getText().trim());
+                    java.time.LocalDateTime ldt = java.time.LocalDateTime.of(
+                        dpDate.getValue(), 
+                        java.time.LocalTime.parse(cbTime.getValue())
+                    );
+                    java.sql.Timestamp ts = java.sql.Timestamp.valueOf(ldt);
+
+                    String subUsername = chkSubscriber.isSelected() ? tfSubId.getText().trim() : null;
+                    String phone = !chkSubscriber.isSelected() ? tfPhone.getText().trim() : null;
+                    String email = !chkSubscriber.isSelected() ? tfEmail.getText().trim() : null;
+
+                    return new MakeReservationRequestDTO(subUsername, phone, email, size, ts);
+                } catch (Exception e) { return null; }
+            }
+            return null;
+        });
+
+        dialog.showAndWait().ifPresent(dto -> {
+            sendToServer(Envelope.request(OpCode.REQUEST_MAKE_RESERVATION, dto));
+        });
+    }
+
+    @FXML
+    void onRemoveReservation(ActionEvent event) {
+        ReservationRow selected = tblReservations.getSelectionModel().getSelectedItem();
+        if (selected == null) {
+            showAlert("Selection Error", "Please select a reservation to cancel.");
+            return;
+        }
+
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION, 
+            "Cancel reservation #" + selected.getReservationId() + "?", 
+            ButtonType.YES, ButtonType.NO);
+
+        confirm.showAndWait().ifPresent(resp -> {
+            if (resp == ButtonType.YES) {
+                // ✅ USE TERMINAL METHOD: Sends only the code, bypasses role checks
+                String code = selected.getConfirmationCode();
+                sendToServer(Envelope.request(OpCode.REQUEST_TERMINAL_CANCEL_RESERVATION, code));
             }
         });
     }
@@ -1081,6 +1284,22 @@ public class StaffController implements ClientUI {
         populateActivityChart(data);
     }
     
+    private void handleWaitingListResponse(Object payload) {
+        if (payload instanceof List) {
+            // Normal update: payload is the list of rows
+            updateWaitingListTable((List<?>) payload);
+        } else if (payload instanceof String msg) {
+            // "Add" success/error message: show alert & refresh table
+            Platform.runLater(() -> {
+                Alert alert = new Alert(Alert.AlertType.INFORMATION);
+                alert.setContentText(msg);
+                alert.show();
+            });
+            // Refresh the list immediately so the new person appears
+            sendToServer(Envelope.request(OpCode.REQUEST_WAITING_LIST, null));
+        }
+    }
+    
     private void handleSubscriberLoginResponse(LoginResponseDTO res) {
         if (res.isOk()) {
             ClientSession.setRole("SUBSCRIBER");
@@ -1093,7 +1312,8 @@ public class StaffController implements ClientUI {
 
     private void handleWaitingListUpdateResponse(String msg) {
         if (msg != null) showAlert("Success", msg);
-        sendToServer(new Envelope(OpCode.REQUEST_WAITING_LIST));
+        // Refresh the table immediately
+        sendToServer(Envelope.request(OpCode.REQUEST_WAITING_LIST, null));    
     }
 
     private void handleTableUpdateResponse(String msg) {
@@ -1110,6 +1330,22 @@ public class StaffController implements ClientUI {
     }
     
     
+	 // ========================================================
+	 // VALIDATION HELPERS
+	 // ========================================================
+	
+	 private boolean isValidEmail(String email) {
+	     if (email == null || email.isBlank()) return false;
+	     // Simple Regex for email
+	     return email.matches("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
+	 }
+	
+	 private boolean isValidPhone(String phone) {
+	     if (phone == null || phone.isBlank()) return false;
+	     // Regex: Must start with 05 and have exactly 10 digits
+	     return phone.matches("^05\\d{8}$");
+	 }
+	    
     
     
     
