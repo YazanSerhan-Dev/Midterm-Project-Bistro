@@ -142,6 +142,22 @@ public class BackgroundJobs {
         }, 15, 60, TimeUnit.SECONDS);
 
         System.out.println("[JOB] BackgroundJobs started.");
+        
+        
+        // =========================
+        // Thread #6: Monthly Performance Report Generator
+        // Runs once every 24 hours. Checks if there is data from last month to process.
+        // =========================
+        scheduler.scheduleAtFixedRate(() -> {
+            try {
+                int recordsCreated = DataBase.dao.PerformanceLogDAO.generateMonthlyReport();
+                if (recordsCreated > 0) {
+                    System.out.println("[JOB] Generated Monthly Performance Report. Rows added: " + recordsCreated);
+                }
+            } catch (Exception e) {
+                System.out.println("[JOB] Monthly Report Error: " + e.getMessage());
+            }
+        }, 0, 24, TimeUnit.HOURS); // Start immediately, repeat every 24 hours
     }
 
     public static void stop() {
@@ -239,6 +255,8 @@ public class BackgroundJobs {
             }
         }
     }
+    
+    
 
 }
 

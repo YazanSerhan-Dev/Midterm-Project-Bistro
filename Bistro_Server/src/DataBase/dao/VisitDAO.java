@@ -139,16 +139,18 @@ public class VisitDAO {
     public static List<CurrentDinersDTO> getActiveDiners() {
         List<CurrentDinersDTO> list = new ArrayList<>();
         
+        // Updated SQL: Joins waiting_list to get the count for walk-ins
         String sql = """
             SELECT 
                 v.table_id, 
                 v.actual_start_time, 
-                r.num_of_customers,
+                COALESCE(r.num_of_customers, w.num_of_customers) AS final_count, 
                 s.name AS subscriber_name,
                 ua.guest_email
             FROM visit v
             JOIN user_activity ua ON v.activity_id = ua.activity_id
             LEFT JOIN reservation r ON ua.reservation_id = r.reservation_id
+            LEFT JOIN waiting_list w ON ua.waiting_id = w.waiting_id
             LEFT JOIN subscribers s ON ua.subscriber_username = s.username
             WHERE v.actual_end_time IS NULL OR v.actual_end_time > NOW()
         """;
@@ -164,14 +166,12 @@ public class VisitDAO {
                  ResultSet rs = stmt.executeQuery()) {
 
                 while (rs.next()) {
-                    // 1. Parse Table Number
                     int tableNum = 0;
                     String tIdStr = rs.getString("table_id"); 
                     try {
                         tableNum = Integer.parseInt(tIdStr.replaceAll("\\D", ""));
                     } catch (Exception e) { tableNum = 0; }
 
-                    // 2. Determine Name (Subscriber Name OR Guest Email)
                     String subName = rs.getString("subscriber_name");
                     String gstEmail = rs.getString("guest_email");
                     
@@ -182,8 +182,9 @@ public class VisitDAO {
                         displayName = gstEmail;
                     }
 
-                    // 3. Other fields
-                    int count = rs.getInt("num_of_customers");
+                    // Now gets the correct count for both Reservations and Waiting List
+                    int count = rs.getInt("final_count");
+                    
                     Timestamp ts = rs.getTimestamp("actual_start_time");
                     String timeStr = (ts != null) ? ts.toLocalDateTime().toLocalTime().toString() : "-";
 
