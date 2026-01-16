@@ -16,14 +16,21 @@ public class ClientFX extends Application {
     public void start(Stage primaryStage) {
         SceneManager.init(primaryStage);
 
-        // choose your default host/port here
-        ClientSession.configure("localhost", 5555);
+        // defaults
+        String host = "localhost";
+        int port = 5555;
 
-        // first scene = login
+        // read args: java -jar client.jar 192.168.1.42 5555
+        var args = getParameters().getRaw();
+        if (args.size() >= 1) host = args.get(0);
+        if (args.size() >= 2) port = safeParsePort(args.get(1), 5555);
+
+        ClientSession.configure(host, port);
+
         SceneManager.showLogin();
-
         primaryStage.setOnCloseRequest(e -> ClientSession.disconnect());
     }
+
 
 
     private int safeParsePort(String s, int def) {

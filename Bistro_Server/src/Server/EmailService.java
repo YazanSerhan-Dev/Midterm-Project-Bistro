@@ -15,7 +15,7 @@ public class EmailService {
 
     // ✅ Option 2: absolute path on YOUR PC
     // Change this path if you saved the file somewhere else.
-    private static final String CONFIG_PATH = "C:\\Users\\yazan\\Downloads\\email.properties";
+    private static final String CONFIG_PATH = "C:\\Users\\Lenovo2024\\Downloads\\email.properties";
 
     // Keys in email.properties:
     // smtp.host=smtp.gmail.com
