@@ -1,0 +1,245 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.image.Image?>
+<?import javafx.scene.image.ImageView?>
+<?import javafx.scene.layout.*?>
+
+<BorderPane xmlns="http://javafx.com/javafx/21"
+            xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="Client.TerminalController"
+            prefWidth="980" prefHeight="620"
+            stylesheets="@/Styles/terminal.css"
+            styleClass="root-bg">
+
+    <padding>
+        <Insets top="16" right="16" bottom="16" left="16"/>
+    </padding>
+
+    <!-- TOP BAR -->
+    <top>
+        <HBox spacing="10" alignment="CENTER_LEFT" styleClass="top-bar">
+            <children>
+                <Label text="Terminal" styleClass="top-title"/>
+                <Region HBox.hgrow="ALWAYS"/>
+                <Label fx:id="lblConnectionStatus" text="Status: Not connected (UI demo)" styleClass="top-status"/>
+                <Button text="Logout" onAction="#onLogout" styleClass="danger-button"/>
+            </children>
+        </HBox>
+    </top>
+
+    <!-- LEFT SIDE (Actions + Lost code) -->
+    <left>
+        <VBox spacing="12" prefWidth="240" styleClass="sidebar">
+            <padding>
+                <Insets top="14" right="14" bottom="14" left="14"/>
+            </padding>
+
+            <children>
+                <Label text="Menu" styleClass="sidebar-subtitle"/>
+
+                <Button fx:id="btnCheckIn" text="Check-in" maxWidth="Infinity" onAction="#onCheckIn" styleClass="nav-button">
+                    <graphic>
+                        <ImageView fitWidth="16" fitHeight="16" preserveRatio="true" opacity="0.90">
+                            <image>
+                                <Image url="@/logos/calendar-check.png"/>
+                            </image>
+                        </ImageView>
+                    </graphic>
+                </Button>
+
+                <Button fx:id="btnJoinWaitingList" text="Join Waiting List" maxWidth="Infinity" onAction="#onJoinWaitingList" styleClass="nav-button">
+                    <graphic>
+                        <ImageView fitWidth="16" fitHeight="16" preserveRatio="true" opacity="0.90">
+                            <image>
+                                <Image url="@/logos/calendar-plus-2.png"/>
+                            </image>
+                        </ImageView>
+                    </graphic>
+                </Button>
+
+                <Button fx:id="btnLeaveWaitingList" text="Leave Waiting List" maxWidth="Infinity" onAction="#onLeaveWaitingList" styleClass="nav-button">
+                    <graphic>
+                        <ImageView fitWidth="16" fitHeight="16" preserveRatio="true" opacity="0.90">
+                            <image>
+                                <Image url="@/logos/log-out.png"/>
+                            </image>
+                        </ImageView>
+                    </graphic>
+                </Button>
+
+                <Button text="Cancel Reservation" maxWidth="Infinity" onAction="#onCancelReservation" styleClass="nav-button">
+                    <graphic>
+                        <ImageView fitWidth="16" fitHeight="16" preserveRatio="true" opacity="0.90">
+                            <image>
+                                <Image url="@/logos/clipboard-clock.png"/>
+                            </image>
+                        </ImageView>
+                    </graphic>
+                </Button>
+
+                <Button text="Pay Bill" maxWidth="Infinity" onAction="#onGoToPayBill" styleClass="nav-button">
+                    <graphic>
+                        <ImageView fitWidth="16" fitHeight="16" preserveRatio="true" opacity="0.90">
+                            <image>
+                                <Image url="@/logos/receipt.png"/>
+                            </image>
+                        </ImageView>
+                    </graphic>
+                </Button>
+
+                <Separator/>
+
+                <Label text="I lost my confirmation code" styleClass="sidebar-subtitle"/>
+                <TextField fx:id="txtRecoverPhoneOrEmail" promptText="Phone or Email" styleClass="text-field"/>
+                <Button text="Send my code" maxWidth="Infinity" onAction="#onRecoverCode" styleClass="secondary-button"/>
+                <Label fx:id="lblRecoverResult" text="" wrapText="true" styleClass="sidebar-hint"/>
+            </children>
+        </VBox>
+    </left>
+
+    <!-- CENTER CONTENT -->
+    <center>
+        <VBox spacing="14" styleClass="content">
+
+            <!-- CONFIRMATION CODE CARD -->
+            <VBox spacing="10" styleClass="card highlight-card">
+                <children>
+                    <HBox spacing="8" alignment="CENTER_LEFT">
+                        <ImageView fitWidth="18" fitHeight="18" preserveRatio="true" opacity="0.90">
+                            <image>
+                                <Image url="@/logos/square-terminal.png"/>
+                            </image>
+                        </ImageView>
+                        <Label text="Confirmation Code" styleClass="card-title"/>
+                        <Region HBox.hgrow="ALWAYS"/>
+                        <Label fx:id="lblValidationResult" text="" styleClass="pill"/>
+                    </HBox>
+
+                    <HBox spacing="10" alignment="CENTER_LEFT">
+                        <TextField fx:id="txtConfirmationCode" promptText="Enter code (e.g., A1B2C3)" HBox.hgrow="ALWAYS"/>
+                        <Button text="Validate" onAction="#onValidateCode" styleClass="primary-button"/>
+                        <Button text="Clear" onAction="#onClear" styleClass="secondary-button"/>
+						<Button fx:id="btnScanSubscriberQR"
+						        text="Scan Subscriber QR"
+						        onAction="#onScanSubscriberQR"
+						        styleClass="primary-button"
+						        mnemonicParsing="false"/> 
+                    </HBox>
+
+                    <Label text="Note: If no suitable table is free, customer will be asked to wait." styleClass="hint-text"/>
+                </children>
+            </VBox>
+
+            <!-- DETAILS GRID -->
+            <GridPane hgap="14" vgap="14">
+                <columnConstraints>
+                    <ColumnConstraints percentWidth="55"/>
+                    <ColumnConstraints percentWidth="45"/>
+                </columnConstraints>
+
+                <children>
+                    <!-- Reservation Details -->
+                    <VBox spacing="10" styleClass="card" GridPane.rowIndex="0" GridPane.columnIndex="0">
+                        <children>
+                            <HBox spacing="8" alignment="CENTER_LEFT">
+                                <ImageView fitWidth="18" fitHeight="18" preserveRatio="true" opacity="0.90">
+                                    <image>
+                                        <Image url="@/logos/calendar-check.png"/>
+                                    </image>
+                                </ImageView>
+                                <Label text="Reservation Details" styleClass="card-title"/>
+                            </HBox>
+
+                            <GridPane hgap="12" vgap="10" styleClass="details-grid">
+                                <children>
+                                    <Label text="Reservation ID:" GridPane.rowIndex="0" GridPane.columnIndex="0"/>
+                                    <Label fx:id="lblResId" text="-" GridPane.rowIndex="0" GridPane.columnIndex="1"/>
+
+                                    <Label text="Reservation Time:" GridPane.rowIndex="1" GridPane.columnIndex="0"/>
+                                    <Label fx:id="lblResDateTime" text="-" GridPane.rowIndex="1" GridPane.columnIndex="1"/>
+
+                                    <Label text="Number of Guests:" GridPane.rowIndex="2" GridPane.columnIndex="0"/>
+                                    <Label fx:id="lblResGuests" text="-" GridPane.rowIndex="2" GridPane.columnIndex="1"/>
+                                </children>
+                            </GridPane>
+                        </children>
+                    </VBox>
+
+                    <!-- Waiting List Details -->
+                    <VBox spacing="10" styleClass="card" GridPane.rowIndex="0" GridPane.columnIndex="1">
+                        <children>
+                            <HBox spacing="8" alignment="CENTER_LEFT">
+                                <ImageView fitWidth="18" fitHeight="18" preserveRatio="true" opacity="0.90">
+                                    <image>
+                                        <Image url="@/logos/user.png"/>
+                                    </image>
+                                </ImageView>
+                                <Label text="Waiting List Details" styleClass="card-title"/>
+                            </HBox>
+
+                            <GridPane hgap="12" vgap="10" styleClass="details-grid">
+                                <children>
+                                    <Label text="Waiting Code:" GridPane.rowIndex="0" GridPane.columnIndex="0"/>
+                                    <Label fx:id="lblWaitCode" text="-" GridPane.rowIndex="0" GridPane.columnIndex="1"/>
+
+                                    <Label text="Status:" GridPane.rowIndex="1" GridPane.columnIndex="0"/>
+                                    <Label fx:id="lblWaitStatus" text="-" GridPane.rowIndex="1" GridPane.columnIndex="1"/>
+
+                                    <Label text="People:" GridPane.rowIndex="2" GridPane.columnIndex="0"/>
+                                    <Label fx:id="lblWaitPeople" text="-" GridPane.rowIndex="2" GridPane.columnIndex="1"/>
+
+                                    <Label text="Email:" GridPane.rowIndex="3" GridPane.columnIndex="0"/>
+                                    <Label fx:id="lblWaitEmail" text="-" GridPane.rowIndex="3" GridPane.columnIndex="1"/>
+
+                                    <Label text="Phone:" GridPane.rowIndex="4" GridPane.columnIndex="0"/>
+                                    <Label fx:id="lblWaitPhone" text="-" GridPane.rowIndex="4" GridPane.columnIndex="1"/>
+                                </children>
+                            </GridPane>
+                        </children>
+                    </VBox>
+
+                    <!-- Table Assignment -->
+                    <VBox spacing="10" styleClass="card" GridPane.rowIndex="1" GridPane.columnIndex="1">
+                        <children>
+                            <HBox spacing="8" alignment="CENTER_LEFT">
+                                <ImageView fitWidth="18" fitHeight="18" preserveRatio="true" opacity="0.90">
+                                    <image>
+                                        <Image url="@/logos/square-terminal.png"/>
+                                    </image>
+                                </ImageView>
+                                <Label text="Table Assignment" styleClass="card-title"/>
+                            </HBox>
+
+                            <HBox spacing="10" alignment="CENTER_LEFT">
+                                <Label text="Table:"/>
+                                <Label fx:id="lblTableNumber" text="-" styleClass="table-number"/>
+                                <Region HBox.hgrow="ALWAYS"/>
+                                <Label fx:id="lblWaitMessage" text="" styleClass="status-text"/>
+                            </HBox>
+                        </children>
+                    </VBox>
+                    
+					<VBox spacing="10" fx:id="subscriberActiveBox" styleClass="card"
+					      GridPane.rowIndex="1" GridPane.columnIndex="0">
+					    <Label text="Your Active Reservations / Waiting List" styleClass="card-title"/>
+					    <ListView fx:id="lstSubscriberActive" prefHeight="160"/>
+					</VBox>
+          
+                </children>
+            </GridPane>
+
+        </VBox>
+    </center>
+
+    <!-- BOTTOM STATUS -->
+    <bottom>
+        <HBox spacing="10" alignment="CENTER_LEFT" styleClass="bottom-bar">
+            <children>
+                <Label fx:id="lblTerminalStatus" text="Ready."/>
+            </children>
+        </HBox>
+    </bottom>
+
+</BorderPane>

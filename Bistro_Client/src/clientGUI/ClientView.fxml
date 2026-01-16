@@ -1,0 +1,353 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+<?import javafx.scene.image.Image?>
+<?import javafx.scene.image.ImageView?>
+
+<BorderPane xmlns="http://javafx.com/javafx/21"
+            xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="Client.ClientController"
+            prefWidth="980" prefHeight="620" stylesheets="@/Styles/main.css">
+
+    <padding>
+        <Insets top="10" right="10" bottom="10" left="10"/>
+    </padding>
+
+    <!-- TOP BAR -->
+    <top>
+        <HBox spacing="10" alignment="CENTER_LEFT" styleClass="top-bar">
+            <children>
+                <Label text="Bistro System" styleClass="top-title"/>
+                <Region HBox.hgrow="ALWAYS"/>
+                <Label fx:id="lblUserInfo" text="Welcome, Guest"/>
+                <Button text="Logout" onAction="#onLogout" styleClass="danger-button"/>
+            </children>
+        </HBox>
+    </top>
+
+    <!-- LEFT SIDEBAR -->
+    <left>
+        <VBox spacing="10" prefWidth="220" styleClass="sidebar">
+            <padding>
+                <Insets top="12" right="12" bottom="12" left="12"/>
+            </padding>
+
+            <children>
+                <Label text="Menu" styleClass="sidebar-subtitle"/>
+
+                <Button text="My Reservations" maxWidth="Infinity" onAction="#onNavReservations" styleClass="nav-button nav-active">
+                   <graphic>
+        				<ImageView fitWidth="16" fitHeight="16" preserveRatio="true" opacity="0.90">
+            				<image>
+                				<Image url="@/logos/calendar-check.png"/>
+            				</image>
+        				</ImageView>
+    				</graphic>
+    			</Button>
+                <Button text="New Reservation" maxWidth="Infinity" onAction="#onNewReservation" styleClass="nav-button">
+                    <graphic>
+						<ImageView fitWidth="16" fitHeight="16" preserveRatio="true" opacity="0.90">
+            				<image>
+                				<Image url="@/logos/calendar-plus-2.png"/>
+            				</image>
+        				</ImageView>
+    				</graphic>
+    			</Button>
+
+                <!-- Story rules (UI hint only) -->
+                <Label wrapText="true"
+                       text="Rules: choose a 30-minute slot • min 1 hour from now • up to 1 month ahead"
+                       styleClass="sidebar-hint"/>
+
+                <Separator/>
+
+                <Button fx:id="btnMyProfile" text="My Profile" maxWidth="Infinity" onAction="#onNavProfile" styleClass="nav-button">
+                    <graphic>
+						<ImageView fitWidth="16" fitHeight="16" preserveRatio="true" opacity="0.90">
+            				<image>
+                				<Image url="@/logos/user.png"/>
+            				</image>
+        				</ImageView>
+    				</graphic>
+                </Button>
+                <Button fx:id="btnHistory" text="History" maxWidth="Infinity" onAction="#onNavHistory" styleClass="nav-button">
+                    <graphic>
+						<ImageView fitWidth="16" fitHeight="16" preserveRatio="true" opacity="0.90">
+            				<image>
+                				<Image url="@/logos/clipboard-clock.png"/>
+            				</image>
+        				</ImageView>
+    				</graphic>
+                </Button>
+                
+                
+                <Button
+        			fx:id="btnLeaveWaitingList"
+        			text="Leave Waiting List"
+        			onAction="#onLeaveWaitingList"
+        			visible="true"
+        			managed="true"
+        			maxWidth="Infinity" styleClass="danger-button">   
+        			<graphic>
+        				<ImageView fitWidth="16" fitHeight="16" preserveRatio="true" opacity="0.90">
+            				<image>
+                				<Image url="@/logos/log-out.png"/>
+            				</image>
+        				</ImageView>
+    				</graphic>
+                </Button>           
+
+                <Separator/>
+
+                <Button text="Pay Bill" maxWidth="Infinity" onAction="#onPayBill" styleClass="nav-button">
+                    <graphic>
+        				<ImageView fitWidth="16" fitHeight="16" preserveRatio="true" opacity="0.90">
+            				<image>
+                				<Image url="@/logos/receipt.png"/>
+            				</image>
+        				</ImageView>
+    				</graphic>
+                </Button>
+                
+            </children>
+        </VBox>
+    </left>
+
+    <!-- CENTER: STACK OF PANES -->
+    <center>
+        <StackPane>
+
+            <!-- DASHBOARD -->
+            <VBox fx:id="paneDashboard" spacing="12" styleClass="content">
+                <children>
+
+						<!-- SUMMARY CARDS -->
+						<HBox spacing="12">
+						    <children>
+						
+						        <!-- Active Reservations -->
+						        <VBox spacing="6" styleClass="stat-card">
+						            <children>
+						                <HBox spacing="8" alignment="CENTER_LEFT">
+						                    <ImageView fitWidth="16" fitHeight="16" preserveRatio="true" opacity="0.90">
+						                        <image>
+						                            <Image url="@/logos/check.png"/>
+						                        </image>
+						                    </ImageView>
+						                    <Label text="Active Reservations" styleClass="stat-title"/>
+						                </HBox>
+						
+						                <Label fx:id="lblActiveReservations" text="0" styleClass="stat-value"/>
+						            </children>
+						        </VBox>
+						
+						        <!-- Balance Due -->
+						        <VBox spacing="6" styleClass="stat-card">
+						            <children>
+						                <HBox spacing="8" alignment="CENTER_LEFT">
+						                    <ImageView fitWidth="16" fitHeight="16" preserveRatio="true" opacity="0.90">
+						                        <image>
+						                            <Image url="@/logos/wallet.png"/>
+						                        </image>
+						                    </ImageView>
+						                    <Label text="Balance Due" styleClass="stat-title"/>
+						                </HBox>
+						
+						                <Label fx:id="lblBalanceDue" text="₪0.00" styleClass="stat-value"/>
+						            </children>
+						        </VBox>
+						
+						        <!-- Subscription -->
+						        <VBox spacing="6" styleClass="stat-card">
+						            <children>
+						                <HBox spacing="8" alignment="CENTER_LEFT">
+						                    <ImageView fitWidth="16" fitHeight="16" preserveRatio="true" opacity="0.90">
+						                        <image>
+						                            <Image url="@/logos/badge-percent.png"/>
+						                        </image>
+						                    </ImageView>
+						                    <Label text="Subscription" styleClass="stat-title"/>
+						                </HBox>
+						
+						                <Label fx:id="lblSubscriptionStatus" text="Not Subscribed" styleClass="stat-value"/>
+						            </children>
+						        </VBox>
+						
+						    </children>
+						</HBox>
+
+
+                    <Label text="My Reservations" styleClass="section-title"/>
+
+                    <!-- RESERVATIONS TABLE -->
+                    <TableView fx:id="tblReservations" prefHeight="400.0" prefWidth="700.0">
+                        <columns>
+                            <TableColumn fx:id="colReservationId" text="Reservation ID" prefWidth="120.0"/>
+                            <TableColumn fx:id="colConfirmationCode" text="Confirmation Code" prefWidth="150.0"/>
+                            <TableColumn fx:id="colReservationTime" text="Reservation Time" prefWidth="170.0"/>
+                            <TableColumn fx:id="colExpiryTime" text="Expiry Time" prefWidth="170.0"/>
+                            <TableColumn fx:id="colCustomers" text="Customers" prefWidth="120.0"/>
+                            <TableColumn fx:id="colStatus" text="Status" prefWidth="140.0"/>
+                        </columns>
+                    </TableView>
+
+                    <HBox spacing="10">
+                        <children>
+                            <Button text="Refresh" onAction="#onRefreshReservations" styleClass="secondary-button"/>
+                            <Button fx:id="btnCancelReservation" text="Cancel Selected" onAction="#onCancelReservation" styleClass="danger-button"/>
+                            <Region HBox.hgrow="ALWAYS"/>
+                        </children>
+                    </HBox>
+                </children>
+            </VBox>
+
+            <!-- NEW RESERVATION -->
+<VBox fx:id="paneNewReservation"
+      styleClass="content"
+      spacing="12"
+      alignment="TOP_CENTER"
+      visible="false"
+      managed="false">
+
+    <Label text="New Reservation"/>
+
+    <!-- ✅ aligned form -->
+    <GridPane hgap="10" vgap="10" alignment="CENTER">
+        <columnConstraints>
+            <!-- labels column -->
+            <ColumnConstraints halignment="RIGHT" minWidth="90" prefWidth="90"/>
+            <!-- input column -->
+            <ColumnConstraints halignment="LEFT" minWidth="180" prefWidth="180"/>
+            <!-- hint column (for time rule text) -->
+            <ColumnConstraints halignment="LEFT" minWidth="140" prefWidth="140"/>
+        </columnConstraints>
+
+        <children>
+            <Label text="Customers:" GridPane.rowIndex="0" GridPane.columnIndex="0"/>
+            <TextField fx:id="txtNumCustomers" prefWidth="160"
+                       GridPane.rowIndex="0" GridPane.columnIndex="1"/>
+
+            <Label text="Date:" GridPane.rowIndex="1" GridPane.columnIndex="0"/>
+            <DatePicker fx:id="dpReservationDate"
+                        GridPane.rowIndex="1" GridPane.columnIndex="1"/>
+
+            <Label text="Time:" GridPane.rowIndex="2" GridPane.columnIndex="0"/>
+            <ComboBox fx:id="cbReservationTime" prefWidth="160"
+                      GridPane.rowIndex="2" GridPane.columnIndex="1"/>
+            <Label text="(30-min slots)" GridPane.rowIndex="2" GridPane.columnIndex="2"/>
+
+            <!-- Buttons row -->
+            <HBox spacing="10" alignment="CENTER"
+                  GridPane.rowIndex="3" GridPane.columnIndex="0" GridPane.columnSpan="3">
+                <children>
+                    <Button text="Create Reservation" onAction="#onCreateReservation"/>
+                    <Button text="Clear" onAction="#onClearReservationForm"/>
+                </children>
+            </HBox>
+        </children>
+    </GridPane>
+
+    <Label fx:id="lblReservationFormMsg" text="" wrapText="true"/>
+
+    <Label fx:id="lblSuggestedTimesTitle"
+           text="Closest available times (click one to autofill):"
+           wrapText="true"
+           visible="false" managed="false"/>
+
+    <ListView fx:id="lvSuggestedTimes"
+              prefHeight="140"
+              visible="false" managed="false"/>
+
+    <Label text="Rules: choose a 30-minute slot • min 1 hour from now • up to 1 month ahead"
+           wrapText="true"/>
+
+</VBox>
+
+            <!-- PROFILE (Subscriber only) -->
+            <VBox fx:id="paneProfile" spacing="10" styleClass="content" visible="false" managed="false">
+                <children>
+                    <Label text="My Profile (Subscriber)" styleClass="section-title"/>
+
+                    <GridPane hgap="10" vgap="10">
+                        <children>
+                            <Label text="Member #:" GridPane.rowIndex="0" GridPane.columnIndex="0"/>
+                            <TextField fx:id="txtMemberNumber" editable="false" GridPane.rowIndex="0" GridPane.columnIndex="1"/>
+                            
+							<Label text="Barcode:" GridPane.rowIndex="1" GridPane.columnIndex="0"/>
+							<TextField fx:id="txtBarcodeData"
+							           editable="false"
+							           promptText="Not loaded"
+							           GridPane.rowIndex="1" GridPane.columnIndex="1"/>
+							
+							<Button text="Copy Barcode"
+							        onAction="#onCopyBarcode"
+							        styleClass="secondary-btn"
+							        GridPane.rowIndex="1" GridPane.columnIndex="2"/>
+
+                            <Label text="Full Name:" GridPane.rowIndex="2" GridPane.columnIndex="0"/>
+                            <TextField fx:id="txtFullName" editable="true" GridPane.rowIndex="2" GridPane.columnIndex="1"/>
+
+                            <Label text="Phone:" GridPane.rowIndex="3" GridPane.columnIndex="0"/>
+                            <TextField fx:id="txtPhone" GridPane.rowIndex="3" GridPane.columnIndex="1"/>
+
+                            <Label text="Email:" GridPane.rowIndex="4" GridPane.columnIndex="0"/>
+                            <TextField fx:id="txtEmail" GridPane.rowIndex="4" GridPane.columnIndex="1"/>
+                        </children>
+                    </GridPane>
+
+                    <HBox spacing="10">
+                        <children>
+                            <Button text="Save" onAction="#onSaveProfile"/>
+                            <Button text="Back to Dashboard" onAction="#onNavDashboard"/>
+                        </children>
+                    </HBox>
+                </children>
+            </VBox>
+
+            <!-- HISTORY (Subscriber only) -->
+            <VBox fx:id="paneHistory" spacing="10" styleClass="content" visible="false" managed="false">
+                <children>
+                    <Label text="History (Subscriber)" styleClass="section-title"/>
+
+<TableView fx:id="tblHistory">
+  <columns>
+    <TableColumn fx:id="colHistResId" text="Reservation ID" prefWidth="120.0"/>
+    <TableColumn fx:id="colHistConfCode" text="Confirmation Code" prefWidth="150.0"/>
+    <TableColumn fx:id="colHistResTime" text="Reservation Time" prefWidth="170.0"/>
+    <TableColumn fx:id="colHistExpTime" text="Expiry Time" prefWidth="170.0"/>
+    <TableColumn fx:id="colHistCustomers" text="Customers" prefWidth="120.0"/>
+    <TableColumn fx:id="colHistStatus" text="Status" prefWidth="120.0"/>
+  </columns>
+</TableView>
+
+
+                    <HBox spacing="10">
+                        <children>
+                            <Button text="Back" onAction="#onNavDashboard"/>
+                        </children>
+                    </HBox>
+                </children>
+            </VBox>
+
+        </StackPane>
+    </center>
+
+    <!-- BOTTOM STATUS ONLY -->
+    <bottom>
+        <HBox spacing="10" alignment="CENTER_LEFT" styleClass="bottom-bar">
+            <children>
+                <Label fx:id="lblStatus" text="Ready."/>
+            </children>
+        </HBox>
+    </bottom>
+
+</BorderPane>
+
+
+
+
+
+
+

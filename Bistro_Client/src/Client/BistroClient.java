@@ -1,54 +1,48 @@
 package Client;
 
+import javafx.application.Platform;
 import ocsf.client.AbstractClient;
 
-/**
- * Simple OCSF client that delegates events to the ClientController.
- */
 public class BistroClient extends AbstractClient {
 
-    private final ClientController controller;
+    private ClientUI ui;
 
-    /**
-     * Creates a new client connected to the given host/port and bound to a controller.
-     */
-    public BistroClient(String host, int port, ClientController controller) {
+    public BistroClient(String host, int port, ClientUI ui) {
         super(host, port);
-        this.controller = controller;
+        this.ui = ui;
     }
 
-    /**
-     * Called when a message arrives from the server; forwards it to the controller.
-     */
-    @Override
-    protected void handleMessageFromServer(Object msg) {
-        controller.handleServerMessage(msg);
+    public void setUI(ClientUI ui) {
+        this.ui = ui;
     }
 
-    /**
-     * Called when the TCP connection is successfully established.
-     */
     @Override
     protected void connectionEstablished() {
-        controller.onConnected();
+        Platform.runLater(() -> { if (ui != null) ui.onConnected(); });
     }
 
-    /**
-     * Called when the TCP connection is closed (by client or server).
-     */
     @Override
     protected void connectionClosed() {
-        controller.onDisconnected();
+        Platform.runLater(() -> { if (ui != null) ui.onDisconnected(); });
     }
 
-    /**
-     * Called when a connection-related exception occurs.
-     */
     @Override
     protected void connectionException(Exception exception) {
-        controller.onConnectionError(exception);
+        Platform.runLater(() -> { if (ui != null) ui.onConnectionError(exception); });
     }
+
+@Override
+protected void handleMessageFromServer(Object msg) {
+    Platform.runLater(() -> {
+        if (ui != null) {
+            ui.handleServerMessage(msg);
+        }
+    });
 }
+
+    
+}
+
 
 
 

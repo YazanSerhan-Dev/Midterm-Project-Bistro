@@ -1,219 +1,1110 @@
 package Client;
 
-import common.Message;
 import javafx.application.Platform;
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
+import javafx.scene.layout.VBox;
+import javafx.event.ActionEvent;
 
-/**
- * JavaFX controller for the Bistro client window.
- * Manages connection to the server and reservation actions.
- */
-public class ClientController {
+import common.Envelope;
+import common.KryoMessage;
+import common.KryoUtil;
+import common.OpCode;
+import common.dto.MakeReservationResponseDTO;
+import common.dto.ProfileDTO;
+import common.dto.WaitingListDTO;
+import common.dto.MakeReservationRequestDTO;
 
-    @FXML private TextField txtServerIp;
-    @FXML private TextArea txtAreaReservations;
+import java.sql.Timestamp;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
 
-    @FXML private TextField txtReservationNumber;
-    @FXML private TextField txtReservationDate;    // yyyy-MM-dd
-    @FXML private TextField txtNumberOfGuests;
+import java.lang.reflect.Method;
+import java.util.List;
+
+public class ClientController implements ClientUI {
 
     @FXML private Label lblStatus;
+    @FXML private Label lblUserInfo;
 
-    @FXML private Button btnConnect;
-    @FXML private Button btnDisconnect;
-    @FXML private Button btnGetReservations;
-    @FXML private Button btnUpdateReservation;
+    @FXML private Button btnMyProfile;
+    @FXML private Button btnHistory;
 
+    @FXML private VBox paneDashboard;
+    @FXML private VBox paneProfile;
+    @FXML private VBox paneHistory;
+
+    @FXML private Label lblActiveReservations;
+    @FXML private Label lblBalanceDue;
+    @FXML private Label lblSubscriptionStatus;
+
+    @FXML private VBox paneNewReservation;
+    @FXML private TextField txtNumCustomers;
+    @FXML private DatePicker dpReservationDate;
+    @FXML private ComboBox<String> cbReservationTime;
+    @FXML private Label lblReservationFormMsg;
+
+    // ✅ NEW: suggested alternatives UI
+    @FXML private Label lblSuggestedTimesTitle;
+    @FXML private ListView<Timestamp> lvSuggestedTimes;
+    private final ObservableList<Timestamp> suggestedTimes = FXCollections.observableArrayList();
+
+    // ===== Reservations table =====
+    @FXML private TableView<ReservationRow> tblReservations;
+
+    @FXML private TableColumn<ReservationRow, Number> colReservationId;
+    @FXML private TableColumn<ReservationRow, String> colConfirmationCode;
+    @FXML private TableColumn<ReservationRow, String> colReservationTime;
+    @FXML private TableColumn<ReservationRow, String> colExpiryTime;
+    @FXML private TableColumn<ReservationRow, Number> colCustomers;
+    @FXML private TableColumn<ReservationRow, String> colStatus;
+
+    @FXML private Button btnCancelReservation;
+
+    private final ObservableList<ReservationRow> reservations = FXCollections.observableArrayList();
+
+    // Profile / history still UI-only for now
+    @FXML private TextField txtMemberNumber;
+    @FXML private TextField txtFullName;
+    @FXML private TextField txtPhone;
+    @FXML private TextField txtEmail;
+    @FXML private TextField txtBarcodeData;
+    
+    @FXML private TableColumn<ReservationRow, Number> colHistResId;
+    @FXML private TableColumn<ReservationRow, String> colHistConfCode;
+    @FXML private TableColumn<ReservationRow, String> colHistResTime;
+    @FXML private TableColumn<ReservationRow, String> colHistExpTime;
+    @FXML private TableColumn<ReservationRow, Number> colHistCustomers;
+    @FXML private TableColumn<ReservationRow, String> colHistStatus;
+
+
+    @FXML private TableView<ReservationRow> tblHistory;
+    private final ObservableList<ReservationRow> history = FXCollections.observableArrayList();
+    
+    private boolean isSubscriber;
+
+
+
+    // IMPORTANT: this field now mirrors the SINGLE shared client from ClientSession
     private BistroClient client;
-    private static final int PORT = 5555;
 
-    /**
-     * Initializes the UI with default values and disconnected state.
-     */
+    // ✅ Pending reservation base (after availability check)
+    private MakeReservationRequestDTO pendingReservationBase;
+
+
     @FXML
     private void initialize() {
-        txtServerIp.setText("127.0.0.1");
-        setConnected(false);
-        lblStatus.setText("Not connected");
-    }
+        isSubscriber = "SUBSCRIBER".equals(ClientSession.getRole());
 
-    /**
-     * Enables or disables UI buttons according to connection state.
-     */
-    private void setConnected(boolean connected) {
-        btnConnect.setDisable(connected);
-        btnDisconnect.setDisable(!connected);
-        btnGetReservations.setDisable(!connected);
-        btnUpdateReservation.setDisable(!connected);
-    }
+        lblStatus.setText("Ready.");
+        lblUserInfo.setText(isSubscriber ? "Welcome, User (Subscriber)" : "Welcome, User (Customer)");
 
-    /**
-     * Handles Connect button click: creates client and opens connection.
-     */
-    @FXML
-    private void onConnect() {
-        if (client != null && client.isConnected()) {
-            return;
+        // sync with already-connected shared client (if exists)
+        this.client = ClientSession.getClient();
+
+        btnMyProfile.setVisible(isSubscriber);
+        btnMyProfile.setManaged(isSubscriber);
+
+        btnHistory.setVisible(isSubscriber);
+        btnHistory.setManaged(isSubscriber);
+
+        lblActiveReservations.setText("0");
+        lblBalanceDue.setText("₪0.00");
+        lblSubscriptionStatus.setText(isSubscriber ? "Active (10% off)" : "Not Subscribed");
+
+        setupReservationsTable();
+        
+        setupHistoryTable();
+        tblHistory.setItems(history);
+        
+        tblHistory.setItems(history);
+
+        tblReservations.setItems(reservations);
+        reservations.clear();
+
+        btnCancelReservation.setDisable(true);
+        tblReservations.getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) ->
+                btnCancelReservation.setDisable(newV == null)
+        );
+
+        if (dpReservationDate != null) {
+            dpReservationDate.setValue(LocalDate.now());
+
+            dpReservationDate.valueProperty().addListener((obs, oldV, newV) -> {
+                hideSuggestedTimesUI();
+                requestAvailableTimesForSelectedDate();
+            });
         }
 
-        String host = txtServerIp.getText().trim();
-        if (host.isEmpty()) host = "127.0.0.1";
+        if (cbReservationTime != null) {
+            cbReservationTime.getItems().clear();
+        }
 
+
+        if (lblReservationFormMsg != null) {
+            lblReservationFormMsg.setText("");
+        }
+
+        // ✅ Setup suggested times list (click -> autofill)
+        if (lvSuggestedTimes != null) {
+            lvSuggestedTimes.setItems(suggestedTimes);
+
+            // Display Timestamp nicely
+            lvSuggestedTimes.setCellFactory(list -> new ListCell<>() {
+                @Override
+                protected void updateItem(Timestamp item, boolean empty) {
+                    super.updateItem(item, empty);
+                    if (empty || item == null) {
+                        setText(null);
+                        return;
+                    }
+                    LocalDateTime ldt = item.toLocalDateTime();
+                    setText(ldt.toLocalDate() + "  " + String.format("%02d:%02d", ldt.getHour(), ldt.getMinute()));
+                }
+            });
+
+            // On click selection -> fill fields
+            lvSuggestedTimes.getSelectionModel().selectedItemProperty().addListener((obs, oldV, newV) -> {
+                if (newV != null) {
+                    applySuggestedTime(newV);
+                }
+            });
+
+            hideSuggestedTimesUI();
+        }
+
+        showPane(paneDashboard);
+
+        // Auto-load reservations when main screen opens (first login)
+        Platform.runLater(() -> {
+            if (client != null && client.isConnected()) {
+                onRefreshReservations();
+            }
+        });
+        Platform.runLater(this::requestAvailableTimesForSelectedDate);
+    }
+
+    private void setupReservationsTable() {
+        colReservationId.setCellValueFactory(c -> c.getValue().reservationIdProperty());
+        colConfirmationCode.setCellValueFactory(c -> c.getValue().confirmationCodeProperty());
+        colReservationTime.setCellValueFactory(c -> c.getValue().reservationTimeProperty());
+        colExpiryTime.setCellValueFactory(c -> c.getValue().expiryTimeProperty());
+        colCustomers.setCellValueFactory(c -> c.getValue().numOfCustomersProperty());
+        colStatus.setCellValueFactory(c -> c.getValue().statusProperty());
+    }
+    
+    private void setupHistoryTable() {
+    	colHistResId.setCellValueFactory(c -> c.getValue().reservationIdProperty());
+    	colHistConfCode.setCellValueFactory(c -> c.getValue().confirmationCodeProperty());
+    	colHistResTime.setCellValueFactory(c -> c.getValue().reservationTimeProperty());
+    	colHistExpTime.setCellValueFactory(c -> c.getValue().expiryTimeProperty());
+        colHistCustomers.setCellValueFactory(c -> c.getValue().numOfCustomersProperty());
+        colHistStatus.setCellValueFactory(c -> c.getValue().statusProperty());
+    }
+
+
+    private void showPane(VBox pane) {
+        paneDashboard.setVisible(false); paneDashboard.setManaged(false);
+        paneProfile.setVisible(false);   paneProfile.setManaged(false);
+        paneHistory.setVisible(false);   paneHistory.setManaged(false);
+
+        if (paneNewReservation != null) {
+            paneNewReservation.setVisible(false);
+            paneNewReservation.setManaged(false);
+        }
+
+        pane.setVisible(true);
+        pane.setManaged(true);
+    }
+
+    // ===== Suggested times helpers =====
+
+    private void showSuggestedTimesUI(List<Timestamp> alts) {
+        if (lblSuggestedTimesTitle == null || lvSuggestedTimes == null) return;
+
+        suggestedTimes.clear();
+        if (alts != null) suggestedTimes.addAll(alts);
+
+        boolean has = !suggestedTimes.isEmpty();
+
+        lblSuggestedTimesTitle.setVisible(has);
+        lblSuggestedTimesTitle.setManaged(has);
+
+        lvSuggestedTimes.setVisible(has);
+        lvSuggestedTimes.setManaged(has);
+
+        if (has) {
+            lvSuggestedTimes.getSelectionModel().clearSelection();
+        }
+    }
+
+    private void hideSuggestedTimesUI() {
+        if (lblSuggestedTimesTitle != null) {
+            lblSuggestedTimesTitle.setVisible(false);
+            lblSuggestedTimesTitle.setManaged(false);
+        }
+        if (lvSuggestedTimes != null) {
+            lvSuggestedTimes.setVisible(false);
+            lvSuggestedTimes.setManaged(false);
+        }
+        suggestedTimes.clear();
+    }
+
+    private void applySuggestedTime(Timestamp ts) {
+        LocalDateTime ldt = ts.toLocalDateTime();
+
+        if (dpReservationDate != null) {
+            dpReservationDate.setValue(ldt.toLocalDate());
+        }
+        if (cbReservationTime != null) {
+            String hhmm = String.format("%02d:%02d", ldt.getHour(), ldt.getMinute());
+            cbReservationTime.getSelectionModel().select(hhmm);
+        }
+
+        if (lblReservationFormMsg != null) {
+            lblReservationFormMsg.setText("✅ Selected alternative time. Click 'Create Reservation' again to confirm.");
+        }
+    }
+
+    // ===== Networking =====
+
+    public void connectToServer(String host, int port) {
         try {
-            client = new BistroClient(host, PORT, this);
-            client.openConnection();
-            lblStatus.setText("Connecting to IP : " + host + " Via Port:" + PORT);
+            ClientSession.configure(host, port);
+            ClientSession.connect(this);
+
+            this.client = ClientSession.getClient();
+
+            lblStatus.setText("Connecting to " + host + ":" + port + " ...");
         } catch (Exception e) {
-            e.printStackTrace();
             lblStatus.setText("Connection failed: " + e.getMessage());
         }
     }
 
-    /**
-     * Handles Disconnect button click: closes the connection if active.
-     */
-    @FXML
-    private void onDisconnect() {
-        disconnectFromServer();
-    }
-
-    /**
-     * Closes the client connection safely if it is currently connected.
-     */
     public void disconnectFromServer() {
-        if (client != null && client.isConnected()) {
-            try {
-                client.closeConnection();
-            } catch (Exception e) {
-                e.printStackTrace();
+        try {
+            BistroClient c = ClientSession.getClient();
+            this.client = c;
+
+            if (c != null && c.isConnected()) {
+                c.closeConnection();
             }
+        } catch (Exception ignored) {
         }
     }
 
-    /**
-     * Sends a request to the server to fetch all reservations.
-     */
-    @FXML
-    private void onGetReservations() {
-        if (!isConnected()) return;
-
-        try {
-            Message msg = new Message(Message.Type.GET_RESERVATIONS);
-            client.sendToServer(msg);
-            lblStatus.setText("Requesting reservations...");
-        } catch (Exception e) {
-            e.printStackTrace();
-            lblStatus.setText("Error sending request");
-        }
-    }
-
-    /**
-     * Sends an update request for a specific reservation (date & guests).
-     */
-    @FXML
-    private void onUpdateReservation() {
-        if (!isConnected()) return;
-
-        try {
-            int num = Integer.parseInt(txtReservationNumber.getText().trim());
-            String dateStr = txtReservationDate.getText().trim();
-            int guests = Integer.parseInt(txtNumberOfGuests.getText().trim());
-
-            Message msg = new Message(Message.Type.UPDATE_RESERVATION);
-            msg.setReservationNumber(num);
-            msg.setReservationDate(dateStr);
-            msg.setNumberOfGuests(guests);
-
-            client.sendToServer(msg);
-            lblStatus.setText("Sending update...");
-
-        } catch (NumberFormatException e) {
-            lblStatus.setText("Please enter valid numbers");
-        } catch (Exception e) {
-            e.printStackTrace();
-            lblStatus.setText("Error sending update");
-        }
-    }
-
-    /**
-     * Checks if the client is currently connected; updates status label if not.
-     */
-    private boolean isConnected() {
-        if (client == null || !client.isConnected()) {
-            lblStatus.setText("Not connected");
-            return false;
-        }
-        return true;
-    }
-
-    /**
-     * Callback from BistroClient when a connection is successfully established.
-     */
     public void onConnected() {
-        Platform.runLater(() -> {
-            setConnected(true);
-            lblStatus.setText("Connected");
-        });
+        Platform.runLater(() -> lblStatus.setText("Connected to server."));
+   
     }
 
-    /**
-     * Callback from BistroClient when the connection is closed.
-     */
     public void onDisconnected() {
-        Platform.runLater(() -> {
-            setConnected(false);
-            lblStatus.setText("Disconnected");
-        });
+        Platform.runLater(() -> lblStatus.setText("Disconnected."));
     }
 
-    /**
-     * Callback from BistroClient when a connection error occurs.
-     */
     public void onConnectionError(Exception e) {
-        Platform.runLater(() -> {
-            setConnected(false);
-            lblStatus.setText("Connection error : " + e.getMessage());
-        });
+        Platform.runLater(() -> lblStatus.setText("Connection error: " + e.getMessage()));
     }
 
-    /**
-     * Handles messages received from the server and updates the UI accordingly.
-     */
     public void handleServerMessage(Object msg) {
         Platform.runLater(() -> {
-            if (msg instanceof Message) {
-                Message m = (Message) msg;
+            Envelope env = unwrapToEnvelope(msg);
+            if (env == null) {
+                lblStatus.setText("Decode failed.");
+                return;
+            }
+            if (!env.isOk()) {
+                lblStatus.setText("ERROR: " + env.getMessage());
+                return;
+            }
 
-                switch (m.getType()) {
-                    case RESERVATIONS_TEXT:
-                        txtAreaReservations.setText(
-                                m.getText() != null ? m.getText() : ""
-                        );
-                        lblStatus.setText("Reservations received");
-                        break;
+            switch (env.getOp()) {
+                case RESPONSE_RESERVATIONS_LIST -> handleReservationsResponse(env.getPayload());
 
-                    case UPDATE_RESULT:
-                        lblStatus.setText(
-                                m.getText() != null ? m.getText() : "Update result"
-                        );
-                        break;
+                case RESPONSE_MAKE_RESERVATION -> handleMakeReservationResponse(env.getPayload());
+                case RESPONSE_CHECK_AVAILABILITY -> handleAvailabilityCheckResponse(env.getPayload());
+                case RESPONSE_LEAVE_WAITING_LIST -> handleLeaveWaitingListResponse(env.getPayload());
+                
+                case RESPONSE_GET_PROFILE -> handleGetProfileResponse(env.getPayload());
+                case RESPONSE_UPDATE_PROFILE -> handleUpdateProfileResponse(env.getPayload());
+                case RESPONSE_GET_AVAILABLE_TIMES -> handleAvailableTimesResponse(env.getPayload());
 
-                    default:
-                        lblStatus.setText("Unknown message type");
-                }
-
-            } else {
-                txtAreaReservations.setText(String.valueOf(msg));
-                lblStatus.setText("Raw message from server");
+                default -> lblStatus.setText("Server replied: " + env.getOp());
             }
         });
     }
+
+    private Envelope unwrapToEnvelope(Object msg) {
+        try {
+            if (msg instanceof Envelope e) return e;
+
+            if (msg instanceof KryoMessage km) {
+                Object obj = KryoUtil.fromBytes(km.getPayload());
+                if (obj instanceof Envelope e) return e;
+            }
+        } catch (Exception ex) {
+            lblStatus.setText("Decode error: " + ex.getMessage());
+        }
+        return null;
+    }
+    
+ // ===== Guest contact dialog (email + phone) =====
+    private static class GuestContact {
+        final String email;
+        final String phone;
+
+        GuestContact(String email, String phone) {
+            this.email = email;
+            this.phone = phone;
+        }
+    }
+    
+    private static boolean isValidEmailFormat(String email) {
+        if (email == null) return false;
+        String e = email.trim();
+        return e.matches("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
+    }
+
+    private static boolean isValidPhone10Digits(String phone) {
+        if (phone == null) return false;
+        String p = phone.trim();
+        return p.matches("^05\\d{8}$");
+    }
+
+    private GuestContact askGuestEmailAndPhone() {
+
+        Dialog<GuestContact> dialog = new Dialog<>();
+        dialog.setTitle("Customer Reservation");
+        dialog.setHeaderText("Enter your email and phone to receive confirmation + reminders");
+
+        ButtonType okBtn = new ButtonType("OK", ButtonBar.ButtonData.OK_DONE);
+        dialog.getDialogPane().getButtonTypes().addAll(okBtn, ButtonType.CANCEL);
+
+        javafx.scene.layout.GridPane grid = new javafx.scene.layout.GridPane();
+        grid.setHgap(10);
+        grid.setVgap(10);
+
+        TextField emailField = new TextField();
+        emailField.setPromptText("email@example.com");
+
+        TextField phoneField = new TextField();
+        phoneField.setPromptText("05XXXXXXXX"); // user can type anything, but we validate 10 digits
+
+        Label lblError = new Label();
+        lblError.setStyle("-fx-text-fill: #d32f2f; -fx-font-weight: bold;");
+
+        grid.add(new Label("Email:"), 0, 0);
+        grid.add(emailField, 1, 0);
+        grid.add(new Label("Phone:"), 0, 1);
+        grid.add(phoneField, 1, 1);
+        grid.add(lblError, 1, 2);
+
+        dialog.getDialogPane().setContent(grid);
+
+        // Disable OK until valid
+        Button okButton = (Button) dialog.getDialogPane().lookupButton(okBtn);
+        okButton.setDisable(true);
+        Runnable validate = () -> {
+            String email = emailField.getText() == null ? "" : emailField.getText().trim();
+            String phone = phoneField.getText() == null ? "" : phoneField.getText().trim();
+
+            boolean okEmail = isValidEmailFormat(email);
+            boolean okPhone = isValidPhone10Digits(phone);
+
+            if (!email.isBlank() && !okEmail) {
+                lblError.setText("Invalid email format.");
+            } else if (!phone.isBlank() && !okPhone) {
+                lblError.setText("Invalid phone (must be 10 digits like 05XXXXXXXX).");
+            } else {
+                lblError.setText("");
+            }
+
+            okButton.setDisable(!(okEmail && okPhone));
+        };
+
+        emailField.textProperty().addListener((obs, oldV, newV) -> validate.run());
+        phoneField.textProperty().addListener((obs, oldV, newV) -> validate.run());
+        validate.run();
+
+        dialog.setResultConverter(btn -> {
+            if (btn == okBtn) {
+                String email = emailField.getText() == null ? "" : emailField.getText().trim();
+                String phone = phoneField.getText() == null ? "" : phoneField.getText().trim();
+                // safety: validate again
+                if (!isValidEmailFormat(email) || !isValidPhone10Digits(phone)) return null;
+                return new GuestContact(email, phone);
+            }
+            return null;
+        });
+
+        return dialog.showAndWait().orElse(null);
+    }
+    
+    @SuppressWarnings("unchecked")
+    private void handleAvailableTimesResponse(Object payload) {
+        if (cbReservationTime == null) return;
+
+        cbReservationTime.setPromptText("Select time");
+
+        // ✅ IMPORTANT: reset selection/value so it doesn't stick to old value (like 19:30)
+        cbReservationTime.getSelectionModel().clearSelection();
+        cbReservationTime.setValue(null);
+        cbReservationTime.getItems().clear();
+
+        if (!(payload instanceof java.util.List<?> list)) {
+            if (lblReservationFormMsg != null) lblReservationFormMsg.setText("Bad times payload.");
+            return;
+        }
+
+        for (Object o : list) {
+            if (o != null) cbReservationTime.getItems().add(o.toString());
+        }
+
+        if (cbReservationTime.getItems().isEmpty()) {
+            if (lblReservationFormMsg != null) lblReservationFormMsg.setText("Restaurant is closed on selected date.");
+        } else {
+            cbReservationTime.getSelectionModel().selectFirst(); // ✅ now it will be 09:00/whatever first
+            if (lblReservationFormMsg != null) lblReservationFormMsg.setText("");
+        }
+    }
+
+
+
+    private void handleGetProfileResponse(Object payload) {
+        if (!(payload instanceof ProfileDTO dto)) {
+            lblStatus.setText("Bad profile payload.");
+            return;
+        }
+
+        txtMemberNumber.setText(dto.getMemberNumber());
+        txtFullName.setText(dto.getFullName());
+        txtPhone.setText(dto.getPhone() == null ? "" : dto.getPhone());
+        txtEmail.setText(dto.getEmail() == null ? "" : dto.getEmail());
+
+        // ✅ NEW
+        if (txtBarcodeData != null) {
+            txtBarcodeData.setText(dto.getBarcodeData() == null ? "" : dto.getBarcodeData());
+            txtBarcodeData.setEditable(false);
+        }
+
+        lblStatus.setText("Profile loaded.");
+    }
+
+
+
+    private void handleUpdateProfileResponse(Object payload) {
+        // simplest: server returns String message OR ProfileDTO back
+        if (payload instanceof String msg) {
+            lblStatus.setText(msg);
+            return;
+        }
+
+        if (payload instanceof common.dto.ProfileDTO dto) {
+            txtFullName.setText(dto.getFullName() == null ? "" : dto.getFullName());
+            txtPhone.setText(dto.getPhone() == null ? "" : dto.getPhone());
+            txtEmail.setText(dto.getEmail() == null ? "" : dto.getEmail());
+            lblStatus.setText("✅ Profile updated.");
+            return;
+        }
+
+        lblStatus.setText("✅ Profile updated.");
+    }
+
+    
+    private void handleAvailabilityCheckResponse(Object payload) {
+        if (!(payload instanceof MakeReservationResponseDTO res)) {
+            lblStatus.setText("Bad payload for availability check.");
+            return;
+        }
+
+        if (res.isOk()) {
+            // Available -> now continue and ask details (guest only) and send make reservation
+            boolean isSubscriber = "SUBSCRIBER".equals(ClientSession.getRole());
+
+            String subscriberUsername = null;
+            String guestEmail = null;
+            String guestPhone = null;
+
+            if (isSubscriber) {
+                subscriberUsername = ClientSession.getUsername();
+                if (subscriberUsername == null || subscriberUsername.isBlank()) {
+                    if (lblReservationFormMsg != null) lblReservationFormMsg.setText("Missing subscriber username (session).");
+                    return;
+                }
+            } else {
+                GuestContact contact = askGuestEmailAndPhone();
+                if (contact == null) {
+                    if (lblReservationFormMsg != null) lblReservationFormMsg.setText("Cancelled.");
+                    return;
+                }
+                guestEmail = contact.email;
+                guestPhone = contact.phone;
+
+                if (guestEmail.isBlank()) {
+                    if (lblReservationFormMsg != null) lblReservationFormMsg.setText("Email is required for customers.");
+                    return;
+                }
+                if (guestPhone.isBlank()) {
+                    if (lblReservationFormMsg != null) lblReservationFormMsg.setText("Phone is required for customers.");
+                    return;
+                }
+                
+                ClientSession.setGuestEmail(guestEmail);
+                ClientSession.setGuestPhone(guestPhone);
+            }
+
+            // Use the pending base request time+num
+            MakeReservationRequestDTO dto = new MakeReservationRequestDTO(
+                    subscriberUsername,
+                    guestPhone,
+                    guestEmail,
+                    pendingReservationBase.getNumOfCustomers(),
+                    pendingReservationBase.getReservationTime()
+            );
+
+            try {
+                Envelope env = Envelope.request(OpCode.REQUEST_MAKE_RESERVATION, dto);
+                client.sendToServer(new KryoMessage("ENVELOPE", KryoUtil.toBytes(env)));
+                if (lblReservationFormMsg != null) lblReservationFormMsg.setText("Sending...");
+            } catch (Exception ex) {
+                if (lblReservationFormMsg != null) lblReservationFormMsg.setText("Failed: " + ex.getMessage());
+            }
+
+        } else {
+            // Not available -> show alternatives (no email/phone asked)
+            if (lblReservationFormMsg != null) lblReservationFormMsg.setText(res.getMessage());
+
+            List<Timestamp> alts = res.getSuggestedTimes();
+            if (alts != null && !alts.isEmpty()) showSuggestedTimesUI(alts);
+            else hideSuggestedTimesUI();
+        }
+    }
+
+
+    private void handleMakeReservationResponse(Object payload) {
+        if (!(payload instanceof MakeReservationResponseDTO res)) {
+            lblStatus.setText("Bad payload for make reservation.");
+            return;
+        }
+
+        if (res.isOk()) {
+            lblStatus.setText("✅ " + res.getMessage() + " | Code: " + res.getConfirmationCode());
+
+            // clear alternatives when success
+            hideSuggestedTimesUI();
+
+            if (lblReservationFormMsg != null) {
+                lblReservationFormMsg.setText("");
+            }
+
+            onRefreshReservations();
+        } else {
+            lblStatus.setText("❌ " + res.getMessage());
+
+            List<Timestamp> alts = res.getSuggestedTimes();
+            if (alts != null && !alts.isEmpty()) {
+                if (lblReservationFormMsg != null) {
+                    lblReservationFormMsg.setText("No availability at the selected time. Pick an alternative below:");
+                }
+                showSuggestedTimesUI(alts);
+            } else {
+                if (lblReservationFormMsg != null) {
+                    lblReservationFormMsg.setText("No availability and no alternative times found.");
+                }
+                hideSuggestedTimesUI();
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void handleReservationsResponse(Object payload) {
+        if (!(payload instanceof List<?> list)) {
+            lblStatus.setText("Bad reservations payload.");
+            return;
+        }
+
+        reservations.clear();
+        history.clear(); // ✅ add this
+
+        int activeCount = 0;
+        int totalCount = 0;
+
+        for (Object dto : list) {
+            ReservationRow row = dtoToRow(dto);
+            if (row == null) continue;
+
+            totalCount++;
+
+            String status = row.getStatus();
+            boolean active = isActiveStatus(status);
+
+            if (active) activeCount++;
+
+            if (isSubscriber) {
+                if (active) {
+                    // ✅ Active -> My Reservations
+                    reservations.add(row);
+                } else {
+                    // ✅ Inactive -> History
+                    history.add(row);
+                }
+            } else {
+                // customer/guest: show all in My Reservations (no History page)
+                reservations.add(row);
+            }
+        }
+
+        // update counters/labels
+        lblActiveReservations.setText(String.valueOf(isSubscriber ? activeCount : totalCount));
+        lblStatus.setText("Loaded reservations: " + reservations.size() +
+                (isSubscriber ? (" | history: " + history.size()) : ""));
+    }
+
+
+    private boolean isActiveStatus(String status) {
+        if (status == null) return false;
+
+        String s = status.trim().toUpperCase();
+
+        // Active reservations = still relevant "now"
+        // CONFIRMED -> future upcoming
+        // ARRIVED -> already came, still active until finished/closed
+        // (add more if your DB uses them)
+        return s.equals("CONFIRMED") || s.equals("ARRIVED") || s.equals("PENDING");
+    }
+
+    
+    private ReservationRow dtoToRow(Object dto) {
+        try {
+            int id = getInt(dto, "getReservationId", 0);
+            String code = getString(dto, "getConfirmationCode", null);
+            if (code == null) code = getString(dto, "getCode", "-");
+
+            String resTime = getString(dto, "getReservationTime", "-");
+            String expTime = getString(dto, "getExpiryTime", "-");
+            int customers = getInt(dto, "getNumOfCustomers", 0);
+            String status = getString(dto, "getStatus", "-");
+
+            return new ReservationRow(id, code, resTime, expTime, customers, status);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private String getString(Object obj, String methodName, String def) {
+        try {
+            Method m = obj.getClass().getMethod(methodName);
+            Object v = m.invoke(obj);
+            return (v == null) ? def : v.toString();
+        } catch (Exception e) {
+            return def;
+        }
+    }
+
+    private int getInt(Object obj, String methodName, int def) {
+        try {
+            Method m = obj.getClass().getMethod(methodName);
+            Object v = m.invoke(obj);
+            if (v == null) return def;
+            if (v instanceof Number n) return n.intValue();
+            return Integer.parseInt(v.toString());
+        } catch (Exception e) {
+            return def;
+        }
+    }
+    
+    private void handleLeaveWaitingListResponse(Object payload) {
+        if (payload instanceof WaitingListDTO dto) {
+            lblStatus.setText("✅ Left waiting list. Code: " + dto.getConfirmationCode() +
+                    " | Status: " + dto.getStatus());
+            return;
+        }
+
+        // If server sends string messages for errors, show them
+        lblStatus.setText(payload == null ? "✅ Left waiting list." : payload.toString());
+    }
+    
+    private void requestAvailableTimesForSelectedDate() {
+        this.client = ClientSession.getClient();
+
+        if (client == null || !client.isConnected()) {
+            if (lblReservationFormMsg != null) lblReservationFormMsg.setText("Not connected to server.");
+            return;
+        }
+
+        if (dpReservationDate == null || cbReservationTime == null) return;
+
+        LocalDate date = dpReservationDate.getValue();
+        if (date == null) return;
+
+        try {
+            Envelope env = Envelope.request(OpCode.REQUEST_GET_AVAILABLE_TIMES, date.toString());
+            client.sendToServer(new KryoMessage("ENVELOPE", KryoUtil.toBytes(env)));
+
+            cbReservationTime.getItems().clear();
+            cbReservationTime.setPromptText("Loading times...");
+        } catch (Exception ex) {
+            if (lblReservationFormMsg != null) lblReservationFormMsg.setText("Failed to load times: " + ex.getMessage());
+        }
+    }
+
+
+
+    // ===== UI actions =====
+    
+    @FXML
+    private void onLeaveWaitingList() {
+        this.client = ClientSession.getClient();
+
+        if (client == null || !client.isConnected()) {
+            lblStatus.setText("Not connected.");
+            return;
+        }
+
+        // Ask for waiting code (since main page doesn't show it)
+        TextInputDialog dialog = new TextInputDialog();
+        dialog.setTitle("Leave Waiting List");
+        dialog.setHeaderText("Enter your waiting list code");
+        dialog.setContentText("Waiting Code:");
+
+        String code = dialog.showAndWait().orElse("").trim();
+
+        if (code.isBlank()) {
+            lblStatus.setText("Cancelled.");
+            return;
+        }
+
+        try {
+            String role = ClientSession.getRole();
+            String username = ClientSession.getUsername();
+
+            Object[] payload = new Object[] { role, username, code };
+
+            Envelope env = Envelope.request(OpCode.REQUEST_LEAVE_WAITING_LIST, payload);
+            client.sendToServer(new KryoMessage("ENVELOPE", KryoUtil.toBytes(env)));
+
+            lblStatus.setText("Leaving waiting list...");
+        } catch (Exception e) {
+            lblStatus.setText("Send failed: " + e.getMessage());
+        }
+    }
+
+
+    @FXML
+    private void onRefreshReservations() {
+        this.client = ClientSession.getClient();
+
+        if (client == null || !client.isConnected()) {
+            lblStatus.setText("Not connected.");
+            return;
+        }
+
+        try {
+            // If customer and guest identity not known yet, ask now (covers clicking Refresh directly)
+            if (!isSubscriber) {
+                String email = ClientSession.getGuestEmail();
+                String phone = ClientSession.getGuestPhone();
+
+                if (email == null || email.isBlank() || phone == null || phone.isBlank()) {
+                    GuestContact contact = askGuestEmailAndPhone();
+                    if (contact == null) {
+                        lblStatus.setText("Cancelled.");
+                        return;
+                    }
+                    if (contact.email == null || contact.email.isBlank()
+                            || contact.phone == null || contact.phone.isBlank()) {
+                        lblStatus.setText("Email + phone are required to view your reservations.");
+                        return;
+                    }
+                    ClientSession.setGuestEmail(contact.email.trim());
+                    ClientSession.setGuestPhone(contact.phone.trim());
+                }
+            }
+
+            String role = ClientSession.getRole();
+            String username = ClientSession.getUsername();
+            String email = ClientSession.getGuestEmail();
+            String phone = ClientSession.getGuestPhone();
+
+            Object payload = new Object[] { role, username, email, phone };
+
+            Envelope env = Envelope.request(OpCode.REQUEST_RESERVATIONS_LIST, payload);
+            client.sendToServer(new KryoMessage("ENVELOPE", KryoUtil.toBytes(env)));
+
+            lblStatus.setText("Refreshing reservations...");
+        } catch (Exception e) {
+            lblStatus.setText("Send failed: " + e.getMessage());
+        }
+    }
+
+    @FXML
+    private void onCancelReservation() {
+        try {
+            this.client = ClientSession.getClient();
+
+            if (client == null || !client.isConnected()) {
+                lblStatus.setText("Not connected.");
+                return;
+            }
+
+            ReservationRow r = tblReservations.getSelectionModel().getSelectedItem();
+            if (r == null) {
+                lblStatus.setText("Select a reservation first.");
+                return;
+            }
+
+            // Only allow canceling active ones from UI side (server will re-check anyway)
+            String st = r.getStatus();
+            if (st != null && (st.equalsIgnoreCase("CANCELED") || st.equalsIgnoreCase("EXPIRED"))) {
+                lblStatus.setText("This reservation cannot be cancelled.");
+                return;
+            }
+
+            String role = ClientSession.getRole();              // "SUBSCRIBER" or "CUSTOMER"
+            String username = ClientSession.getUsername();      // subscriber only
+            String guestEmail = ClientSession.getGuestEmail();  // customer only (can be null)
+            String guestPhone = ClientSession.getGuestPhone();  // customer only (can be null)
+
+            // If customer and no identity stored yet, ask now (same logic you used before)
+            if (!"SUBSCRIBER".equalsIgnoreCase(role)) {
+                if (guestEmail == null || guestEmail.isBlank() || guestPhone == null || guestPhone.isBlank()) {
+                    GuestContact contact = askGuestEmailAndPhone();
+                    if (contact == null) {
+                        lblStatus.setText("Cancelled.");
+                        return;
+                    }
+                    if (contact.email == null || contact.email.isBlank() || contact.phone == null || contact.phone.isBlank()) {
+                        lblStatus.setText("Email + phone are required.");
+                        return;
+                    }
+                    ClientSession.setGuestEmail(contact.email.trim());
+                    ClientSession.setGuestPhone(contact.phone.trim());
+                    guestEmail = contact.email.trim();
+                    guestPhone = contact.phone.trim();
+                }
+            }
+
+            int reservationId = r.getReservationId();
+
+            Object[] payload = new Object[] {
+                    role,
+                    username,
+                    guestEmail,
+                    guestPhone,
+                    reservationId
+            };
+
+            Envelope env = Envelope.request(OpCode.REQUEST_CANCEL_RESERVATION, payload);
+            client.sendToServer(new KryoMessage("ENVELOPE", KryoUtil.toBytes(env)));
+
+            lblStatus.setText("Cancelling reservation...");
+            
+            onRefreshReservations();
+
+        } catch (Exception ex) {
+            lblStatus.setText("Cancel failed: " + ex.getMessage());
+            ex.printStackTrace();
+        }
+    }
+
+
+    @FXML private void onPayBill() { SceneManager.showPayBill(); }
+
+    @FXML private void onNavDashboard() { showPane(paneDashboard); }
+    @FXML
+    private void onNavReservations() {
+        // "My Reservations" -> go to Dashboard pane (where the table is) and refresh data
+        showPane(paneDashboard);
+
+        // If guest/customer: ask for email+phone if not known yet (after logout / first entry)
+        if (!isSubscriber) {
+            String email = ClientSession.getGuestEmail();
+            String phone = ClientSession.getGuestPhone();
+
+            if (email == null || email.isBlank() || phone == null || phone.isBlank()) {
+                GuestContact contact = askGuestEmailAndPhone();
+                if (contact == null) {
+                    lblStatus.setText("Cancelled.");
+                    return;
+                }
+                if (contact.email == null || contact.email.isBlank()
+                        || contact.phone == null || contact.phone.isBlank()) {
+                    lblStatus.setText("Email + phone are required to view your reservations.");
+                    return;
+                }
+
+                ClientSession.setGuestEmail(contact.email.trim());
+                ClientSession.setGuestPhone(contact.phone.trim());
+            }
+        }
+
+        // Finally, fetch the list from the server
+        onRefreshReservations();
+    }
+
+    @FXML
+    private void onNavProfile() {
+        if (!isSubscriber) return;
+
+        showPane(paneProfile);
+
+        this.client = ClientSession.getClient();
+        if (client == null || !client.isConnected()) {
+            lblStatus.setText("Not connected.");
+            return;
+        }
+
+        try {
+            String memberCode = ClientSession.getMemberCode(); // this should store member_code
+
+            if (memberCode == null || memberCode.isBlank()) {
+                lblStatus.setText("Member code missing. Please re-login.");
+                return;
+            }
+
+            Envelope env = Envelope.request(OpCode.REQUEST_GET_PROFILE, memberCode.trim());
+            client.sendToServer(new KryoMessage("ENVELOPE", KryoUtil.toBytes(env)));
+            lblStatus.setText("Loading profile...");
+        } catch (Exception ex) {
+            lblStatus.setText("Failed to load profile: " + ex.getMessage());
+        }
+
+    }
+    
+    @FXML
+    private void onCopyBarcode() {
+        if (txtBarcodeData == null) return;
+
+        String code = txtBarcodeData.getText();
+        if (code == null || code.isBlank()) {
+            lblStatus.setText("No barcode to copy.");
+            return;
+        }
+
+        javafx.scene.input.ClipboardContent cc = new javafx.scene.input.ClipboardContent();
+        cc.putString(code);
+        javafx.scene.input.Clipboard.getSystemClipboard().setContent(cc);
+
+        lblStatus.setText("Barcode copied ✅");
+    }
+
+    @FXML private void onNavHistory() { if (isSubscriber) showPane(paneHistory); }
+
+    @FXML
+    private void onLogout(ActionEvent e) {
+    	ClientSession.clearGuestIdentity();
+        SceneManager.showLogin();
+    }
+
+    @FXML
+    private void onNewReservation(ActionEvent e) {
+        showPane(paneNewReservation);
+        requestAvailableTimesForSelectedDate();
+        lblStatus.setText("Fill the form and click Create Reservation.");
+
+        if (lblReservationFormMsg != null) lblReservationFormMsg.setText("");
+        hideSuggestedTimesUI();
+    }
+
+    @FXML
+    private void onSaveProfile(ActionEvent e) {
+        if (!isSubscriber) return;
+
+        this.client = ClientSession.getClient();
+        if (client == null || !client.isConnected()) {
+            lblStatus.setText("Not connected.");
+            return;
+        }
+
+        String memberCode = txtMemberNumber.getText() == null ? "" : txtMemberNumber.getText().trim();
+        String fullName   = txtFullName.getText() == null ? "" : txtFullName.getText().trim();
+        String phone      = txtPhone.getText() == null ? "" : txtPhone.getText().trim();
+        String email      = txtEmail.getText() == null ? "" : txtEmail.getText().trim();
+
+        if (memberCode.isBlank()) { lblStatus.setText("Member code missing."); return; }
+        if (fullName.isBlank()) { lblStatus.setText("Full name is required."); return; }
+        if (phone.isBlank()) { lblStatus.setText("Phone is required."); return; }
+        if (email.isBlank() || !email.contains("@") || !email.contains(".")) {
+            lblStatus.setText("Invalid email.");
+            return;
+        }
+
+        try {
+            ProfileDTO dto = new ProfileDTO();
+            dto.setMemberNumber(memberCode);   // member_code
+            dto.setFullName(fullName);         // name
+            dto.setPhone(phone);
+            dto.setEmail(email);
+
+            Envelope env = Envelope.request(OpCode.REQUEST_UPDATE_PROFILE, dto);
+            client.sendToServer(new KryoMessage("ENVELOPE", KryoUtil.toBytes(env)));
+
+            lblStatus.setText("Saving profile...");
+        } catch (Exception ex) {
+            lblStatus.setText("Save failed: " + ex.getMessage());
+        }
+    }
+
+
+    ////to refactor
+    public BistroClient getClient() {
+        return client;
+    }
+ 
+
+
+    @FXML
+    private void onCreateReservation(ActionEvent e) {
+        try {
+            if (lblReservationFormMsg != null) lblReservationFormMsg.setText("");
+
+            this.client = ClientSession.getClient();
+
+            if (client == null || !client.isConnected()) {
+                if (lblReservationFormMsg != null) lblReservationFormMsg.setText("Not connected to server.");
+                return;
+            }
+
+            int num = Integer.parseInt(txtNumCustomers.getText().trim());
+            LocalDate date = dpReservationDate.getValue();
+            String timeStr = cbReservationTime.getValue();
+
+            if (date == null || timeStr == null) {
+                if (lblReservationFormMsg != null) lblReservationFormMsg.setText("Please choose date and time.");
+                return;
+            }
+
+            LocalTime time = LocalTime.parse(timeStr);
+            Timestamp ts = Timestamp.valueOf(LocalDateTime.of(date, time));
+
+            // Save pending base request
+            pendingReservationBase = new MakeReservationRequestDTO(null, null, null, num, ts);
+
+            // ✅ Ask server if there is availability BEFORE asking for email/phone
+            Envelope env = Envelope.request(OpCode.REQUEST_CHECK_AVAILABILITY, pendingReservationBase);
+            client.sendToServer(new KryoMessage("ENVELOPE", KryoUtil.toBytes(env)));
+
+            if (lblReservationFormMsg != null) lblReservationFormMsg.setText("Checking availability...");
+
+        } catch (NumberFormatException ex) {
+            if (lblReservationFormMsg != null) lblReservationFormMsg.setText("Customers must be a number.");
+        } catch (Exception ex) {
+            if (lblReservationFormMsg != null) lblReservationFormMsg.setText("Failed: " + ex.getMessage());
+            ex.printStackTrace();
+        }
+    }
+
+
+    @FXML
+    private void onClearReservationForm(ActionEvent e) {
+        if (txtNumCustomers != null) txtNumCustomers.clear();
+        if (dpReservationDate != null) dpReservationDate.setValue(LocalDate.now());
+        if (lblReservationFormMsg != null) lblReservationFormMsg.setText("");
+
+        hideSuggestedTimesUI();
+        requestAvailableTimesForSelectedDate();
+    }
 }
-
-
-
-
-
-
-

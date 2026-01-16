@@ -17,7 +17,7 @@ import java.util.concurrent.TimeUnit;
 public class MySQLConnectionPool {
 
     // ---------- DB CONFIG
-    private static final String URL = "jdbc:mysql://localhost:3306/bistrodb";
+    private static final String URL = "jdbc:mysql://localhost:3306/Bistro";
     private static final String USER = "root";
     private static final String PASSWORD = "Yazan12@"; 
 

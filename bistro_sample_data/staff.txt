@@ -1,0 +1,11 @@
+staff_id,username,password,staff_role,full_name
+1,staff1,pass1,MANAGER,Staff Member 1
+2,staff2,pass2,AGENT,Staff Member 2
+3,staff3,pass3,AGENT,Staff Member 3
+4,staff4,pass4,AGENT,Staff Member 4
+5,staff5,pass5,AGENT,Staff Member 5
+6,staff6,pass6,AGENT,Staff Member 6
+7,staff7,pass7,AGENT,Staff Member 7
+8,staff8,pass8,AGENT,Staff Member 8
+9,staff9,pass9,AGENT,Staff Member 9
+10,staff10,pass10,AGENT,Staff Member 10
