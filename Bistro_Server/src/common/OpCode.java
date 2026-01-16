@@ -1,8 +1,26 @@
 package common;
 
 /**
- * One enum for ALL operations in the system.
- * Client sends REQUEST_*, server replies RESPONSE_* (or ERROR).
+ * Defines all operation codes used in client-server communication.
+ *
+ * <p>
+ * {@code OpCode} is the system-wide "protocol dictionary": every message sent between
+ * the client and the server uses one value from this enum to indicate the requested
+ * action and the expected response type.
+ * </p>
+ *
+ * <h3>Naming Convention</h3>
+ * <ul>
+ *   <li><b>REQUEST_*</b> - Sent from client to server to ask for an operation.</li>
+ *   <li><b>RESPONSE_*</b> - Sent from server to client as a reply to a request.</li>
+ *   <li><b>INFO</b> / <b>ERROR</b> - General messages not tied to a specific request/response pair.</li>
+ * </ul>
+ *
+ * <p>
+ * In this project, {@code OpCode} is typically wrapped inside {@link common.Envelope}
+ * and transmitted over the network (often serialized using {@code KryoUtil}).
+ * Both client and server must share the same enum definition to remain compatible.
+ * </p>
  */
 public enum OpCode {
     // ===== Common =====
@@ -100,8 +118,8 @@ public enum OpCode {
     REQUEST_CURRENT_DINERS,
     RESPONSE_CURRENT_DINERS,
     
-    REQUEST_SUBSCRIBER_HISTORY,  // New
-    RESPONSE_SUBSCRIBER_HISTORY, // New
+    REQUEST_SUBSCRIBER_HISTORY,  
+    RESPONSE_SUBSCRIBER_HISTORY, 
     
  // ===== Table Management (Agent) =====
     REQUEST_TABLES_GET,
