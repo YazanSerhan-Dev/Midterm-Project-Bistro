@@ -1,3 +1,5 @@
+CREATE DATABASE  IF NOT EXISTS `bistro` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci */ /*!80016 DEFAULT ENCRYPTION='N' */;
+USE `bistro`;
 -- MySQL dump 10.13  Distrib 8.0.44, for Win64 (x86_64)
 --
 -- Host: 127.0.0.1    Database: bistro
@@ -29,8 +31,9 @@ CREATE TABLE `opening_hours` (
   `close_time` time NOT NULL,
   `is_special` enum('YES','NO') DEFAULT 'NO',
   `special_date` date DEFAULT NULL,
-  PRIMARY KEY (`hours_id`)
-) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+  PRIMARY KEY (`hours_id`),
+  UNIQUE KEY `day_of_week_UNIQUE` (`day_of_week`)
+) ENGINE=InnoDB AUTO_INCREMENT=8 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
@@ -39,7 +42,7 @@ CREATE TABLE `opening_hours` (
 
 LOCK TABLES `opening_hours` WRITE;
 /*!40000 ALTER TABLE `opening_hours` DISABLE KEYS */;
-INSERT INTO `opening_hours` VALUES (1,'Sunday','09:00:00','22:00:00','NO',NULL),(2,'Monday','09:00:00','22:00:00','NO',NULL),(3,'Tuesday','09:00:00','22:00:00','NO',NULL),(4,'Wednesday','09:00:00','22:00:00','NO',NULL),(5,'Thursday','09:00:00','22:00:00','NO',NULL),(6,'Friday','09:00:00','22:00:00','NO',NULL),(7,'Saturday','09:00:00','22:00:00','NO',NULL),(8,'Sunday','09:00:00','22:00:00','NO',NULL),(9,'Monday','09:00:00','22:00:00','NO',NULL),(10,'Tuesday','09:00:00','22:00:00','NO',NULL);
+INSERT INTO `opening_hours` VALUES (1,'Sunday','09:00:00','22:00:00','NO',NULL),(2,'Monday','09:00:00','22:00:00','NO',NULL),(3,'Tuesday','09:00:00','22:00:00','NO',NULL),(4,'Wednesday','09:00:00','22:00:00','NO',NULL),(5,'Thursday','09:00:00','22:00:00','NO',NULL),(6,'Friday','09:00:00','22:00:00','NO',NULL),(7,'Saturday','09:00:00','22:00:00','NO',NULL);
 /*!40000 ALTER TABLE `opening_hours` ENABLE KEYS */;
 UNLOCK TABLES;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
@@ -52,4 +55,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2025-12-28 13:45:46
+-- Dump completed on 2026-01-16 19:46:41

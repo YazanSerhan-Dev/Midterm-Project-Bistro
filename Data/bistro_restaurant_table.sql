@@ -1,3 +1,5 @@
+CREATE DATABASE  IF NOT EXISTS `bistro` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci */ /*!80016 DEFAULT ENCRYPTION='N' */;
+USE `bistro`;
 -- MySQL dump 10.13  Distrib 8.0.44, for Win64 (x86_64)
 --
 -- Host: 127.0.0.1    Database: bistro
@@ -26,6 +28,9 @@ CREATE TABLE `restaurant_table` (
   `table_id` varchar(10) NOT NULL,
   `num_of_seats` int NOT NULL,
   `status` enum('FREE','OCCUPIED','RESERVED') NOT NULL,
+  `reserved_for_reservation_id` int DEFAULT NULL,
+  `reserved_for_waiting_id` int DEFAULT NULL,
+  `reserved_until` datetime DEFAULT NULL,
   PRIMARY KEY (`table_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
@@ -36,7 +41,7 @@ CREATE TABLE `restaurant_table` (
 
 LOCK TABLES `restaurant_table` WRITE;
 /*!40000 ALTER TABLE `restaurant_table` DISABLE KEYS */;
-INSERT INTO `restaurant_table` VALUES ('T01',2,'FREE'),('T02',4,'OCCUPIED'),('T03',6,'RESERVED'),('T04',4,'FREE'),('T05',6,'OCCUPIED'),('T06',2,'RESERVED'),('T07',4,'FREE'),('T08',6,'OCCUPIED'),('T09',4,'RESERVED'),('T10',6,'FREE');
+INSERT INTO `restaurant_table` VALUES ('T01',2,'FREE',NULL,NULL,NULL),('T02',3,'OCCUPIED',NULL,NULL,NULL),('T03',4,'RESERVED',NULL,NULL,NULL),('T04',3,'FREE',NULL,NULL,NULL),('T05',5,'OCCUPIED',NULL,NULL,NULL),('T06',1,'RESERVED',NULL,NULL,NULL),('T07',2,'FREE',NULL,NULL,NULL),('T08',4,'OCCUPIED',NULL,NULL,NULL),('T09',3,'RESERVED',NULL,NULL,NULL),('T10',4,'FREE',NULL,NULL,NULL);
 /*!40000 ALTER TABLE `restaurant_table` ENABLE KEYS */;
 UNLOCK TABLES;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
@@ -49,4 +54,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2025-12-28 13:45:44
+-- Dump completed on 2026-01-16 19:46:41

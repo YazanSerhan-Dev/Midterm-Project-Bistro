@@ -1,3 +1,5 @@
+CREATE DATABASE  IF NOT EXISTS `bistro` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci */ /*!80016 DEFAULT ENCRYPTION='N' */;
+USE `bistro`;
 -- MySQL dump 10.13  Distrib 8.0.44, for Win64 (x86_64)
 --
 -- Host: 127.0.0.1    Database: bistro
@@ -40,7 +42,7 @@ CREATE TABLE `performance_log` (
 
 LOCK TABLES `performance_log` WRITE;
 /*!40000 ALTER TABLE `performance_log` DISABLE KEYS */;
-INSERT INTO `performance_log` VALUES (1,1,0,0,'2025-12-28'),(2,2,5,0,'2025-12-28'),(3,3,0,10,'2025-12-28'),(4,4,3,0,'2025-12-28'),(5,5,0,0,'2025-12-28'),(6,6,2,8,'2025-12-28'),(7,7,0,0,'2025-12-28'),(8,8,4,0,'2025-12-28'),(9,9,0,6,'2025-12-28'),(10,10,1,0,'2025-12-28');
+INSERT INTO `performance_log` VALUES (1,1,0,0,'2025-12-20'),(2,2,5,0,'2025-12-21'),(3,3,0,10,'2025-12-22'),(4,4,3,0,'2025-12-06'),(5,5,0,0,'2025-12-23'),(6,6,2,8,'2025-12-24'),(7,7,0,0,'2025-12-25'),(8,8,4,0,'2025-12-07'),(9,9,0,6,'2025-12-26'),(10,10,1,0,'2025-12-27');
 /*!40000 ALTER TABLE `performance_log` ENABLE KEYS */;
 UNLOCK TABLES;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
@@ -53,4 +55,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2025-12-28 13:45:45
+-- Dump completed on 2026-01-16 19:46:41

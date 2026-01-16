@@ -1,3 +1,5 @@
+CREATE DATABASE  IF NOT EXISTS `bistro` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci */ /*!80016 DEFAULT ENCRYPTION='N' */;
+USE `bistro`;
 -- MySQL dump 10.13  Distrib 8.0.44, for Win64 (x86_64)
 --
 -- Host: 127.0.0.1    Database: bistro
@@ -28,6 +30,8 @@ CREATE TABLE `bill` (
   `total_amount` decimal(10,2) NOT NULL,
   `is_subscriber_discount` enum('YES','NO') NOT NULL DEFAULT 'NO',
   `is_paid` enum('YES','NO') NOT NULL DEFAULT 'NO',
+  `reminder_sent` enum('YES','NO') NOT NULL DEFAULT 'NO',
+  `reminder_sent_at` datetime DEFAULT NULL,
   PRIMARY KEY (`bill_id`),
   KEY `visit_id` (`visit_id`),
   CONSTRAINT `bill_ibfk_1` FOREIGN KEY (`visit_id`) REFERENCES `visit` (`visit_id`) ON DELETE CASCADE
@@ -40,7 +44,7 @@ CREATE TABLE `bill` (
 
 LOCK TABLES `bill` WRITE;
 /*!40000 ALTER TABLE `bill` DISABLE KEYS */;
-INSERT INTO `bill` VALUES (1,1,110.00,'NO','YES'),(2,2,120.00,'YES','YES'),(3,3,130.00,'NO','YES'),(4,4,140.00,'YES','YES'),(5,5,150.00,'NO','YES'),(6,6,160.00,'YES','YES'),(7,7,170.00,'NO','YES'),(8,8,180.00,'YES','YES'),(9,9,190.00,'NO','YES'),(10,10,200.00,'YES','YES');
+INSERT INTO `bill` VALUES (1,1,110.00,'YES','YES','NO',NULL),(2,2,120.00,'YES','YES','NO',NULL),(3,3,130.00,'YES','YES','NO',NULL),(4,4,140.00,'NO','YES','NO',NULL),(5,5,150.00,'YES','YES','NO',NULL),(6,6,160.00,'YES','YES','NO',NULL),(7,7,170.00,'YES','YES','NO',NULL),(8,8,180.00,'NO','YES','NO',NULL),(9,9,190.00,'YES','YES','NO',NULL),(10,10,200.00,'YES','YES','NO',NULL);
 /*!40000 ALTER TABLE `bill` ENABLE KEYS */;
 UNLOCK TABLES;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
@@ -53,4 +57,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2025-12-28 13:45:45
+-- Dump completed on 2026-01-16 19:46:41
