@@ -24,7 +24,6 @@
                 <Label text="Terminal" styleClass="top-title"/>
                 <Region HBox.hgrow="ALWAYS"/>
                 <Label fx:id="lblConnectionStatus" text="Status: Not connected (UI demo)" styleClass="top-status"/>
-                <Button text="Back" onAction="#onBack" styleClass="secondary-button"/>
                 <Button text="Logout" onAction="#onLogout" styleClass="danger-button"/>
             </children>
         </HBox>

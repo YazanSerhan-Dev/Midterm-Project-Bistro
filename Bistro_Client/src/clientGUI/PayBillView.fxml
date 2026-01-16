@@ -18,7 +18,6 @@
         <Label text="Pay Bill" styleClass="page-title"/>
         <Region HBox.hgrow="ALWAYS"/>
 
-        <Button text="Terminal" onAction="#onGoToTerminal" styleClass="secondary-button"/>
         <Button text="Back" onAction="#onBack" styleClass="secondary-button"/>
         <Button text="Logout" onAction="#onLogout" styleClass="danger-button"/>
     </HBox>

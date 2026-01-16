@@ -400,7 +400,6 @@ public class PayBillController implements ClientUI {
 	
 
     // Navigation (keep your current behavior)
-    @FXML private void onGoToTerminal() { SceneManager.showTerminal(); }
-    @FXML private void onBack()         { SceneManager.showCustomerMain(); }
+    @FXML private void onBack()         { SceneManager.goBack(); }
     @FXML private void onLogout()       { SceneManager.showLogin(); }
 }

@@ -855,6 +855,43 @@ public class RestaurantTableDAO {
 	    }
 	}
 
+	public static boolean canSeatUpcomingReservationsFromFreeTables(
+	        Connection conn,
+	        int lookAheadMinutes,
+	        int limitReservations
+	) throws Exception {
+
+	    // 1) snapshot FREE tables (table_id + num_of_seats)
+	    List<TableCandidate> free = getFreeTablesForPlanning(conn); // you add this helper
+	    if (free == null || free.isEmpty()) return false;
+
+	    // 2) upcoming reservations sizes (ordered by time)
+	    List<Integer> needs = ReservationDAO.getUpcomingReservationSizes(conn, lookAheadMinutes, limitReservations);
+
+	    // 3) simulate packing using your DP
+	    for (int people : needs) {
+	        List<TableCandidate> chosen = chooseBestFit(free, people);
+	        if (chosen == null) return false;
+	        free.removeAll(chosen);
+	    }
+	    return true;
+	}
+
+	private static List<TableCandidate> getFreeTablesForPlanning(Connection conn) throws Exception {
+	    List<TableCandidate> list = new ArrayList<>();
+	    try (PreparedStatement ps = conn.prepareStatement("""
+	        SELECT table_id, num_of_seats
+	        FROM restaurant_table
+	        WHERE status = 'FREE'
+	        ORDER BY num_of_seats ASC
+	    """);
+	         ResultSet rs = ps.executeQuery()) {
+	        while (rs.next()) {
+	            list.add(new TableCandidate(rs.getString("table_id"), rs.getInt("num_of_seats")));
+	        }
+	    }
+	    return list;
+	}
 
 
 }

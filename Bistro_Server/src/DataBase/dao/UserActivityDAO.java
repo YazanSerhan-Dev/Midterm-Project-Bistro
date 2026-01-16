@@ -185,17 +185,19 @@ public class UserActivityDAO {
  // ===============================
  // Lost-code recovery helper
  // ===============================
- public static class LostCodeResult {
-     public final String type; // "RESERVATION" or "WAITING"
-     public final String code;
-     public final String email;
+    public static class LostCodeResult {
+        public final String type;  // "RESERVATION" or "WAITING"
+        public final String code;
+        public final String email;
+        public final String phone;
 
-     public LostCodeResult(String type, String code, String email) {
-         this.type = type;
-         this.code = code;
-         this.email = email;
-     }
- }
+        public LostCodeResult(String type, String code, String email, String phone) {
+            this.type = type;
+            this.code = code;
+            this.email = email;
+            this.phone = phone;
+        }
+    }
 
  /**
   * Rule A+ (ASSIGNED only priority):
@@ -215,56 +217,62 @@ public class UserActivityDAO {
 
      // 1) Priority: WAITING LIST that is ASSIGNED (ONLY ASSIGNED, not ARRIVED)
      String sqlAssignedWaiting = """
-         SELECT
-             COALESCE(s.email, ua.guest_email) AS email,
-             w.confirmation_code AS code
-         FROM user_activity ua
-         LEFT JOIN subscribers s ON s.username = ua.subscriber_username
-         JOIN waiting_list w ON w.waiting_id = ua.waiting_id
-         WHERE (
-               ua.guest_email = ? OR ua.guest_phone = ?
-            OR s.email = ? OR s.phone = ?
-         )
-           AND w.status = 'ASSIGNED'
-         ORDER BY w.request_time DESC
-         LIMIT 1
-     """;
+    		    SELECT
+    		        COALESCE(s.email, ua.guest_email) AS email,
+    		        COALESCE(s.phone, ua.guest_phone) AS phone,
+    		        w.confirmation_code AS code
+    		    FROM user_activity ua
+    		    LEFT JOIN subscribers s ON s.username = ua.subscriber_username
+    		    JOIN waiting_list w ON w.waiting_id = ua.waiting_id
+    		    WHERE (
+    		          ua.guest_email = ? OR ua.guest_phone = ?
+    		       OR s.email = ? OR s.phone = ?
+    		    )
+    		      AND w.status = 'ASSIGNED'
+    		    ORDER BY w.request_time DESC
+    		    LIMIT 1
+    		""";
+
 
      // 2) Closest upcoming active reservation (scheduled)
      String sqlClosestReservation = """
-         SELECT
-             COALESCE(s.email, ua.guest_email) AS email,
-             r.confirmation_code AS code
-         FROM user_activity ua
-         LEFT JOIN subscribers s ON s.username = ua.subscriber_username
-         JOIN reservation r ON r.reservation_id = ua.reservation_id
-         WHERE (
-               ua.guest_email = ? OR ua.guest_phone = ?
-            OR s.email = ? OR s.phone = ?
-         )
-           AND r.status IN ('CONFIRMED','PENDING','ARRIVED')
-         ORDER BY
-           CASE WHEN r.reservation_time >= NOW() THEN 0 ELSE 1 END,
-           ABS(TIMESTAMPDIFF(SECOND, r.reservation_time, NOW())) ASC
-         LIMIT 1
-     """;
+    		    SELECT
+    		        COALESCE(s.email, ua.guest_email) AS email,
+    		        COALESCE(s.phone, ua.guest_phone) AS phone,
+    		        r.confirmation_code AS code
+    		    FROM user_activity ua
+    		    LEFT JOIN subscribers s ON s.username = ua.subscriber_username
+    		    JOIN reservation r ON r.reservation_id = ua.reservation_id
+    		    WHERE (
+    		          ua.guest_email = ? OR ua.guest_phone = ?
+    		       OR s.email = ? OR s.phone = ?
+    		    )
+    		      AND r.status IN ('CONFIRMED','PENDING','ARRIVED')
+    		    ORDER BY
+    		      CASE WHEN r.reservation_time >= NOW() THEN 0 ELSE 1 END,
+    		      ABS(TIMESTAMPDIFF(SECOND, r.reservation_time, NOW())) ASC
+    		    LIMIT 1
+    		""";
+
 
      // 3) Fallback: latest waiting list still WAITING
      String sqlLatestWaiting = """
-         SELECT
-             COALESCE(s.email, ua.guest_email) AS email,
-             w.confirmation_code AS code
-         FROM user_activity ua
-         LEFT JOIN subscribers s ON s.username = ua.subscriber_username
-         JOIN waiting_list w ON w.waiting_id = ua.waiting_id
-         WHERE (
-               ua.guest_email = ? OR ua.guest_phone = ?
-            OR s.email = ? OR s.phone = ?
-         )
-           AND w.status = 'WAITING'
-         ORDER BY w.request_time DESC
-         LIMIT 1
-     """;
+    		    SELECT
+    		        COALESCE(s.email, ua.guest_email) AS email,
+    		        COALESCE(s.phone, ua.guest_phone) AS phone,
+    		        w.confirmation_code AS code
+    		    FROM user_activity ua
+    		    LEFT JOIN subscribers s ON s.username = ua.subscriber_username
+    		    JOIN waiting_list w ON w.waiting_id = ua.waiting_id
+    		    WHERE (
+    		          ua.guest_email = ? OR ua.guest_phone = ?
+    		       OR s.email = ? OR s.phone = ?
+    		    )
+    		      AND w.status = 'WAITING'
+    		    ORDER BY w.request_time DESC
+    		    LIMIT 1
+    		""";
+
 
      MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
      PooledConnection pc = pool.getConnection();
@@ -300,11 +308,17 @@ public class UserActivityDAO {
              if (!rs.next()) return null;
 
              String email = rs.getString("email");
-             String code = rs.getString("code");
+             String phone = rs.getString("phone");
+             String code  = rs.getString("code");
 
              if (code == null || code.isBlank()) return null;
 
-             return new LostCodeResult(type, code.trim(), (email == null ? null : email.trim()));
+             return new LostCodeResult(
+                 type,
+                 code.trim(),
+                 (email == null ? null : email.trim()),
+                 (phone == null ? null : phone.trim())
+             );
          }
      }
  }

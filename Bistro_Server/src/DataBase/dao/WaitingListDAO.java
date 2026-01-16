@@ -441,7 +441,7 @@ public class WaitingListDAO {
 
     public static WaitingListDTO assignNextWaitingByReservingTable() throws Exception {
 
-        final int RESERVATION_LOOKAHEAD_MINUTES = 60;
+        final int RESERVATION_LOOKAHEAD_MINUTES = 120;
         final int HOLD_MINUTES = 15;
 
         MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
@@ -497,11 +497,17 @@ public class WaitingListDAO {
                         continue;
                     }
 
-                    int freeAfter = RestaurantTableDAO.getTotalSeatsAvailable(conn);
-                    if (freeAfter < protectedNeed) {
+                    boolean ok = RestaurantTableDAO.canSeatUpcomingReservationsFromFreeTables(
+                            conn,
+                            RESERVATION_LOOKAHEAD_MINUTES,
+                            20
+                    );
+
+                    if (!ok) {
                         conn.rollback(sp);
                         continue;
                     }
+
 
                     int updated;
                     try (PreparedStatement up = conn.prepareStatement("""

@@ -92,7 +92,21 @@
                         onAction="#onContinueCustomer"
                         prefWidth="440"
                         styleClass="btn-outline"/>
-
+                        
+                        <Button text="Go to Terminal"
+				        onAction="#onGoToTerminal"
+				        maxWidth="Infinity"
+				        mnemonicParsing="false"
+				        styleClass="btn-outline">
+				                            <graphic>
+        				<ImageView fitWidth="16" fitHeight="16" preserveRatio="true" opacity="0.90">
+            				<image>
+                				<Image url="@/logos/square-terminal.png"/>
+            				</image>
+        				</ImageView>
+        				</graphic>
+        				</Button>
+                        
                 <Label text="If you're staff, use your employee credentials."
                        styleClass="helper-text"/>
             </VBox>

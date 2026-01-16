@@ -892,7 +892,6 @@ public class ClientController implements ClientUI {
 
 
     @FXML private void onPayBill() { SceneManager.showPayBill(); }
-    @FXML private void onGoToTerminal() { SceneManager.showTerminal(); }
 
     @FXML private void onNavDashboard() { showPane(paneDashboard); }
     @FXML

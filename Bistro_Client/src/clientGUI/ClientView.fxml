@@ -111,16 +111,6 @@
     				</graphic>
                 </Button>
                 
-                <Button text="Terminal" maxWidth="Infinity" onAction="#onGoToTerminal" styleClass="nav-button">
-                    <graphic>
-        				<ImageView fitWidth="16" fitHeight="16" preserveRatio="true" opacity="0.90">
-            				<image>
-                				<Image url="@/logos/square-terminal.png"/>
-            				</image>
-        				</ImageView>
-    				</graphic>
-                </Button>
-
             </children>
         </VBox>
     </left>

@@ -108,6 +108,11 @@ public class LoginController implements ClientUI {
 
         SceneManager.showCustomerMain();
     }
+    
+    @FXML
+    private void onGoToTerminal() {
+        SceneManager.showTerminal(); // or SceneManager.showTerminalPage()
+    }
 
     // ===== ClientUI callbacks =====
     @Override

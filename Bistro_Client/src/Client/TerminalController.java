@@ -76,6 +76,10 @@ public class TerminalController implements ClientUI {
     private volatile boolean resolveQrInFlight = false;
     private volatile String lastCheckedInCode = "";
     private volatile String lastValidatedCode = "";
+    
+ // Terminal identity (public terminal session)
+    private volatile boolean terminalIsSubscriber = false;
+    private volatile String terminalSubscriberUsername = "";
 
 
     @FXML
@@ -87,14 +91,7 @@ public class TerminalController implements ClientUI {
         // Register this screen as the current UI receiver
         ClientSession.bindUI(this);
 
-        applyRoleVisibility();
-        if ("SUBSCRIBER".equalsIgnoreCase(ClientSession.getRole())) {
-            sendToServer(
-                OpCode.REQUEST_TERMINAL_GET_SUBSCRIBER_ACTIVE_CODES,
-                ClientSession.getUsername()
-            );
-        }
-        
+        applyRoleVisibility();       
         if (lstSubscriberActive != null) {
             lstSubscriberActive.setOnMouseClicked(e -> {
                 var dto = lstSubscriberActive.getSelectionModel().getSelectedItem();
@@ -187,8 +184,8 @@ public class TerminalController implements ClientUI {
             return;
         }
 
-        String role = ClientSession.getRole();         // SUBSCRIBER / CUSTOMER
-        String username = ClientSession.getUsername(); // subscriber only
+        String role = terminalIsSubscriber ? "SUBSCRIBER" : "CUSTOMER";
+        String username = terminalIsSubscriber ? terminalSubscriberUsername : "";
 
         try {
             WaitingListDTO dto = new WaitingListDTO();
@@ -444,7 +441,6 @@ public class TerminalController implements ClientUI {
 
     // Navigation
     @FXML private void onGoToPayBill() { SceneManager.showPayBill(); }
-    @FXML private void onBack()        { SceneManager.showCustomerMain(); }
     @FXML private void onLogout()      { SceneManager.showLogin(); }
 
     // =========================
@@ -721,29 +717,42 @@ public class TerminalController implements ClientUI {
                     case RESPONSE_TERMINAL_RESOLVE_SUBSCRIBER_QR -> {
                         resolveQrInFlight = false;
 
+                        if (lstSubscriberActive == null) return;
+
                         Object payload = env.getPayload();
 
-                        if (payload instanceof common.dto.ResolveSubscriberQrResponseDTO dto) {
+                        // Expect: Object[] { username, List<TerminalActiveItemDTO> }
+                        if (payload instanceof Object[] arr && arr.length >= 2) {
 
-                            if (!dto.isFound()) {
-                                lblTerminalStatus.setText(nonEmptyOr(dto.getMessage(), "No active reservation/waiting list for this subscriber."));
-                                return;
+                            String username = safeStr(arr[0]);
+                            
+                            terminalIsSubscriber = true;
+                            terminalSubscriberUsername = username;
+
+                            lblTerminalStatus.setText("Subscriber detected: " + username);
+
+                            lstSubscriberActive.getItems().clear();
+
+                            if (arr[1] instanceof java.util.List<?> list) {
+                                for (Object o : list) {
+                                    if (o instanceof TerminalActiveItemDTO dto) {
+                                        lstSubscriberActive.getItems().add(dto);
+                                    }
+                                }
                             }
 
-                            String code = safeTrim(dto.getConfirmationCode());
-                            if (code.isEmpty()) {
-                                lblTerminalStatus.setText("Resolved, but server returned empty code.");
-                                return;
+                            if (lstSubscriberActive.getItems().isEmpty()) {
+                                lblTerminalStatus.setText("No active reservation or waiting list for " + username);
+                            } else {
+                                lblTerminalStatus.setText("Select an item to validate.");
                             }
 
-                            // ✅ Reuse your existing validation pipeline
-                            txtConfirmationCode.setText(code);
-                            lblTerminalStatus.setText("Resolved " + dto.getType() + ". Validating code...");
-                            onValidateCode(); // calls REQUEST_TERMINAL_VALIDATE_CODE
-
-                        } else {
-                            lblTerminalStatus.setText("Invalid QR resolve response.");
+                            return;
                         }
+
+                        lblTerminalStatus.setText("Invalid QR resolve response.");
+                        terminalIsSubscriber = false;
+                        terminalSubscriberUsername = "";
                         refreshSubscriberActiveListIfNeeded();
                     }
                     
@@ -1004,7 +1013,7 @@ public class TerminalController implements ClientUI {
     private JoinWaitingInput askJoinWaitingListData() {
         Dialog<JoinWaitingInput> dialog = new Dialog<>();
         dialog.setTitle("Join Waiting List");
-        dialog.setHeaderText("Enter details to join the waiting list");
+        dialog.setHeaderText("Enter details to join the waiting list (Email OR Phone is required)");
 
         ButtonType okBtn = new ButtonType("Join", ButtonBar.ButtonData.OK_DONE);
         dialog.getDialogPane().getButtonTypes().addAll(okBtn, ButtonType.CANCEL);
@@ -1017,7 +1026,7 @@ public class TerminalController implements ClientUI {
         peopleField.setPromptText("e.g. 3");
 
         TextField emailField = new TextField();
-        emailField.setPromptText("email@example.com (required)");
+        emailField.setPromptText("email@example.com (optional)");
 
         TextField phoneField = new TextField();
         phoneField.setPromptText("05XXXXXXXX (optional)");
@@ -1025,36 +1034,45 @@ public class TerminalController implements ClientUI {
         grid.add(new Label("People count*:"), 0, 0);
         grid.add(peopleField, 1, 0);
 
-        grid.add(new Label("Email*:"), 0, 1);
+        grid.add(new Label("Email (optional):"), 0, 1);
         grid.add(emailField, 1, 1);
 
         grid.add(new Label("Phone (optional):"), 0, 2);
         grid.add(phoneField, 1, 2);
 
+        Label hint = new Label("At least one contact method is required: Email OR Phone.");
+        hint.setStyle("-fx-font-size: 11px; -fx-opacity: 0.85;");
+        grid.add(hint, 0, 3, 2, 1);
+
         dialog.getDialogPane().setContent(grid);
 
-        // Disable Join button until required fields are valid (this is fine; not terminal page buttons)
         Node joinButton = dialog.getDialogPane().lookupButton(okBtn);
         joinButton.setDisable(true);
 
         Runnable validate = () -> {
-            String p = peopleField.getText() == null ? "" : peopleField.getText().trim();
-            String e = emailField.getText() == null ? "" : emailField.getText().trim();
-            boolean ok = false;
+            String p  = peopleField.getText() == null ? "" : peopleField.getText().trim();
+            String e  = emailField.getText() == null ? "" : emailField.getText().trim();
+            String ph = phoneField.getText() == null ? "" : phoneField.getText().trim();
+
+            boolean okPeople = false;
             try {
-                ok = !e.isBlank() && Integer.parseInt(p) > 0;
+                okPeople = Integer.parseInt(p) > 0;
             } catch (Exception ignored) {}
-            joinButton.setDisable(!ok);
+
+            boolean okContact = !e.isBlank() || !ph.isBlank(); // ✅ email OR phone
+
+            joinButton.setDisable(!(okPeople && okContact));
         };
 
         peopleField.textProperty().addListener((o, a, b) -> validate.run());
         emailField.textProperty().addListener((o, a, b) -> validate.run());
+        phoneField.textProperty().addListener((o, a, b) -> validate.run());
         validate.run();
 
         dialog.setResultConverter(btn -> {
             if (btn == okBtn) {
                 int people = Integer.parseInt(peopleField.getText().trim());
-                String email = emailField.getText().trim();
+                String email = emailField.getText() == null ? "" : emailField.getText().trim();
                 String phone = phoneField.getText() == null ? "" : phoneField.getText().trim();
                 return new JoinWaitingInput(people, email, phone);
             }
@@ -1082,23 +1100,22 @@ public class TerminalController implements ClientUI {
     }
     
     private void applyRoleVisibility() {
-        String role = ClientSession.getRole();   // you already use this pattern
+        // Button visible to ALL
+        btnScanSubscriberQR.setVisible(true);
+        btnScanSubscriberQR.setManaged(true);
 
-        boolean isSubscriber = role != null && role.equalsIgnoreCase("SUBSCRIBER");
-
-        btnScanSubscriberQR.setVisible(isSubscriber);
-        btnScanSubscriberQR.setManaged(isSubscriber);
-        subscriberActiveBox.setVisible(isSubscriber);
-        subscriberActiveBox.setManaged(isSubscriber);
-
+        // The list can stay visible if you want, but usually keep it visible too
+        subscriberActiveBox.setVisible(true);
+        subscriberActiveBox.setManaged(true);
     }
+
     private void refreshSubscriberActiveListIfNeeded() {
-        if (!"SUBSCRIBER".equalsIgnoreCase(ClientSession.getRole())) return;
+        if (!terminalIsSubscriber) return;
         if (!isConnected()) return;
 
         sendToServer(
             OpCode.REQUEST_TERMINAL_GET_SUBSCRIBER_ACTIVE_CODES,
-            ClientSession.getUsername()
+            terminalSubscriberUsername
         );
     }
 

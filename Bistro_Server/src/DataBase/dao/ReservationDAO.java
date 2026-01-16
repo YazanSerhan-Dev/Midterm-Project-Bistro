@@ -1218,5 +1218,27 @@ public class ReservationDAO {
         return list;
     }
 
+    public static List<Integer> getUpcomingReservationSizes(Connection conn, int lookAheadMinutes, int limit) throws Exception {
+        List<Integer> needs = new ArrayList<>();
+
+        try (PreparedStatement ps = conn.prepareStatement("""
+            SELECT num_of_customers
+            FROM reservation
+            WHERE status IN ('CONFIRMED','ARRIVED')
+              AND reservation_time BETWEEN NOW() AND (NOW() + INTERVAL ? MINUTE)
+            ORDER BY reservation_time ASC
+            LIMIT ?
+        """)) {
+            ps.setInt(1, lookAheadMinutes);
+            ps.setInt(2, limit);
+
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) needs.add(rs.getInt(1));
+            }
+        }
+
+        return needs;
+    }
+
 
 }

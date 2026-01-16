@@ -20,8 +20,8 @@ import common.OpCode;
 // Imports from HEAD (Registration)
 import common.dto.RegistrationDTO;
 import common.dto.ReservationDTO;
-import common.dto.ResolveSubscriberQrResponseDTO;
 import common.dto.SubscriberDTO;
+import common.dto.TerminalActiveItemDTO;
 import common.dto.TerminalValidateResponseDTO;
 import common.dto.WaitingListDTO;
 // Imports from MAIN (Reservation & Login)
@@ -258,43 +258,43 @@ public class BistroServer extends AbstractServer {
     private void handleTerminalResolveSubscriberQR(Envelope req, ConnectionToClient client) {
         try {
             Object payload = readEnvelopePayload(req);
-
             String barcode = (payload instanceof String s) ? s.trim() : "";
+
             if (barcode.isBlank()) {
-                sendOk(client, OpCode.RESPONSE_TERMINAL_RESOLVE_SUBSCRIBER_QR,
-                        new ResolveSubscriberQrResponseDTO(false, "", "", "Missing subscriber QR value."));
+                sendOk(client,
+                    OpCode.RESPONSE_TERMINAL_RESOLVE_SUBSCRIBER_QR,
+                    "Invalid QR value.");
                 return;
             }
 
-            // 1) Resolve barcode_data -> username
-            String username = DataBase.dao.SubscriberDAO.getUsernameByBarcodeData(barcode);
+            // 1️⃣ QR decides if this is a subscriber
+            String username = SubscriberDAO.getUsernameByBarcodeData(barcode);
 
             if (username == null || username.isBlank()) {
-                sendOk(client, OpCode.RESPONSE_TERMINAL_RESOLVE_SUBSCRIBER_QR,
-                        new ResolveSubscriberQrResponseDTO(false, "", "", "Subscriber not found."));
+                // ❌ Not a subscriber QR
+                sendOk(client,
+                    OpCode.RESPONSE_TERMINAL_RESOLVE_SUBSCRIBER_QR,
+                    "This QR does not belong to a subscriber.");
                 return;
             }
 
-            // 2) Resolve username -> closest active reservation/waiting confirmation code
-            UserActivityDAO.ActiveCodeResult r =
-                    UserActivityDAO.findActiveCodeBySubscriberUsername(username);
+            // 2️⃣ Subscriber found → fetch ALL active items
+            List<TerminalActiveItemDTO> items =
+                UserActivityDAO.listActiveItemsBySubscriberUsername(username);
 
-            if (r == null || r.code == null || r.code.isBlank()) {
-                sendOk(client, OpCode.RESPONSE_TERMINAL_RESOLVE_SUBSCRIBER_QR,
-                        new ResolveSubscriberQrResponseDTO(false, "", "", "No active reservation or waiting list for this subscriber."));
-                return;
-            }
+            if (items == null) items = List.of();
 
-            // 3) Return confirmation code (Terminal will reuse existing validate flow)
-            sendOk(client, OpCode.RESPONSE_TERMINAL_RESOLVE_SUBSCRIBER_QR,
-                    new ResolveSubscriberQrResponseDTO(true, r.type, r.code, "Found " + r.type + "."));
+            // 3️⃣ Send LIST (not code!)
+            sendOk(client,
+                OpCode.RESPONSE_TERMINAL_RESOLVE_SUBSCRIBER_QR,
+                new Object[]{ username, items });
 
         } catch (Exception e) {
             try {
-                sendOk(client, OpCode.RESPONSE_TERMINAL_RESOLVE_SUBSCRIBER_QR,
-                        new ResolveSubscriberQrResponseDTO(false, "", "", "Server error: " + e.getMessage()));
-            } catch (Exception ignored) {
-            }
+                sendOk(client,
+                    OpCode.RESPONSE_TERMINAL_RESOLVE_SUBSCRIBER_QR,
+                    "Server error: " + e.getMessage());
+            } catch (Exception ignored) {}
         }
     }
 
@@ -405,8 +405,10 @@ public class BistroServer extends AbstractServer {
             if (r.email != null && !r.email.isBlank()) {
                 if ("RESERVATION".equals(r.type)) {
                     EmailService.sendReservationConfirmation(r.email, r.code);
+                    EmailService.smsStub(r.phone, "Your reservation code :  " + r.code);
                 } else {
                     EmailService.sendWaitingTableReady(r.email, r.code);
+                    EmailService.smsStub(r.phone, "Your waiting list code : " + r.code);
                 }
             }
 
@@ -644,12 +646,12 @@ public class BistroServer extends AbstractServer {
                     return;
                 }
             } else {
-                // CUSTOMER: must send email + phone
+             // CUSTOMER: must provide at least ONE contact method (email OR phone)
                 email = dto.getEmail() == null ? "" : dto.getEmail().trim();
                 phone = dto.getPhone() == null ? "" : dto.getPhone().trim();
 
-                if (email.isBlank() || phone.isBlank()) {
-                    sendOk(client, OpCode.RESPONSE_WAITING_LIST, "Email and phone are required for customers.");
+                if (email.isBlank() && phone.isBlank()) {
+                    sendOk(client, OpCode.RESPONSE_WAITING_LIST, "Email or phone is required for customers.");
                     return;
                 }
             }
