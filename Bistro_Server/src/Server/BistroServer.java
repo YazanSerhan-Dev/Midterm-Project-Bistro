@@ -604,24 +604,39 @@ public class BistroServer extends AbstractServer {
 
             String role = arr[0] == null ? "" : arr[0].toString();
             String username = arr[1] == null ? "" : arr[1].toString();
+            
+            boolean isStaffRequest = "STAFF".equalsIgnoreCase(role);
+
+           
+            Timestamp now = new Timestamp(System.currentTimeMillis());
+            if (!OpeningHoursDAO.isOpenForReservation(now, 120)) {
+                 String msg = "Restaurant is currently closed (or closing soon).";
+                 // Send specific error op code so Staff sees a popup
+                 if (isStaffRequest) sendOk(client, OpCode.RESPONSE_WAITING_ADD, msg);
+                 else sendOk(client, OpCode.RESPONSE_WAITING_LIST, msg);
+                 return;
+            }
 
             int people = dto.getPeopleCount();
             if (people <= 0) {
-                sendOk(client, OpCode.RESPONSE_WAITING_LIST, "People count must be > 0.");		
+                String msg = "People count must be > 0.";
+                if (isStaffRequest) sendOk(client, OpCode.RESPONSE_WAITING_ADD, msg);
+                else sendOk(client, OpCode.RESPONSE_WAITING_LIST, msg);
                 return;
             }
 
-            
             int totalSeats = RestaurantTableDAO.getTotalSeats();
             if (totalSeats <= 0) {
-                sendOk(client, OpCode.RESPONSE_WAITING_LIST, "Restaurant tables are not configured. Please contact staff.");
+                String msg = "Restaurant tables are not configured.";
+                if (isStaffRequest) sendOk(client, OpCode.RESPONSE_WAITING_ADD, msg);
+                else sendOk(client, OpCode.RESPONSE_WAITING_LIST, msg);
                 return;
             }
 
             if (people > totalSeats) {
-                String msg = "Group size (" + people + ") exceeds restaurant capacity (" + totalSeats + " seats). "
-                        + "Please split into smaller groups or contact staff.";
-                sendOk(client, OpCode.RESPONSE_WAITING_LIST, msg);
+                String msg = "Group size (" + people + ") exceeds capacity (" + totalSeats + ").";
+                if (isStaffRequest) sendOk(client, OpCode.RESPONSE_WAITING_ADD, msg);
+                else sendOk(client, OpCode.RESPONSE_WAITING_LIST, msg);
                 return;
             }
 
@@ -635,7 +650,6 @@ public class BistroServer extends AbstractServer {
                 }
 
                 email = DataBase.dao.SubscriberDAO.getEmailByUsername(username);
-
                 phone = SubscriberDAO.getPhoneByUsername(username);
                 if (phone == null) phone = "";
 
@@ -644,68 +658,57 @@ public class BistroServer extends AbstractServer {
                     return;
                 }
             } else {
-             // CUSTOMER: must provide at least ONE contact method (email OR phone)
+                // CUSTOMER / GUEST Logic
                 email = dto.getEmail() == null ? "" : dto.getEmail().trim();
                 phone = dto.getPhone() == null ? "" : dto.getPhone().trim();
 
+                // Staff can skip providing both, but Customers must provide at least one
+                // (Note: You can relax this for Staff if you want, currently it enforces one)
                 if (email.isBlank() && phone.isBlank()) {
-                    sendOk(client, OpCode.RESPONSE_WAITING_LIST, "Email or phone is required for customers.");
+                    String msg = "Email or phone is required.";
+                    if (isStaffRequest) sendOk(client, OpCode.RESPONSE_WAITING_ADD, msg);
+                    else sendOk(client, OpCode.RESPONSE_WAITING_LIST, msg);
                     return;
                 }
             }
 
-            Timestamp now = new Timestamp(System.currentTimeMillis());
-
-            // ✅ Insert ONCE with unique code retry
             String code = null;
             int waitingId = -1;
 
             for (int i = 0; i < 5; i++) {
-                code = "W" + java.util.UUID.randomUUID()
-                        .toString()
-                        .replace("-", "")
-                        .substring(0, 8)
-                        .toUpperCase();
-
+                code = "W" + java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase();
                 try {
-                    waitingId = WaitingListDAO.insertWaitingReturnId(
-                            people,
-                            now,
-                            "WAITING",
-                            code
-                    );
-                    if (waitingId > 0) break; // success
+                    waitingId = WaitingListDAO.insertWaitingReturnId(people, now, "WAITING", code);
+                    if (waitingId > 0) break; 
                 } catch (Exception ex) {
-                    // if duplicate code, retry
-                    String msg = ex.getMessage() == null ? "" : ex.getMessage().toLowerCase();
-                    if (!msg.contains("duplicate")) {
-                        throw ex;
-                    }
                 }
             }
 
             if (waitingId <= 0 || code == null) {
-                sendOk(client, OpCode.RESPONSE_WAITING_LIST, "Failed to generate unique waiting code. Please try again.");
+                String msg = "Failed to generate code.";
+                if (isStaffRequest) sendOk(client, OpCode.RESPONSE_WAITING_ADD, msg);
+                else sendOk(client, OpCode.RESPONSE_WAITING_LIST, msg);
                 return;
             }
 
-            // ✅ store contact info in user_activity for later email notification
             if ("SUBSCRIBER".equalsIgnoreCase(role)) {
                 UserActivityDAO.insertSubscriberWaitingActivity(waitingId, username);
             } else {
                 UserActivityDAO.insertWaitingActivity(waitingId, email, phone);
             }
 
-            // ✅ build response DTO
-            WaitingListDTO resp = new WaitingListDTO();
-            resp.setId(waitingId);
-            resp.setPeopleCount(people);
-            resp.setStatus("WAITING");
-            resp.setConfirmationCode(code);
-            resp.setEmail(email);
-            resp.setPhone(phone);
-
-            sendOk(client, OpCode.RESPONSE_WAITING_LIST, resp);
+            if (isStaffRequest) {
+                sendOk(client, OpCode.RESPONSE_WAITING_ADD, "Walk-in added. Code: " + code);
+            } else {
+                WaitingListDTO resp = new WaitingListDTO();
+                resp.setId(waitingId);
+                resp.setPeopleCount(people);
+                resp.setStatus("WAITING");
+                resp.setConfirmationCode(code);
+                resp.setEmail(email);
+                resp.setPhone(phone);
+                sendOk(client, OpCode.RESPONSE_WAITING_LIST, resp);
+            }
 
         } catch (Exception e) {
             try {
@@ -713,6 +716,7 @@ public class BistroServer extends AbstractServer {
             } catch (Exception ignored) {}
         }
     }
+    
     
     @SuppressWarnings("unchecked")
     private void handleCancelReservation(Envelope req, ConnectionToClient client) {
@@ -1023,6 +1027,13 @@ public class BistroServer extends AbstractServer {
                            "Reservation must be at least 1 hour from now."));
             return;
         }
+        
+        if (!OpeningHoursDAO.isOpenForReservation(dto.getReservationTime(), 120)) {
+            sendOk(client, OpCode.RESPONSE_MAKE_RESERVATION,
+                   new MakeReservationResponseDTO(false, -1, null,
+                           "The restaurant is closed at the selected time."));
+            return;
+        }
 
 
         boolean canFit = ReservationDAO.canFitAtTime(dto.getReservationTime(), dto.getNumOfCustomers());
@@ -1037,7 +1048,7 @@ public class BistroServer extends AbstractServer {
 
         // Create reservation
         ReservationDAO.CreateReservationResult r = reservationDAO.createReservationWithActivity(dto);
-
+        
         // Send Email (Optional, wrapped in try/catch so it doesn't crash server)
         try {
             String toEmail;
