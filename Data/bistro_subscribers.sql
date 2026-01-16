@@ -1,3 +1,5 @@
+CREATE DATABASE  IF NOT EXISTS `bistro` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci */ /*!80016 DEFAULT ENCRYPTION='N' */;
+USE `bistro`;
 -- MySQL dump 10.13  Distrib 8.0.44, for Win64 (x86_64)
 --
 -- Host: 127.0.0.1    Database: bistro
@@ -47,7 +49,7 @@ CREATE TABLE `subscribers` (
 
 LOCK TABLES `subscribers` WRITE;
 /*!40000 ALTER TABLE `subscribers` DISABLE KEYS */;
-INSERT INTO `subscribers` VALUES ('user1','pass1','User 1','050000001','user1@mail.com','MEM1','BAR1','1991-01-01'),('user10','pass10','User 10','0500000010','user10@mail.com','MEM10','BAR10','1910-01-01'),('user2','pass2','User 2','050000002','user2@mail.com','MEM2','BAR2','1992-01-01'),('user3','pass3','User 3','050000003','user3@mail.com','MEM3','BAR3','1993-01-01'),('user4','pass4','User 4','050000004','user4@mail.com','MEM4','BAR4','1994-01-01'),('user5','pass5','User 5','050000005','user5@mail.com','MEM5','BAR5','1995-01-01'),('user6','pass6','User 6','050000006','user6@mail.com','MEM6','BAR6','1996-01-01'),('user7','pass7','User 7','050000007','user7@mail.com','MEM7','BAR7','1997-01-01'),('user8','pass8','User 8','050000008','user8@mail.com','MEM8','BAR8','1998-01-01'),('user9','pass9','User 9','050000009','user9@mail.com','MEM9','BAR9','1999-01-01');
+INSERT INTO `subscribers` VALUES ('user1','pass1','User 1','050000001','user1@mail.com','MEM1','BAR1','1991-01-01'),('user10','pass10','User 10','0500000010','user10@mail.com','MEM10','BAR10','1910-01-01'),('user11','pass11','User 11','050000011','user11@mail.com','MEM11','BAR11','1911-01-01'),('user12','pass12','User 12','050000012','user12@mail.com','MEM12','BAR12','1912-01-01'),('user13','pass13','User 13','050000013','user13@mail.com','MEM13','BAR13','1913-01-01'),('user14','pass41','User 14','050000014','user14@mail.com','MEM14','BAR14','1914-01-01'),('user15','pass15','User 15','050000015','user15@mail.com','MEM15','BAR15','1915-01-01'),('user16','pass16','User 16','050000016','user16@mail.com','MEM16','BAR16','1916-01-01'),('user17','pass17','User 17','050000017','user17@mail.com','MEM17','BAR17','1917-01-01'),('user18','pass18','User 18','050000018','user18@mail.com','MEM18','BAR18','1918-01-01'),('user19','pass19','User 19','050000019','user19@mail.com','MEM19','BAR19','1919-01-01'),('user2','pass2','User 2','050000002','user2@mail.com','MEM2','BAR2','1992-01-01'),('user20','pass20','User 20','0500000020','user20@mail.com','MEM20','BAR20','1920-01-01'),('user3','pass3','User 3','050000003','user3@mail.com','MEM3','BAR3','1993-01-01'),('user4','pass4','User 4','050000004','user4@mail.com','MEM4','BAR4','1994-01-01'),('user5','pass5','User 5','050000005','user5@mail.com','MEM5','BAR5','1995-01-01'),('user6','pass6','User 6','050000006','user6@mail.com','MEM6','BAR6','1996-01-01'),('user7','pass7','User 7','050000007','user7@mail.com','MEM7','BAR7','1997-01-01'),('user8','pass8','User 8','050000008','user8@mail.com','MEM8','BAR8','1998-01-01'),('user9','pass9','User 9','050000009','user9@mail.com','MEM9','BAR9','1999-01-01');
 /*!40000 ALTER TABLE `subscribers` ENABLE KEYS */;
 UNLOCK TABLES;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
@@ -60,4 +62,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2025-12-28 13:45:45
+-- Dump completed on 2026-01-16 19:46:41
