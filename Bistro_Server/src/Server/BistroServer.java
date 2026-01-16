@@ -604,7 +604,15 @@ public class BistroServer extends AbstractServer {
 
             String role = arr[0] == null ? "" : arr[0].toString();
             String username = arr[1] == null ? "" : arr[1].toString();
+            
+         // Server/BistroServer.java
 
+            Timestamp nowCheck = new Timestamp(System.currentTimeMillis());
+            if (!OpeningHoursDAO.isOpenForReservation(nowCheck, 120)) {
+                 sendOk(client, OpCode.RESPONSE_WAITING_LIST, "Restaurant is closed (or closing soon).");
+                 return;
+            }
+            
             int people = dto.getPeopleCount();
             if (people <= 0) {
                 sendOk(client, OpCode.RESPONSE_WAITING_LIST, "People count must be > 0.");		
@@ -648,8 +656,8 @@ public class BistroServer extends AbstractServer {
                 email = dto.getEmail() == null ? "" : dto.getEmail().trim();
                 phone = dto.getPhone() == null ? "" : dto.getPhone().trim();
 
-                if (email.isBlank() && phone.isBlank()) {
-                    sendOk(client, OpCode.RESPONSE_WAITING_LIST, "Email or phone is required for customers.");
+                if (email.isBlank() || phone.isBlank()) {
+                    sendOk(client, OpCode.RESPONSE_WAITING_LIST, "Email and phone is required for customers.");
                     return;
                 }
             }
@@ -689,7 +697,6 @@ public class BistroServer extends AbstractServer {
                 return;
             }
 
-            // ✅ store contact info in user_activity for later email notification
             if ("SUBSCRIBER".equalsIgnoreCase(role)) {
                 UserActivityDAO.insertSubscriberWaitingActivity(waitingId, username);
             } else {
@@ -1023,6 +1030,13 @@ public class BistroServer extends AbstractServer {
                            "Reservation must be at least 1 hour from now."));
             return;
         }
+        
+        if (!OpeningHoursDAO.isOpenForReservation(dto.getReservationTime(), 120)) {
+            sendOk(client, OpCode.RESPONSE_MAKE_RESERVATION,
+                   new MakeReservationResponseDTO(false, -1, null,
+                           "The restaurant is closed at the selected time."));
+            return;
+        }
 
 
         boolean canFit = ReservationDAO.canFitAtTime(dto.getReservationTime(), dto.getNumOfCustomers());
@@ -1037,7 +1051,7 @@ public class BistroServer extends AbstractServer {
 
         // Create reservation
         ReservationDAO.CreateReservationResult r = reservationDAO.createReservationWithActivity(dto);
-
+        
         // Send Email (Optional, wrapped in try/catch so it doesn't crash server)
         try {
             String toEmail;

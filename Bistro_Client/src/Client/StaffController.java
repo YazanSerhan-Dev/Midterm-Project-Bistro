@@ -236,13 +236,16 @@ public class StaffController implements ClientUI {
                 case RESPONSE_WAITING_LIST -> {
                     Object p = env.getPayload();
                     if (p instanceof List) {
-                        // Normal behavior: Update the table with the list
                         updateWaitingListTable((List<?>) p);
+                    } else if (p instanceof String errorMSG) {
+                        // ✅ NEW: If we receive a String, it's an error/status message -> Show Popup
+                        showAlert("Info", errorMSG);
+                        // Then refresh the list to be safe
+                        sendToServer(Envelope.request(OpCode.REQUEST_WAITING_LIST, null));
                     } else {
-                        // Unexpected behavior (Server sent single item): Just refresh the full list
                         sendToServer(Envelope.request(OpCode.REQUEST_WAITING_LIST, null));
                     }
-                }       
+                } 
                 case RESPONSE_WAITING_ADD, 
                 RESPONSE_WAITING_REMOVE -> handleWaitingListUpdateResponse((String) env.getPayload());
 
