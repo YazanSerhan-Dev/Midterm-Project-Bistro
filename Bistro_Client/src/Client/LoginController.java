@@ -12,14 +12,27 @@ import javafx.scene.control.TextField;
 import javafx.application.Platform;
 import common.dto.LoginResponseDTO;
 
-
+/**
+ * JavaFX controller for the login screen.
+ * <p>
+ * Supports subscriber login, staff (agent/manager) login, and guest/customer continuation.
+ * Communicates with the server using the shared {@link BistroClient} instance managed by
+ * {@link ClientSession}.
+ * </p>
+ * <p>
+ * Implements {@link ClientUI} to receive connection state callbacks and login responses.
+ * </p>
+ */
 public class LoginController implements ClientUI {
 
     @FXML private Label lblConn;
     @FXML private Label lblMsg;
     @FXML private TextField tfUsername;
     @FXML private PasswordField pfPassword;
-
+    /**
+     * Initializes the login screen controller after FXML loading.
+     * Clears status messages and ensures the client is connected using the shared session.
+     */
     @FXML
     public void initialize() {
     	onConnected();
@@ -33,7 +46,12 @@ public class LoginController implements ClientUI {
     }
 
     // ===== Buttons =====
-
+    /**
+     * UI action: attempts to log in as a subscriber using username and password.
+     * Sends a login request to the server and waits for a response.
+     *
+     * @param e action event from the login button
+     */
     @FXML
     public void onLoginSubscriber(ActionEvent e) {
         lblMsg.setText("");
@@ -66,6 +84,12 @@ public class LoginController implements ClientUI {
     }
 
 
+    /**
+     * UI action: attempts to log in as staff (agent/manager) using username and password.
+     * Sends a staff login request to the server and waits for a response.
+     *
+     * @param e action event from the login button
+     */
     @FXML
     public void onLoginAgent(ActionEvent e) {
         lblMsg.setText("");
@@ -98,6 +122,12 @@ public class LoginController implements ClientUI {
     }
 
 
+    /**
+     * UI action: continues as a guest/customer without login.
+     * Sets the session role and navigates to the customer main screen.
+     *
+     * @param e action event from the continue button
+     */
     @FXML
     public void onContinueCustomer(ActionEvent e) {
         lblMsg.setText("");
@@ -108,29 +138,49 @@ public class LoginController implements ClientUI {
 
         SceneManager.showCustomerMain();
     }
-    
+    /**
+     * UI action: navigates to the terminal screen.
+     */
     @FXML
     private void onGoToTerminal() {
         SceneManager.showTerminal(); // or SceneManager.showTerminalPage()
     }
 
     // ===== ClientUI callbacks =====
+    /**
+     * Called when the client is connected to the server.
+     * Updates the connection label.
+     */
     @Override
     public void onConnected() {
         lblConn.setText("Connected ✅");
     }
-
+    /**
+     * Called when the client is disconnected from the server.
+     * Updates the connection label.
+     */
     @Override
     public void onDisconnected() {
         lblConn.setText("Disconnected ❌");
     }
-
+    /**
+     * Called when a connection error occurs.
+     *
+     * @param e the exception describing the connection error
+     */
     @Override
     public void onConnectionError(Exception e) {
         lblConn.setText("Connection error: " + e.getMessage());
     }
     
     // ====== Networking ======
+    /**
+     * Attempts to decode a server message into an {@link Envelope}.
+     * Supports direct {@link Envelope} objects and {@link KryoMessage}-wrapped envelopes.
+     *
+     * @param msg raw message received from the server
+     * @return decoded {@link Envelope}, or null if decoding failed
+     */
     private Envelope unwrapToEnvelope(Object msg) {
         try {
             if (msg instanceof Envelope e) return e;
@@ -145,6 +195,12 @@ public class LoginController implements ClientUI {
         return null;
     }
 
+    /**
+     * Handles login-related messages received from the server and routes the user
+     * to the correct screen upon successful authentication.
+     *
+     * @param msg raw message received from the server
+     */
     @Override
     public void handleServerMessage(Object msg) {
         Platform.runLater(() -> {

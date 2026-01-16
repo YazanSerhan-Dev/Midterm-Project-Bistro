@@ -37,7 +37,22 @@ import javafx.scene.chart.XYChart;
 import common.dto.ReportDTO;
 import javafx.scene.chart.NumberAxis;
 import javafx.util.StringConverter;
-
+/**
+ * Staff dashboard controller (Agent/Manager) for managing restaurant operations.
+ * <p>
+ * Responsibilities include:
+ * <ul>
+ *   <li>Viewing and managing reservations, waiting list, current diners.</li>
+ *   <li>Managing subscribers and viewing subscriber history.</li>
+ *   <li>Managing restaurant tables and opening hours.</li>
+ *   <li>Manager-only reports (performance/activity charts).</li>
+ * </ul>
+ * </p>
+ * <p>
+ * This controller implements {@link ClientUI} to receive server callbacks through the shared client connection
+ * stored in {@link ClientSession}. All UI updates are executed on the JavaFX UI thread using {@link Platform#runLater(Runnable)}.
+ * </p>
+ */
 public class StaffController implements ClientUI {
 
     @FXML private Label lblTitle;
@@ -82,7 +97,14 @@ public class StaffController implements ClientUI {
     @FXML private Label lblManagerSection;
     
     // ✅ REMOVED: private ReservationFormController reservationFormController; 
-
+    /**
+     * JavaFX initialization hook called after FXML injection.
+     * <p>
+     * Binds this controller as the active {@link ClientUI} receiver, configures UI elements based on role,
+     * initializes charts/filters, and loads the default reservations view.
+     * Also requests today's opening hours from the server.
+     * </p>
+     */
     @FXML
     public void initialize() {
 
@@ -110,6 +132,7 @@ public class StaffController implements ClientUI {
         // -------------------------------------------------------------
         // 1. ACTIVITY CHART (Reservations/Waiting) - Force Integer Axis
         // -------------------------------------------------------------
+        // Configure charts to display integer tick labels (counts/minutes)
         if (chartActivity != null) {
         	chartActivity.setAnimated(false);
             NumberAxis yAxis = (NumberAxis) chartActivity.getYAxis();
@@ -134,7 +157,7 @@ public class StaffController implements ClientUI {
                 }
             });
         }
-        
+     // Report filters default values
         if (cbReportMonth != null) {
             cbReportMonth.getItems().clear(); 
             cbReportMonth.getItems().addAll(
@@ -185,22 +208,34 @@ public class StaffController implements ClientUI {
     // ========================================================
     // CLIENT UI
     // ========================================================
-
+    /** Updates connection status label when the client connects successfully. */
     @Override
     public void onConnected() {
         Platform.runLater(() -> { if (lblStatus != null) lblStatus.setText("Connected"); });
     }
-
+    /** Updates connection status label when the client disconnects. */
     @Override
     public void onDisconnected() {
         Platform.runLater(() -> { if (lblStatus != null) lblStatus.setText("Disconnected"); });
     }
-
+    /**
+     * Updates connection status label on connection-related errors.
+     *
+     * @param e the connection exception raised by the networking layer
+     */
     @Override
     public void onConnectionError(Exception e) {
         Platform.runLater(() -> { if (lblStatus != null) lblStatus.setText("Error: " + e.getMessage()); });
     }
-
+    /**
+     * Main dispatcher for server messages.
+     * <p>
+     * Decodes the incoming message into an {@link Envelope}, validates it, then routes by {@link OpCode}.
+     * Each case updates the relevant UI section and may trigger refresh requests.
+     * </p>
+     *
+     * @param msg raw message object from the networking client (Envelope or KryoMessage)
+     */
     @Override
     public void handleServerMessage(Object msg) {
         Platform.runLater(() -> {
@@ -279,7 +314,11 @@ public class StaffController implements ClientUI {
     // ========================================================
     // ACTIONS
     // ========================================================
-    
+    /**
+     * Displays a dialog showing a subscriber's reservation history and visits history.
+     *
+     * @param history data object containing reservations and visit strings for a subscriber
+     */
     private void showHistoryPopup(common.dto.HistoryDTO history) {
         Dialog<Void> dialog = new Dialog<>();
         dialog.setTitle("Subscriber History");
@@ -322,6 +361,12 @@ public class StaffController implements ClientUI {
     }
     
     // ✅ ADDED: "Act as Customer" logic replacing onNewReservation
+    /**
+     * Starts an "Act as Customer" flow: either impersonate a subscriber (login request)
+     * or open a guest session (set role and guest identity in {@link ClientSession}).
+     *
+     * @param event button click event from the UI
+     */
     @FXML
     public void onActAsCustomer(ActionEvent event) {
         Dialog<String> dialog = new Dialog<>();
@@ -386,7 +431,11 @@ public class StaffController implements ClientUI {
             }
         });
     }
-
+    /**
+     * Shows the reservations view and requests the agent reservations list from the server.
+     *
+     * @param event button click event (can be null when called programmatically)
+     */
     @FXML
     private void onViewReservations(ActionEvent event) {
         lblTitle.setText("Reservations");
@@ -401,7 +450,11 @@ public class StaffController implements ClientUI {
 
         sendToServer(Envelope.request(OpCode.REQUEST_AGENT_RESERVATIONS_LIST, null));
     }
-
+    /**
+     * Shows the subscribers view and requests the subscribers list from the server.
+     *
+     * @param event button click event
+     */
     @FXML
     private void onViewSubscribers(ActionEvent event) {
         lblTitle.setText("Subscribers");
@@ -410,7 +463,11 @@ public class StaffController implements ClientUI {
         tblSubscribers.setVisible(true); tblSubscribers.setManaged(true);
         sendToServer(Envelope.request(OpCode.REQUEST_SUBSCRIBERS_LIST, null));
     }
-
+    /**
+     * Shows the waiting list view and requests the waiting list from the server.
+     *
+     * @param event button click event
+     */
     @FXML
     private void onViewWaitingList(ActionEvent event) {
         lblTitle.setText("Waiting List");
@@ -429,6 +486,11 @@ public class StaffController implements ClientUI {
         
         sendToServer(Envelope.request(OpCode.REQUEST_WAITING_LIST, null));
     }
+    /**
+     * Shows the current diners view and requests the current diners list from the server.
+     *
+     * @param event button click event
+     */
     @FXML
     private void onViewCurrentDiners(ActionEvent event) {
         lblTitle.setText("Current Diners");
@@ -447,7 +509,11 @@ public class StaffController implements ClientUI {
         // If this line is missing, the server will never know you clicked the button.
         sendToServer(Envelope.request(OpCode.REQUEST_CURRENT_DINERS, null)); 
     }
-
+    /**
+     * Opens a dialog for registering a new customer and sends a registration request to the server.
+     *
+     * @param event button click event
+     */
     @FXML
     private void onRegisterCustomer(ActionEvent event) {
         // ... (Keep existing implementation) ...
@@ -487,6 +553,11 @@ public class StaffController implements ClientUI {
         dialog.showAndWait().ifPresent(dto -> sendToServer(Envelope.request(OpCode.REQUEST_REGISTER_CUSTOMER, dto)));
     }
 
+    /**
+     * Shows the manager reports view and loads report data for the currently selected month/year.
+     *
+     * @param event button click event
+     */
     @FXML
     private void onViewReports(ActionEvent event) {
         lblTitle.setText("Manager Reports");
@@ -499,7 +570,11 @@ public class StaffController implements ClientUI {
         // Load data for the default selected month
         onRefreshReports(null);
     }
-    
+    /**
+     * Refreshes reports for the selected month and year by sending report requests to the server.
+     *
+     * @param event button click event (can be null when invoked programmatically)
+     */
     @FXML
     private void onRefreshReports(ActionEvent event) {
         // 1. Get selected values from ComboBoxes
@@ -525,6 +600,11 @@ public class StaffController implements ClientUI {
    
     
  // 4. Helper to Fill Performance Chart
+    /**
+     * Populates the performance chart with late arrivals and overstay minutes per day.
+     *
+     * @param data list of report entries (typically per date)
+     */
     private void populatePerformanceChart(List<ReportDTO> data) {
         chartPerformance.getData().clear();
         
@@ -543,6 +623,11 @@ public class StaffController implements ClientUI {
     }
 
     // 5. Helper to Fill Activity Chart
+    /**
+     * Populates the activity chart with number of reservations and waiting list entries per day.
+     *
+     * @param data list of report entries (typically per date)
+     */
     private void populateActivityChart(List<ReportDTO> data) {
         chartActivity.getData().clear();
         
@@ -561,7 +646,11 @@ public class StaffController implements ClientUI {
     }
     
    
-
+    /**
+     * Logs out from the staff dashboard by navigating back to the login screen.
+     *
+     * @param event button click event
+     */
     @FXML
     private void onLogout(ActionEvent event) {
         SceneManager.showLogin();
@@ -570,7 +659,16 @@ public class StaffController implements ClientUI {
     // ========================================================
     // HELPERS
     // ========================================================
-    
+    /**
+     * Hides all major panes/tables and leaves only the selected view visible.
+     * <p>
+     * Called before navigating between dashboard sections (reservations/subscribers/waiting list/tables/opening hours/reports)
+     * to avoid multiple views being visible at the same time.
+     * </p>
+     * <p>
+     * Uses {@code setVisible(false)} + {@code setManaged(false)} so hidden nodes do not take layout space.
+     * </p>
+     */
     private void hideAllViews() {
     	if (paneReservations != null) {
             paneReservations.setVisible(false); 
@@ -578,7 +676,8 @@ public class StaffController implements ClientUI {
         }        
     	tblSubscribers.setVisible(false); tblSubscribers.setManaged(false);
         
-        // ✅ FIX: Hide the wrapper pane
+        // Hide waiting list wrapper pane when available (preferred).
+        // Fallback: hide parent node if FXML wrapper isn't defined yet.
         if (paneWaitingList != null) {
             paneWaitingList.setVisible(false);
             paneWaitingList.setManaged(false);
@@ -595,6 +694,11 @@ public class StaffController implements ClientUI {
         if(paneReports != null) { paneReports.setVisible(false); paneReports.setManaged(false); }
     }
 
+/**
+ * Populates the reservations table from a list of DTO objects received from the server.
+ *
+ * @param data raw list payload expected to contain {@link common.dto.ReservationDTO} items
+ */
     private void updateReservationsTable(List<?> data) {
         tblReservations.getItems().clear();
         
@@ -615,6 +719,11 @@ public class StaffController implements ClientUI {
         }
     }
 
+/**
+ * Populates the subscribers table from a list of DTO objects received from the server.
+ *
+ * @param data raw list payload expected to contain {@link common.dto.SubscriberDTO} items
+ */
     private void updateSubscribersTable(List<?> data) {
         tblSubscribers.getItems().clear();
         
@@ -631,7 +740,12 @@ public class StaffController implements ClientUI {
             }
         }
     }
-    
+
+/**
+ * Populates the waiting list table from a list of DTO objects received from the server.
+ *
+ * @param data raw list payload expected to contain {@link WaitingListDTO} items
+ */
     private void updateWaitingListTable(List<?> data) {
         tblWaitingList.getItems().clear();
         for (Object obj : data) {
@@ -641,6 +755,11 @@ public class StaffController implements ClientUI {
             }
         }
     }
+    /**
+     * Populates the current diners table (customers currently seated in the restaurant).
+     *
+     * @param data raw list payload expected to contain {@link common.dto.CurrentDinersDTO} items
+     */
     private void updateCurrentDinersTable(List<?> data) {
         tblCurrentDiners.getItems().clear();
         for (Object obj : data) {
@@ -655,7 +774,11 @@ public class StaffController implements ClientUI {
             }
         }
     }
-    
+    /**
+     * Populates the restaurant tables list (table id, seats, status) from server DTOs.
+     *
+     * @param data raw list payload expected to contain {@link RestaurantTableDTO} items
+     */ 
     private void updateRestaurantTables(List<?> data) {
         tblRestaurantTables.getItems().clear();
         for (Object o : data) {
@@ -664,7 +787,15 @@ public class StaffController implements ClientUI {
             }
         }
     }
-
+    /**
+     * Populates opening hours tables:
+     * <ul>
+     *   <li>Regular weekly opening hours (sorted by day of week)</li>
+     *   <li>Special dates (exceptions / overrides)</li>
+     * </ul>
+     *
+     * @param data raw list payload expected to contain {@link OpeningHoursDTO} items
+     */
     private void updateOpeningHours(List<?> data) {
         tblRegularHours.getItems().clear();
         tblSpecialHours.getItems().clear();
@@ -688,13 +819,22 @@ public class StaffController implements ClientUI {
 
         tblRegularHours.getItems().addAll(regularList);
     }
-
+    /**
+     * Updates the label showing today's opening hours string.
+     *
+     * @param hours formatted hours string returned from the server (e.g., "Today: 10:00-23:00")
+     */
     private void updateTodayHours(String hours) {
         if (hours != null) {
             lblTodayHours.setText(hours);
         }
     }
-
+    /**
+     * Initializes waiting list table columns (only once).
+     * <p>
+     * This method is idempotent: if columns already exist, it exits immediately.
+     * </p>
+     */
     private void setupWaitingListColumns() {
         if (!tblWaitingList.getColumns().isEmpty()) return;
         TableColumn<WaitingListRow, Integer> colId = new TableColumn<>("ID");
@@ -709,7 +849,12 @@ public class StaffController implements ClientUI {
         colCode.setCellValueFactory(new PropertyValueFactory<>("confirmationCode"));
         tblWaitingList.getColumns().addAll(colId, colCount, colTime, colStatus, colCode);
     }
-    
+    /**
+     * Initializes reservations table columns (only once).
+     * <p>
+     * This method is idempotent: if columns already exist, it exits immediately.
+     * </p>
+     */
     private void setupReservationsColumns() {
         if (!tblReservations.getColumns().isEmpty()) return;
 
@@ -738,7 +883,16 @@ public class StaffController implements ClientUI {
     }
 
  // In Client/StaffController.java
-
+    /**
+     * Initializes subscribers table columns and adds a per-row "History" action button.
+     * <p>
+     * The History button sends {@link OpCode#REQUEST_SUBSCRIBER_HISTORY} to the server with the subscriber id/username
+     * and expects {@link OpCode#RESPONSE_SUBSCRIBER_HISTORY} as response.
+     * </p>
+     * <p>
+     * This method is idempotent: if columns already exist, it exits immediately.
+     * </p>
+     */
     private void setupSubscriberColumns() {
         if (!tblSubscribers.getColumns().isEmpty()) return;
 
@@ -799,13 +953,22 @@ public class StaffController implements ClientUI {
         // ✅ Add all columns including colAction
         tblSubscribers.getColumns().addAll(colUsername, colName, colPhone, colEmail, colBirthDate, colAction);
     }
-    
+    /**
+     * Requests subscriber history (reservations + visits) from the server for a given subscriber identifier.
+     *
+     * @param username subscriber identifier used by the server to fetch history
+     */
     private void onRequestHistory(String username) {
         if (username == null || username.isEmpty()) return;
         // Send request with the username (String) as payload
         sendToServer(Envelope.request(OpCode.REQUEST_SUBSCRIBER_HISTORY, username));
     }
-    
+    /**
+     * Initializes current diners table columns (only once).
+     * <p>
+     * This method is idempotent: if columns already exist, it exits immediately.
+     * </p>
+     */
     private void setupCurrentDinersColumns() {
         if (!tblCurrentDiners.getColumns().isEmpty()) return;
 
@@ -828,7 +991,12 @@ public class StaffController implements ClientUI {
 
         tblCurrentDiners.getColumns().addAll(colTable, colName, colCount, colTime, colStatus);
     }
-    
+    /**
+     * Initializes the restaurant tables TableView columns (only once).
+     * <p>
+     * This method is idempotent: if columns already exist, it exits immediately.
+     * </p>
+     */
     private void setupTableColumns() {
         if (!tblRestaurantTables.getColumns().isEmpty()) return;
 
@@ -843,7 +1011,13 @@ public class StaffController implements ClientUI {
 
         tblRestaurantTables.getColumns().addAll(colId, colSeats, colStatus);
     }
-    
+    /**
+     * Initializes the opening hours tables for regular weekly hours and special dates (only once).
+     * <p>
+     * Adds a selection listener on the regular hours table to populate edit fields (open/close)
+     * according to the selected day.
+     * </p>
+     */
     private void setupOpeningHoursTables() {
         // --- 1. SETUP REGULAR HOURS TABLE (Top) ---
         if (tblRegularHours.getColumns().isEmpty()) {
@@ -892,11 +1066,26 @@ public class StaffController implements ClientUI {
         }
     }
     
-    
 
-    
-    
-    
+ // ========================================================
+ // WAITING LIST MANAGEMENT
+ // ========================================================
+
+ /**
+  * Opens a dialog to add a walk-in customer to the waiting list.
+  * <p>
+  * Supports two modes:
+  * <ul>
+  *   <li>Subscriber: user provides subscriber id</li>
+  *   <li>Guest: user provides phone and/or email</li>
+  * </ul>
+  * Validation is enforced before allowing the dialog to close.
+  * On success, sends {@link OpCode#REQUEST_WAITING_ADD} to the server.
+  * </p>
+  *
+  * @param event button click event
+  */
+
     @FXML
     void onAddWaitingCustomer(ActionEvent event) {
         Dialog<WaitingListDTO> dialog = new Dialog<>();
@@ -987,7 +1176,12 @@ public class StaffController implements ClientUI {
             sendToServer(Envelope.request(OpCode.REQUEST_WAITING_ADD, payload));
         });
     }
-
+    /**
+     * Removes the selected waiting list entry after confirmation.
+     * Sends {@link OpCode#REQUEST_WAITING_REMOVE} to the server with the selected waiting id.
+     *
+     * @param event button click event
+     */
     @FXML
     void onRemoveWaitingCustomer(ActionEvent event) {
         WaitingListRow selected = tblWaitingList.getSelectionModel().getSelectedItem();
@@ -1010,7 +1204,15 @@ public class StaffController implements ClientUI {
  // ========================================================
     // RESERVATION MANAGEMENT (Add / Remove)
     // ========================================================
-
+    /**
+     * Opens a dialog to create a new reservation on behalf of a customer.
+     * <p>
+     * Supports subscriber reservations (subscriber id) and guest reservations (phone + email).
+     * Validates inputs and sends {@link OpCode#REQUEST_MAKE_RESERVATION} to the server.
+     * </p>
+     *
+     * @param event button click event
+     */
     @FXML
     void onAddReservation(ActionEvent event) {
         Dialog<MakeReservationRequestDTO> dialog = new Dialog<>();
@@ -1106,7 +1308,15 @@ public class StaffController implements ClientUI {
             sendToServer(Envelope.request(OpCode.REQUEST_MAKE_RESERVATION, dto));
         });
     }
-
+    /**
+     * Cancels the selected reservation after confirmation.
+     * Sends {@link OpCode#REQUEST_TERMINAL_CANCEL_RESERVATION} with the confirmation code.
+     * <p>
+     * Note: this path bypasses role checks by using the terminal cancel opcode.
+     * </p>
+     *
+     * @param event button click event
+     */
     @FXML
     void onRemoveReservation(ActionEvent event) {
         ReservationRow selected = tblReservations.getSelectionModel().getSelectedItem();
@@ -1127,7 +1337,15 @@ public class StaffController implements ClientUI {
             }
         });
     }
-    
+ // ========================================================
+ // TABLES MANAGEMENT
+ // ========================================================
+
+ /**
+  * Shows the "Manage Restaurant Tables" view and requests the current tables list from the server.
+  *
+  * @param event button click event
+  */
     @FXML
     private void onManageTables(ActionEvent event) {
         lblTitle.setText("Manage Restaurant Tables");
@@ -1139,7 +1357,12 @@ public class StaffController implements ClientUI {
         setupTableColumns();
         refreshTableList();
     }
-    
+    /**
+     * Adds a new restaurant table based on input fields.
+     * Sends {@link OpCode#REQUEST_TABLE_ADD} to the server with a {@link RestaurantTableDTO} payload.
+     *
+     * @param event button click event
+     */
     @FXML
     private void onAddTable(ActionEvent event) {
         String id = tfTableId.getText().trim();
@@ -1168,7 +1391,12 @@ public class StaffController implements ClientUI {
             showAlert("Error", "Seats must be a number.");
         }
     }
-
+    /**
+     * Deletes the selected restaurant table after confirmation.
+     * Sends {@link OpCode#REQUEST_TABLE_REMOVE} to the server with table id payload.
+     *
+     * @param event button click event
+     */
     @FXML
     private void onDeleteTable(ActionEvent event) {
         RestaurantTableDTO selected = tblRestaurantTables.getSelectionModel().getSelectedItem();
@@ -1184,7 +1412,15 @@ public class StaffController implements ClientUI {
             }
         });
     }
-    
+ // ========================================================
+ // OPENING HOURS MANAGEMENT
+ // ========================================================
+
+ /**
+  * Shows the "Manage Opening Hours" view and requests opening hours data from the server.
+  *
+  * @param event button click event
+  */
  // 1. Open the "Manage Opening Hours" Screen
     @FXML
     private void onManageOpeningHours(ActionEvent event) {
@@ -1200,6 +1436,12 @@ public class StaffController implements ClientUI {
     }
 
     // 2. Button: Update Weekly Hour
+    /**
+     * Updates the selected regular weekly opening hours (open/close) and sends update request to server.
+     * Sends {@link OpCode#REQUEST_OPENING_HOURS_UPDATE} with updated {@link OpeningHoursDTO}.
+     *
+     * @param event button click event
+     */
     @FXML
     private void onUpdateRegularHour(ActionEvent event) {
         // 1. Get selected item from the TABLE
@@ -1227,6 +1469,12 @@ public class StaffController implements ClientUI {
     }
 
     // 3. Button: Add Special Date Exception
+    /**
+     * Adds a special opening-hours entry (exception date) and sends add request to server.
+     * Sends {@link OpCode#REQUEST_OPENING_HOURS_ADD_SPECIAL} with a new {@link OpeningHoursDTO}.
+     *
+     * @param event button click event
+     */
     @FXML
     private void onAddSpecialHour(ActionEvent event) {
         if (dpSpecialDate.getValue() == null) { 
@@ -1256,6 +1504,12 @@ public class StaffController implements ClientUI {
     }
 
     // 4. Button: Remove Special Date
+    /**
+     * Removes the selected special opening-hours entry and sends remove request to server.
+     * Sends {@link OpCode#REQUEST_OPENING_HOURS_REMOVE} with the hoursId.
+     *
+     * @param event button click event
+     */
     @FXML
     private void onRemoveSpecialHour(ActionEvent event) {
         OpeningHoursDTO selected = tblSpecialHours.getSelectionModel().getSelectedItem();
@@ -1266,24 +1520,39 @@ public class StaffController implements ClientUI {
         
         sendToServer(Envelope.request(OpCode.REQUEST_OPENING_HOURS_REMOVE, selected.getHoursId()));
     }
-
+    /**
+     * Requests the latest restaurant tables list from the server.
+     * This method is typically called after add/update/delete operations.
+     */
     private void refreshTableList() {
         sendToServer(Envelope.request(OpCode.REQUEST_TABLES_GET, null));
     }
-    
-    
-   
-
+    /**
+     * Handles performance report response envelope and populates the performance chart.
+     *
+     * @param env envelope containing {@link List} of {@link ReportDTO}
+     */
     private void handleReportPerformanceResponse(Envelope env) {
         List<ReportDTO> data = (List<ReportDTO>) env.getPayload();
         populatePerformanceChart(data);
     }
-
+    /**
+     * Handles activity report response envelope and populates the activity chart.
+     *
+     * @param env envelope containing {@link List} of {@link ReportDTO}
+     */
     private void handleReportActivityResponse(Envelope env) {
         List<ReportDTO> data = (List<ReportDTO>) env.getPayload();
         populateActivityChart(data);
     }
-    
+    /**
+     * Legacy/alternate waiting list handler.
+     * <p>
+     * Supports both list payload (refresh table) and string payload (message + refresh).
+     * </p>
+     *
+     * @param payload either a {@link List} of waiting list entries or a server message string
+     */
     private void handleWaitingListResponse(Object payload) {
         if (payload instanceof List) {
             // Normal update: payload is the list of rows
@@ -1299,7 +1568,12 @@ public class StaffController implements ClientUI {
             sendToServer(Envelope.request(OpCode.REQUEST_WAITING_LIST, null));
         }
     }
-    
+    /**
+     * Handles a subscriber login response within staff context.
+     * On success, sets session role/username and navigates to customer main view.
+     *
+     * @param res login response DTO returned by the server
+     */
     private void handleSubscriberLoginResponse(LoginResponseDTO res) {
         if (res.isOk()) {
             ClientSession.setRole("SUBSCRIBER");
@@ -1309,18 +1583,31 @@ public class StaffController implements ClientUI {
             showAlert("Validation Failed", res.getMessage());
         }
     }
-
+    /**
+     * Shows a message (if provided) and refreshes the waiting list immediately.
+     *
+     * @param msg server status message after add/remove
+     */
     private void handleWaitingListUpdateResponse(String msg) {
         if (msg != null) showAlert("Success", msg);
         // Refresh the table immediately
         sendToServer(Envelope.request(OpCode.REQUEST_WAITING_LIST, null));    
     }
-
+    /**
+     * Shows a message (if provided) and refreshes the restaurant tables list.
+     *
+     * @param msg server status message after add/update/remove
+     */
     private void handleTableUpdateResponse(String msg) {
         if (msg != null) showAlert("Success", msg);
         refreshTableList();
     }
-
+    /**
+     * Shows a message (if provided) and refreshes opening hours data,
+     * then updates today's hours label.
+     *
+     * @param msg server status message after opening hours update/add/remove
+     */
     private void handleOpeningHoursUpdateResponse(String msg) {
         if (msg != null) showAlert("Success", msg);
         
@@ -1333,25 +1620,36 @@ public class StaffController implements ClientUI {
 	 // ========================================================
 	 // VALIDATION HELPERS
 	 // ========================================================
-	
+    /**
+     * Validates email using a simple regex.
+     *
+     * @param email email string to validate
+     * @return true if email is non-blank and matches basic email format, otherwise false
+     */
 	 private boolean isValidEmail(String email) {
 	     if (email == null || email.isBlank()) return false;
 	     // Simple Regex for email
 	     return email.matches("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
 	 }
-	
+	 /**
+	  * Validates Israeli mobile phone format used by this system (starts with 05 and has 10 digits).
+	  *
+	  * @param phone phone string to validate
+	  * @return true if phone matches {@code ^05\\d{8}$}, otherwise false
+	  */
 	 private boolean isValidPhone(String phone) {
 	     if (phone == null || phone.isBlank()) return false;
 	     // Regex: Must start with 05 and have exactly 10 digits
 	     return phone.matches("^05\\d{8}$");
 	 }
-	    
-    
-    
-    
-    
-
-
+	 /**
+	  * Sends an envelope to the server through {@link BistroClient} using Kryo serialization.
+	  * <p>
+	  * If there is no connection, an alert is shown instead of sending.
+	  * </p>
+	  *
+	  * @param env envelope containing operation code and payload
+	  */
     private void sendToServer(Envelope env) {
         try {
             BistroClient client = ClientSession.getClient();
@@ -1362,7 +1660,12 @@ public class StaffController implements ClientUI {
             }
         } catch (Exception e) { e.printStackTrace(); }
     }
-    
+    /**
+     * Shows a modal information alert on the UI thread.
+     *
+     * @param title alert title
+     * @param content message text
+     */
     private void showAlert(String title, String content) {
         Platform.runLater(() -> {
             Alert alert = new Alert(Alert.AlertType.INFORMATION);
@@ -1370,7 +1673,17 @@ public class StaffController implements ClientUI {
             alert.showAndWait();
         });
     }
-    
+    /**
+     * Unwraps server message into {@link Envelope}.
+     * Supports receiving either:
+     * <ul>
+     *   <li>{@link Envelope} directly</li>
+     *   <li>{@link KryoMessage} whose payload is a serialized Envelope</li>
+     * </ul>
+     *
+     * @param msg raw message from server
+     * @return decoded envelope, or null if decode fails
+     */
     private Envelope unwrapToEnvelope(Object msg) {
         try {
             if (msg instanceof Envelope e) return e;

@@ -24,6 +24,16 @@ import java.time.LocalTime;
 
 import java.lang.reflect.Method;
 import java.util.List;
+/**
+ * JavaFX controller for the Bistro client application.
+ * <p>
+ * Manages the main UI navigation (dashboard/profile/history), reservation creation and cancellation,
+ * and communication with the server using {@link BistroClient}.
+ * </p>
+ * <p>
+ * Implements {@link ClientUI} to receive connection events and server messages.
+ * </p>
+ */
 
 public class ClientController implements ClientUI {
 
@@ -94,6 +104,10 @@ public class ClientController implements ClientUI {
     // ✅ Pending reservation base (after availability check)
     private MakeReservationRequestDTO pendingReservationBase;
 
+    /**
+     * Initializes the controller after FXML loading.
+     * Sets initial UI state, table bindings, listeners, and triggers initial data loading when connected.
+     */
 
     @FXML
     private void initialize() {
@@ -186,6 +200,9 @@ public class ClientController implements ClientUI {
         });
         Platform.runLater(this::requestAvailableTimesForSelectedDate);
     }
+    /**
+     * Configures the "My Reservations" table column bindings.
+     */
 
     private void setupReservationsTable() {
         colReservationId.setCellValueFactory(c -> c.getValue().reservationIdProperty());
@@ -195,7 +212,10 @@ public class ClientController implements ClientUI {
         colCustomers.setCellValueFactory(c -> c.getValue().numOfCustomersProperty());
         colStatus.setCellValueFactory(c -> c.getValue().statusProperty());
     }
-    
+    /**
+     * Configures the "History" table column bindings.
+     */
+
     private void setupHistoryTable() {
     	colHistResId.setCellValueFactory(c -> c.getValue().reservationIdProperty());
     	colHistConfCode.setCellValueFactory(c -> c.getValue().confirmationCodeProperty());
@@ -205,6 +225,11 @@ public class ClientController implements ClientUI {
         colHistStatus.setCellValueFactory(c -> c.getValue().statusProperty());
     }
 
+    /**
+     * Displays a single pane and hides all other main panes.
+     *
+     * @param pane the pane to show
+     */
 
     private void showPane(VBox pane) {
         paneDashboard.setVisible(false); paneDashboard.setManaged(false);
@@ -221,6 +246,11 @@ public class ClientController implements ClientUI {
     }
 
     // ===== Suggested times helpers =====
+    /**
+     * Displays the suggested alternative reservation times list in the UI.
+     *
+     * @param alts list of alternative timestamps suggested by the server (may be null/empty)
+     */
 
     private void showSuggestedTimesUI(List<Timestamp> alts) {
         if (lblSuggestedTimesTitle == null || lvSuggestedTimes == null) return;
@@ -240,6 +270,9 @@ public class ClientController implements ClientUI {
             lvSuggestedTimes.getSelectionModel().clearSelection();
         }
     }
+    /**
+     * Hides the suggested times UI and clears any displayed alternatives.
+     */
 
     private void hideSuggestedTimesUI() {
         if (lblSuggestedTimesTitle != null) {
@@ -252,6 +285,12 @@ public class ClientController implements ClientUI {
         }
         suggestedTimes.clear();
     }
+    /**
+     * Applies a selected suggested time into the reservation form fields (date + time),
+     * and shows a hint message to the user.
+     *
+     * @param ts the suggested reservation time selected from the alternatives list
+     */
 
     private void applySuggestedTime(Timestamp ts) {
         LocalDateTime ldt = ts.toLocalDateTime();
@@ -270,6 +309,12 @@ public class ClientController implements ClientUI {
     }
 
     // ===== Networking =====
+    /**
+     * Configures and connects the shared client session to the server.
+     *
+     * @param host server IP/hostname
+     * @param port server port
+     */
 
     public void connectToServer(String host, int port) {
         try {
@@ -283,6 +328,9 @@ public class ClientController implements ClientUI {
             lblStatus.setText("Connection failed: " + e.getMessage());
         }
     }
+    /**
+     * Disconnects the current shared client session from the server if connected.
+     */
 
     public void disconnectFromServer() {
         try {
@@ -295,19 +343,36 @@ public class ClientController implements ClientUI {
         } catch (Exception ignored) {
         }
     }
+    /**
+     * UI callback invoked when the client connection is established successfully.
+     */
 
     public void onConnected() {
         Platform.runLater(() -> lblStatus.setText("Connected to server."));
    
     }
+    /**
+     * UI callback invoked when the client connection is closed.
+     */
 
     public void onDisconnected() {
         Platform.runLater(() -> lblStatus.setText("Disconnected."));
     }
+    /**
+     * UI callback invoked when a connection error occurs.
+     *
+     * @param e the exception describing the connection error
+     */
 
     public void onConnectionError(Exception e) {
         Platform.runLater(() -> lblStatus.setText("Connection error: " + e.getMessage()));
     }
+    /**
+     * Handles raw messages received from the server, decodes them into {@link Envelope},
+     * and dispatches them to the correct response handler.
+     *
+     * @param msg raw message object received from the server
+     */
 
     public void handleServerMessage(Object msg) {
         Platform.runLater(() -> {
@@ -336,6 +401,13 @@ public class ClientController implements ClientUI {
             }
         });
     }
+    /**
+     * Attempts to decode a server message into an {@link Envelope}.
+     * Supports direct Envelope messages and Kryo-wrapped envelopes.
+     *
+     * @param msg the raw server message
+     * @return decoded Envelope instance, or null if decoding failed
+     */
 
     private Envelope unwrapToEnvelope(Object msg) {
         try {
@@ -352,6 +424,10 @@ public class ClientController implements ClientUI {
     }
     
  // ===== Guest contact dialog (email + phone) =====
+    /**
+     * Simple container for guest/customer contact details required for confirmations and reminders.
+     */
+
     private static class GuestContact {
         final String email;
         final String phone;
@@ -361,18 +437,36 @@ public class ClientController implements ClientUI {
             this.phone = phone;
         }
     }
-    
+    /**
+     * Validates email format using a basic regex rule.
+     *
+     * @param email input email string
+     * @return true if the email is non-null and matches the expected format, otherwise false
+     */
+
     private static boolean isValidEmailFormat(String email) {
         if (email == null) return false;
         String e = email.trim();
         return e.matches("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
     }
+    /**
+     * Validates Israeli phone format starting with 05 and containing 10 digits total.
+     *
+     * @param phone input phone string
+     * @return true if the phone is non-null and matches 05XXXXXXXX, otherwise false
+     */
 
     private static boolean isValidPhone10Digits(String phone) {
         if (phone == null) return false;
         String p = phone.trim();
         return p.matches("^05\\d{8}$");
     }
+    /**
+     * Opens a dialog asking a guest/customer for email and phone.
+     * Input is validated before allowing confirmation.
+     *
+     * @return {@link GuestContact} containing validated email and phone, or null if cancelled
+     */
 
     private GuestContact askGuestEmailAndPhone() {
 
@@ -442,7 +536,12 @@ public class ClientController implements ClientUI {
 
         return dialog.showAndWait().orElse(null);
     }
-    
+    /**
+     * Handles available reservation times response and populates the time ComboBox.
+     *
+     * @param payload expected to be a list of available times (as strings)
+     */
+
     @SuppressWarnings("unchecked")
     private void handleAvailableTimesResponse(Object payload) {
         if (cbReservationTime == null) return;
@@ -472,6 +571,11 @@ public class ClientController implements ClientUI {
     }
 
 
+    /**
+     * Handles profile data response and fills the profile form fields.
+     *
+     * @param payload expected to be {@link ProfileDTO}
+     */
 
     private void handleGetProfileResponse(Object payload) {
         if (!(payload instanceof ProfileDTO dto)) {
@@ -494,6 +598,11 @@ public class ClientController implements ClientUI {
     }
 
 
+    /**
+     * Handles profile update response. Payload may be a message string or an updated {@link ProfileDTO}.
+     *
+     * @param payload server response payload
+     */
 
     private void handleUpdateProfileResponse(Object payload) {
         // simplest: server returns String message OR ProfileDTO back
@@ -513,7 +622,14 @@ public class ClientController implements ClientUI {
         lblStatus.setText("✅ Profile updated.");
     }
 
-    
+    /**
+     * Handles availability check response before making a reservation.
+     * If available, continues to collect user details (guest only) and sends the make-reservation request.
+     * If not available, shows alternative suggested times.
+     *
+     * @param payload expected to be {@link MakeReservationResponseDTO}
+     */
+
     private void handleAvailabilityCheckResponse(Object payload) {
         if (!(payload instanceof MakeReservationResponseDTO res)) {
             lblStatus.setText("Bad payload for availability check.");
@@ -583,6 +699,11 @@ public class ClientController implements ClientUI {
         }
     }
 
+    /**
+     * Handles make-reservation response and updates the UI accordingly.
+     *
+     * @param payload expected to be {@link MakeReservationResponseDTO}
+     */
 
     private void handleMakeReservationResponse(Object payload) {
         if (!(payload instanceof MakeReservationResponseDTO res)) {
@@ -618,6 +739,12 @@ public class ClientController implements ClientUI {
             }
         }
     }
+    /**
+     * Handles reservations list response and updates the dashboard tables and counters.
+     * Subscribers split reservations into active vs history.
+     *
+     * @param payload expected to be a list of reservation DTO objects
+     */
 
     @SuppressWarnings("unchecked")
     private void handleReservationsResponse(Object payload) {
@@ -663,6 +790,12 @@ public class ClientController implements ClientUI {
                 (isSubscriber ? (" | history: " + history.size()) : ""));
     }
 
+    /**
+     * Determines whether a reservation status is considered active for display purposes.
+     *
+     * @param status reservation status text
+     * @return true if status represents an active reservation, otherwise false
+     */
 
     private boolean isActiveStatus(String status) {
         if (status == null) return false;
@@ -676,7 +809,13 @@ public class ClientController implements ClientUI {
         return s.equals("CONFIRMED") || s.equals("ARRIVED") || s.equals("PENDING");
     }
 
-    
+    /**
+     * Converts a reservation DTO (unknown concrete type) into a {@link ReservationRow} using reflection.
+     *
+     * @param dto reservation DTO object returned by the server
+     * @return a populated {@link ReservationRow}, or null if conversion failed
+     */
+
     private ReservationRow dtoToRow(Object dto) {
         try {
             int id = getInt(dto, "getReservationId", 0);
@@ -693,6 +832,14 @@ public class ClientController implements ClientUI {
             return null;
         }
     }
+    /**
+     * Invokes a no-arg getter method by reflection and returns its string form.
+     *
+     * @param obj target object
+     * @param methodName getter method name to call
+     * @param def default value used when invocation fails or returns null
+     * @return the extracted string value, or the default value
+     */
 
     private String getString(Object obj, String methodName, String def) {
         try {
@@ -703,6 +850,14 @@ public class ClientController implements ClientUI {
             return def;
         }
     }
+    /**
+     * Invokes a no-arg getter method by reflection and parses the result as an int.
+     *
+     * @param obj target object
+     * @param methodName getter method name to call
+     * @param def default value used when invocation fails or returns null
+     * @return parsed integer value, or the default value
+     */
 
     private int getInt(Object obj, String methodName, int def) {
         try {
@@ -715,7 +870,12 @@ public class ClientController implements ClientUI {
             return def;
         }
     }
-    
+    /**
+     * Handles leave-waiting-list response and updates the status message.
+     *
+     * @param payload expected to be {@link WaitingListDTO} or an error message string
+     */
+
     private void handleLeaveWaitingListResponse(Object payload) {
         if (payload instanceof WaitingListDTO dto) {
             lblStatus.setText("✅ Left waiting list. Code: " + dto.getConfirmationCode() +
@@ -726,7 +886,11 @@ public class ClientController implements ClientUI {
         // If server sends string messages for errors, show them
         lblStatus.setText(payload == null ? "✅ Left waiting list." : payload.toString());
     }
-    
+    /**
+     * Requests available reservation times for the currently selected date from the server,
+     * and updates the time selection UI while loading.
+     */
+
     private void requestAvailableTimesForSelectedDate() {
         this.client = ClientSession.getClient();
 
@@ -754,7 +918,10 @@ public class ClientController implements ClientUI {
 
 
     // ===== UI actions =====
-    
+    /**
+     * UI action: sends a request to leave the waiting list after asking the user for the waiting code.
+     */
+
     @FXML
     private void onLeaveWaitingList() {
         this.client = ClientSession.getClient();
@@ -792,6 +959,10 @@ public class ClientController implements ClientUI {
         }
     }
 
+    /**
+     * UI action: requests the current user's reservations list from the server.
+     * Guests/customers may be asked for email and phone if not already stored in the session.
+     */
 
     @FXML
     private void onRefreshReservations() {
@@ -839,6 +1010,9 @@ public class ClientController implements ClientUI {
             lblStatus.setText("Send failed: " + e.getMessage());
         }
     }
+    /**
+     * UI action: cancels the selected reservation (if allowed) by sending a cancel request to the server.
+     */
 
     @FXML
     private void onCancelReservation() {
@@ -910,10 +1084,20 @@ public class ClientController implements ClientUI {
         }
     }
 
+    /**
+     * UI action: navigates to the payment screen.
+     */
 
     @FXML private void onPayBill() { SceneManager.showPayBill(); }
+    /**
+     * UI action: navigates to the dashboard pane.
+     */
 
     @FXML private void onNavDashboard() { showPane(paneDashboard); }
+    /**
+     * UI action: navigates to reservations view (dashboard) and refreshes reservations from the server.
+     */
+
     @FXML
     private void onNavReservations() {
         // "My Reservations" -> go to Dashboard pane (where the table is) and refresh data
@@ -944,6 +1128,9 @@ public class ClientController implements ClientUI {
         // Finally, fetch the list from the server
         onRefreshReservations();
     }
+    /**
+     * UI action: navigates to profile pane (subscribers only) and requests profile data from the server.
+     */
 
     @FXML
     private void onNavProfile() {
@@ -973,7 +1160,10 @@ public class ClientController implements ClientUI {
         }
 
     }
-    
+    /**
+     * UI action: copies the barcode data to the system clipboard.
+     */
+
     @FXML
     private void onCopyBarcode() {
         if (txtBarcodeData == null) return;
@@ -990,14 +1180,27 @@ public class ClientController implements ClientUI {
 
         lblStatus.setText("Barcode copied ✅");
     }
+    /**
+     * UI action: navigates to the history pane (subscribers only).
+     */
 
     @FXML private void onNavHistory() { if (isSubscriber) showPane(paneHistory); }
+    /**
+     * UI action: logs out the current user and navigates back to the login screen.
+     *
+     * @param e action event from the logout button
+     */
 
     @FXML
     private void onLogout(ActionEvent e) {
     	ClientSession.clearGuestIdentity();
         SceneManager.showLogin();
     }
+    /**
+     * UI action: opens the new reservation form and refreshes available times for the selected date.
+     *
+     * @param e action event from the "New Reservation" button
+     */
 
     @FXML
     private void onNewReservation(ActionEvent e) {
@@ -1008,6 +1211,11 @@ public class ClientController implements ClientUI {
         if (lblReservationFormMsg != null) lblReservationFormMsg.setText("");
         hideSuggestedTimesUI();
     }
+    /**
+     * UI action: validates profile form fields and sends an update-profile request to the server.
+     *
+     * @param e action event from the "Save" button
+     */
 
     @FXML
     private void onSaveProfile(ActionEvent e) {
@@ -1048,6 +1256,11 @@ public class ClientController implements ClientUI {
         }
     }
 
+    /**
+     * Returns the current client instance associated with this controller.
+     *
+     * @return current {@link BistroClient} reference (may be null)
+     */
 
     ////to refactor
     public BistroClient getClient() {
@@ -1055,6 +1268,12 @@ public class ClientController implements ClientUI {
     }
  
 
+    /**
+     * UI action: validates reservation form and sends an availability check request to the server.
+     * If available, the flow continues in the availability response handler.
+     *
+     * @param e action event from the "Create Reservation" button
+     */
 
     @FXML
     private void onCreateReservation(ActionEvent e) {
@@ -1097,6 +1316,11 @@ public class ClientController implements ClientUI {
         }
     }
 
+    /**
+     * UI action: clears the reservation form fields, hides suggested times, and reloads available times.
+     *
+     * @param e action event from the "Clear" button
+     */
 
     @FXML
     private void onClearReservationForm(ActionEvent e) {

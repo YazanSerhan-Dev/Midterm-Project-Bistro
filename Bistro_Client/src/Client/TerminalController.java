@@ -19,10 +19,22 @@ import java.sql.Timestamp;
 import java.time.format.DateTimeFormatter;
 
 /**
- * TerminalController
- * - Uses shared OCSF client from ClientSession
- * - Sends Envelope via KryoMessage
- * - Implements ClientUI so it receives server responses through ClientSession
+ * Controller for the public terminal screen.
+ *
+ * Responsibilities:
+ * <ul>
+ *   <li>Binds itself as the active {@link ClientUI} receiver via {@link ClientSession#bindUI(ClientUI)}.</li>
+ *   <li>Sends requests to the server using {@link Envelope} wrapped in {@link KryoMessage}.</li>
+ *   <li>Maintains simple in-flight flags to prevent duplicate requests while a request is pending.</li>
+ *   <li>Updates JavaFX UI safely on the FX thread using {@link Platform#runLater(Runnable)}.</li>
+ * </ul>
+ *
+ * Notes:
+ * <ul>
+ *   <li>UI controls are intentionally kept enabled; request flags prevent spam/double-clicks.</li>
+ *   <li>The controller supports two server payload formats for some operations
+ *       (DTO-based and legacy String-based), to remain backward compatible.</li>
+ * </ul>
  */
 public class TerminalController implements ClientUI {
 
@@ -82,6 +94,16 @@ public class TerminalController implements ClientUI {
     private volatile String terminalSubscriberUsername = "";
 
 
+    /**
+     * JavaFX lifecycle hook invoked after FXML injection is complete.
+     * Performs pre-UI initialization:
+     * <ul>
+     *   <li>Refreshes connection label and resets UI state.</li>
+     *   <li>Binds this controller as the active UI receiver in {@link ClientSession}.</li>
+     *   <li>Applies visibility configuration for terminal UI components.</li>
+     *   <li>Registers click handler for subscriber active items list (if available).</li>
+     * </ul>
+     */
     @FXML
     private void initialize() {
         refreshConnectionLabel();
@@ -111,7 +133,19 @@ public class TerminalController implements ClientUI {
     // =========================
     // UI Actions
     // =========================
-    
+    /**
+     * Cancels the currently validated reservation.
+     *
+     * Validation rules enforced before sending request:
+     * <ul>
+     *   <li>Must be connected.</li>
+     *   <li>Must validate the code first (same code as {@code lastValidatedCode}).</li>
+     *   <li>Must be a reservation code (not waiting list code).</li>
+     *   <li>Optionally blocks cancel if already checked-in.</li>
+     * </ul>
+     *
+     * Sends {@code REQUEST_TERMINAL_CANCEL_RESERVATION} with the confirmation code as payload.
+     */
     @FXML
     private void onCancelReservation() {
 
@@ -171,7 +205,18 @@ public class TerminalController implements ClientUI {
     }
 
     
-
+    /**
+     * Joins the waiting list from the terminal.
+     *
+     * Behavior:
+     * <ul>
+     *   <li>If terminal is in subscriber session, asks only for people count.</li>
+     *   <li>Otherwise asks for people count + at least one contact method (email/phone).</li>
+     * </ul>
+     *
+     * Sends {@code REQUEST_WAITING_ADD} with payload:
+     * {@code Object[] { role, username, WaitingListDTO }}.
+     */
     @FXML
     private void onJoinWaitingList() {
         if (joinWLInFlight) {
@@ -229,7 +274,12 @@ public class TerminalController implements ClientUI {
             lblTerminalStatus.setText("Failed: " + e.getMessage());
         }
     }
-
+    /**
+     * Leaves the waiting list for the code currently typed in {@link #txtConfirmationCode}.
+     *
+     * Sends {@code REQUEST_LEAVE_WAITING_LIST} with payload:
+     * {@code Object[] { role, username, code }}.
+     */
     @FXML
     private void onLeaveWaitingList() {
 
@@ -273,7 +323,16 @@ public class TerminalController implements ClientUI {
         }
     }
 
-
+    /**
+     * Validates a reservation/waiting-list confirmation code.
+     *
+     * Effects:
+     * <ul>
+     *   <li>Stores {@code lastValidatedCode} and resets check-in state.</li>
+     *   <li>Sends {@code REQUEST_TERMINAL_VALIDATE_CODE} to the server.</li>
+     *   <li>Updates UI to show "Checking..." while the request is in-flight.</li>
+     * </ul>
+     */
     @FXML
     private void onValidateCode() {
         if (validateInFlight) {
@@ -302,7 +361,18 @@ public class TerminalController implements ClientUI {
         lblTerminalStatus.setText("Validating code...");
         // Buttons remain enabled always (no disabling)
     }
-
+    /**
+     * Performs check-in for the currently validated code.
+     *
+     * Preconditions:
+     * <ul>
+     *   <li>Code must match {@code lastValidatedCode}.</li>
+     *   <li>Code must be validated successfully.</li>
+     *   <li>Must be connected.</li>
+     * </ul>
+     *
+     * Sends {@code REQUEST_TERMINAL_CHECK_IN} with the confirmation code as payload.
+     */
     @FXML
     private void onCheckIn() {
 
@@ -349,7 +419,15 @@ public class TerminalController implements ClientUI {
 
         sendToServer(OpCode.REQUEST_TERMINAL_CHECK_IN, code);
     }
-
+    /**
+     * Simulates scanning a subscriber QR code.
+     *
+     * Flow:
+     * <ul>
+     *   <li>Prompts the terminal operator to paste barcode data.</li>
+     *   <li>Sends {@code REQUEST_TERMINAL_RESOLVE_SUBSCRIBER_QR} with the barcode string.</li>
+     * </ul>
+     */
     @FXML
     private void onScanSubscriberQR() {
 
@@ -383,7 +461,11 @@ public class TerminalController implements ClientUI {
             sendToServer(OpCode.REQUEST_TERMINAL_RESOLVE_SUBSCRIBER_QR, barcode);
         });
     }
-
+    /**
+     * Requests recovery of a confirmation code by phone/email.
+     *
+     * Sends {@code REQUEST_RECOVER_CONFIRMATION_CODE} with the user-provided key.
+     */
     @FXML
     private void onRecoverCode() {
         String key = safeTrim(txtRecoverPhoneOrEmail.getText());
@@ -403,7 +485,10 @@ public class TerminalController implements ClientUI {
         lblRecoverResult.setText("Sending recovery request...");
         lblTerminalStatus.setText("Recovering confirmation code...");
     }
-
+    /**
+     * Clears all input fields, UI labels, and local state flags.
+     * Also unlocks all in-flight flags to allow fresh requests.
+     */
     @FXML
     private void onClear() {
 
@@ -439,14 +524,18 @@ public class TerminalController implements ClientUI {
         refreshConnectionLabel();
     }
 
-    // Navigation
+    /** Navigates to the Pay Bill screen. */
     @FXML private void onGoToPayBill() { SceneManager.showPayBill(); }
+    /** Logs out to the login screen. */
     @FXML private void onLogout()      { SceneManager.showLogin(); }
 
     // =========================
     // ClientUI required methods
     // =========================
-
+    /**
+     * Called when the client connection is established.
+     * Updates connection label and sets terminal status accordingly.
+     */
     @Override
     public void onConnected() {
         Platform.runLater(() -> {
@@ -455,6 +544,10 @@ public class TerminalController implements ClientUI {
         });
     }
 
+    /**
+     * Called when the connection is closed.
+     * Updates UI status and resets in-flight flags so the user can retry after reconnect.
+     */
     @Override
     public void onDisconnected() {
         Platform.runLater(() -> {
@@ -470,7 +563,10 @@ public class TerminalController implements ClientUI {
             resolveQrInFlight = false;
         });
     }
-
+    /**
+     * Called on connection exceptions.
+     * Updates UI status and resets in-flight flags so the user can retry.
+     */
     @Override
     public void onConnectionError(Exception e) {
         Platform.runLater(() -> {
@@ -486,7 +582,18 @@ public class TerminalController implements ClientUI {
             resolveQrInFlight = false;
         });
     }
-
+    /**
+     * Central dispatcher for server messages arriving through {@link ClientSession}.
+     *
+     * Implementation details:
+     * <ul>
+     *   <li>Unwraps the incoming message into {@link Envelope} (supports direct Envelope or KryoMessage).</li>
+     *   <li>Switches by {@link OpCode} and updates UI accordingly.</li>
+     *   <li>Unlocks relevant in-flight flags on response.</li>
+     * </ul>
+     *
+     * Runs on JavaFX thread via {@link Platform#runLater(Runnable)}.
+     */
     @Override
     public void handleServerMessage(Object message) {
         // Can be called from non-JavaFX thread
@@ -793,7 +900,7 @@ public class TerminalController implements ClientUI {
     // =========================
     // Helpers
     // =========================
-
+    /** Resets the waiting-list details box to default "-" values. */
     private void resetWaitingDetails() {
         if (lblWaitCode != null) lblWaitCode.setText("-");
         if (lblWaitStatus != null) lblWaitStatus.setText("-");
@@ -801,7 +908,10 @@ public class TerminalController implements ClientUI {
         if (lblWaitEmail != null) lblWaitEmail.setText("-");
         if (lblWaitPhone != null) lblWaitPhone.setText("-");
     }
-
+    /**
+     * Sends an {@link Envelope} request using the shared client in {@link ClientSession}.
+     * On failure, updates the terminal status and unlocks relevant in-flight flags.
+     */
     private void sendToServer(OpCode op, Object payload) {
         try {
             var client = ClientSession.getClient();
@@ -831,9 +941,12 @@ public class TerminalController implements ClientUI {
     }
 
     /**
-     * Robust unwrap:
-     * - supports Envelope directly
-     * - supports KryoMessage with ANY byte[] getter/field (getBytes/getPayload/getData/bytes/etc.)
+     * Unwraps an incoming server message into an {@link Envelope}.
+     * Supports:
+     * <ul>
+     *   <li>{@link Envelope} directly</li>
+     *   <li>{@link KryoMessage} of type "ENVELOPE" containing serialized bytes</li>
+     * </ul>
      */
     private Envelope unwrapEnvelope(Object msg) {
         try {
@@ -854,7 +967,12 @@ public class TerminalController implements ClientUI {
             return null;
         }
     }
-
+    /**
+     * Extracts serialized bytes from {@link KryoMessage} using reflection.
+     * Tries common getter names first, then common field names as fallback.
+     *
+     * @return byte array payload if found; otherwise {@code null}.
+     */
     private byte[] extractBytesFromKryoMessage(KryoMessage km) {
         try {
             // 1) try common method names
@@ -883,7 +1001,7 @@ public class TerminalController implements ClientUI {
             return null;
         }
     }
-
+    /** @return true if the client exists and is connected, otherwise false. */
     private boolean isConnected() {
         try {
             var c = ClientSession.getClient();
@@ -892,13 +1010,21 @@ public class TerminalController implements ClientUI {
             return false;
         }
     }
-
+    /** Updates the connection status label based on {@link #isConnected()}. */
     private void refreshConnectionLabel() {
         if (lblConnectionStatus != null) {
             lblConnectionStatus.setText(isConnected() ? "Status: Connected" : "Status: Not connected");
         }
     }
 
+    /**
+     * Updates local validation state and reflects it on the UI.
+     *
+     * @param isValid    whether the code is valid
+     * @param hasTable   whether check-in is currently allowed / table is available
+     * @param resultText text shown near validation result
+     * @param statusText terminal status message
+     */
     private void setValidationState(boolean isValid, boolean hasTable, String resultText, String statusText) {
         validated = isValid;
         tableAvailable = hasTable;
@@ -920,7 +1046,7 @@ public class TerminalController implements ClientUI {
         }
 
     }
-
+    /** Resets the full UI state (reservation details + table/wait labels) and validation flags. */
     private void resetAll() {
         validated = false;
         tableAvailable = false;
@@ -931,7 +1057,7 @@ public class TerminalController implements ClientUI {
         lblWaitMessage.setText("");
         // Buttons stay enabled always
     }
-
+    /** Clears only reservation detail labels, without touching other UI components. */
     private void resetDetailsOnly() {
         if (lblResId != null) lblResId.setText("-");
         if (lblResDateTime != null) lblResDateTime.setText("-");
@@ -941,6 +1067,10 @@ public class TerminalController implements ClientUI {
     // =========================
     // Reservation Details UI fill (DTO)
     // =========================
+    /**
+     * Applies reservation details from {@link TerminalValidateResponseDTO} into the UI labels.
+     * Also fills table number if the server provided it.
+     */
     private void applyTerminalInfoToUI(TerminalValidateResponseDTO dto) {
 
         int id = 0;
@@ -960,15 +1090,16 @@ public class TerminalController implements ClientUI {
     // =========================
     // Small helpers
     // =========================
+    /** Safe trim helper for nullable strings. */
     private static String safeTrim(String s) {
         return (s == null) ? "" : s.trim();
     }
-
+    /** Case-insensitive containment check. */
     private static boolean containsIgnoreCase(String text, String part) {
         if (text == null || part == null) return false;
         return text.toLowerCase().contains(part.toLowerCase());
     }
-
+    /** Formats SQL timestamp to a readable date-time string for display. */
     private String formatTimestamp(Timestamp ts) {
         try {
             if (ts == null) return "";
@@ -977,21 +1108,24 @@ public class TerminalController implements ClientUI {
             return safeStr(ts);
         }
     }
-
+    /** Returns "-" if string is null/blank, otherwise returns the original value. */
     private String nonEmptyOrDash(String s) {
         s = safeStr(s);
         return s.isBlank() ? "-" : s;
     }
-
+    /** Returns fallback if string is null/blank, otherwise returns original value. */
     private String nonEmptyOr(String s, String fallback) {
         s = safeStr(s);
         return s.isBlank() ? fallback : s;
     }
-
+    /** Safe string conversion for nullable objects. */
     private static String safeStr(Object o) {
         return (o == null) ? "" : String.valueOf(o);
     }
-
+    /**
+     * Container for waiting-list join dialog values for non-subscriber terminals.
+     * Holds people count + contact info.
+     */
     private static class JoinWaitingInput {
         final int people;
         final String email;
@@ -1003,7 +1137,16 @@ public class TerminalController implements ClientUI {
             this.phone = phone;
         }
     }
-
+    /**
+     * Opens a dialog for non-subscriber terminals to join the waiting list.
+     * Requires:
+     * <ul>
+     *   <li>People count > 0</li>
+     *   <li>At least one contact method: email OR phone</li>
+     * </ul>
+     *
+     * @return dialog result or null if cancelled.
+     */
     private JoinWaitingInput askJoinWaitingListData() {
         Dialog<JoinWaitingInput> dialog = new Dialog<>();
         dialog.setTitle("Join Waiting List");
@@ -1075,7 +1218,11 @@ public class TerminalController implements ClientUI {
 
         return dialog.showAndWait().orElse(null);
     }
-
+    /**
+     * Opens a simple dialog asking only for people count (subscriber terminal flow).
+     *
+     * @return number of guests or null if cancelled/invalid.
+     */
     private Integer askPeopleCountOnly() {
         TextInputDialog d = new TextInputDialog();
         d.setTitle("Join Waiting List");
@@ -1092,7 +1239,10 @@ public class TerminalController implements ClientUI {
                 .filter(n -> n > 0)
                 .orElse(null);
     }
-    
+    /**
+     * Applies visibility/management rules for terminal controls.
+     * Currently keeps QR button and subscriber active list visible.
+     */
     private void applyRoleVisibility() {
         // Button visible to ALL
         btnScanSubscriberQR.setVisible(true);
@@ -1102,7 +1252,10 @@ public class TerminalController implements ClientUI {
         subscriberActiveBox.setVisible(true);
         subscriberActiveBox.setManaged(true);
     }
-
+    /**
+     * Refreshes active items (reservation/waiting) for the currently resolved subscriber terminal session.
+     * Sends {@code REQUEST_TERMINAL_GET_SUBSCRIBER_ACTIVE_CODES}.
+     */
     private void refreshSubscriberActiveListIfNeeded() {
         if (!terminalIsSubscriber) return;
         if (!isConnected()) return;
