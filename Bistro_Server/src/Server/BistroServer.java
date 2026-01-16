@@ -170,7 +170,7 @@ public class BistroServer extends AbstractServer {
                 case REQUEST_REPORT_ACTIVITY -> handleReportActivity(req,client);
 
                 // --- BILLING / HISTORY / PROFILE ---
-                case REQUEST_HISTORY_GET -> sendOk(client, OpCode.RESPONSE_HISTORY_GET, List.of());
+                case REQUEST_HISTORY_GET -> sendOk(client, OpCode.RESPONSE_HISTORY_GET, new ArrayList<>());
                 case REQUEST_BILL_GET_BY_CODE -> handleBillGetByCode(req, client);
                 case REQUEST_PAY_BILL        -> handlePayBill(req, client);
                 
@@ -235,7 +235,7 @@ public class BistroServer extends AbstractServer {
             if (username == null || username.isBlank()) {
                 sendOk(client,
                     OpCode.RESPONSE_TERMINAL_GET_SUBSCRIBER_ACTIVE_CODES,
-                    java.util.List.of());
+                    new ArrayList<>());
                 return;
             }
 
@@ -244,13 +244,13 @@ public class BistroServer extends AbstractServer {
 
             sendOk(client,
                 OpCode.RESPONSE_TERMINAL_GET_SUBSCRIBER_ACTIVE_CODES,
-                items == null ? java.util.List.of() : items);
+                items == null ? new ArrayList<>() : items);
 
         } catch (Exception e) {
             try {
                 sendOk(client,
                     OpCode.RESPONSE_TERMINAL_GET_SUBSCRIBER_ACTIVE_CODES,
-                    java.util.List.of());
+                    new ArrayList<>());
             } catch (Exception ignored) {}
         }
     }
@@ -282,12 +282,10 @@ public class BistroServer extends AbstractServer {
             List<TerminalActiveItemDTO> items =
                 UserActivityDAO.listActiveItemsBySubscriberUsername(username);
 
-            if (items == null) items = List.of();
+            if (items == null) items = new ArrayList<>();
+            else items = new ArrayList<>(items);
 
-            // 3️⃣ Send LIST (not code!)
-            sendOk(client,
-                OpCode.RESPONSE_TERMINAL_RESOLVE_SUBSCRIBER_QR,
-                new Object[]{ username, items });
+            sendOk(client, OpCode.RESPONSE_TERMINAL_RESOLVE_SUBSCRIBER_QR, new Object[]{ username, items });
 
         } catch (Exception e) {
             try {
@@ -306,7 +304,7 @@ public class BistroServer extends AbstractServer {
             // payload is expected: String "YYYY-MM-DD"
             String dateStr = (payload instanceof String s) ? s.trim() : "";
             if (dateStr.isBlank()) {
-                sendOk(client, OpCode.RESPONSE_GET_AVAILABLE_TIMES, List.of());
+                sendOk(client, OpCode.RESPONSE_GET_AVAILABLE_TIMES, new ArrayList<>());
                 return;
             }
 
@@ -314,7 +312,7 @@ public class BistroServer extends AbstractServer {
             try {
                 date = LocalDate.parse(dateStr);
             } catch (Exception ex) {
-                sendOk(client, OpCode.RESPONSE_GET_AVAILABLE_TIMES, List.of());
+                sendOk(client, OpCode.RESPONSE_GET_AVAILABLE_TIMES, new ArrayList<>());
                 return;
             }
 
@@ -325,7 +323,7 @@ public class BistroServer extends AbstractServer {
 
         } catch (Exception e) {
             try {
-                sendOk(client, OpCode.RESPONSE_GET_AVAILABLE_TIMES, List.of());
+                sendOk(client, OpCode.RESPONSE_GET_AVAILABLE_TIMES, new ArrayList<>());
             } catch (Exception ignored) {}
         }
     }

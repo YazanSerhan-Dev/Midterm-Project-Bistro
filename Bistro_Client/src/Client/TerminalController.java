@@ -254,8 +254,8 @@ public class TerminalController implements ClientUI {
         // Optional: if you want to ensure it looks like a waiting code
         // if (!code.startsWith("W")) { ... }  // only if your codes are like W1234
 
-        String role = ClientSession.getRole();         // SUBSCRIBER / CUSTOMER
-        String username = ClientSession.getUsername(); // may be empty for CUSTOMER
+        String role = terminalIsSubscriber ? "SUBSCRIBER" : "CUSTOMER";
+        String username = terminalIsSubscriber ? terminalSubscriberUsername : "";
 
         Object[] payload = new Object[] { role, username, code };
 
@@ -672,6 +672,7 @@ public class TerminalController implements ClientUI {
 
                         // If server returns WaitingListDTO updated
                         if (payload instanceof common.dto.WaitingListDTO dto) {
+                        	refreshSubscriberActiveListIfNeeded();
                             lblTerminalStatus.setText("✅ Left waiting list. Code: " + nonEmptyOrDash(dto.getConfirmationCode()));
 
                             // Update waiting box
@@ -686,8 +687,7 @@ public class TerminalController implements ClientUI {
                             lblTerminalStatus.setText(msg.isBlank() ? "Left waiting list." : msg);
 
                             resetWaitingDetails();
-                        }
-                        refreshSubscriberActiveListIfNeeded();
+                        }                     
                     }
                     
                     case RESPONSE_TERMINAL_CANCEL_RESERVATION -> {
@@ -772,12 +772,6 @@ public class TerminalController implements ClientUI {
                             if (o instanceof common.dto.TerminalActiveItemDTO dto) {
                                 lstSubscriberActive.getItems().add(dto);
                             }
-                        }
-
-                        if (lstSubscriberActive.getItems().isEmpty()) {
-                            lblTerminalStatus.setText("No active reservation or waiting list.");
-                        } else {
-                            lblTerminalStatus.setText("Select an item to auto-fill the code.");
                         }
                     }
 

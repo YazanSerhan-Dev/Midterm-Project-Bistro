@@ -409,7 +409,9 @@ public class RestaurantTableDAO {
                     throw new Exception("Failed to link occupied table to reservation: " + single);
                 }
             }
-            return List.of(single);
+            List<String> list = new ArrayList<>();
+            list.add(single);
+            return list;
         }
 
         // 2) DP best-fit on all free tables
@@ -449,7 +451,11 @@ public class RestaurantTableDAO {
     public static List<String> reserveFreeTablesBestFitForReservation(Connection conn, int reservationId, int numCustomers, int holdMinutes) throws Exception {
         // 1) try existing single-table reserve logic if possible
         String one = reserveFreeTableForReservation(conn, numCustomers, reservationId, holdMinutes);
-        if (one != null) return List.of(one);
+        if (one != null) {
+        List<String> list = new ArrayList<>();
+        list.add(one);
+        return list;
+        }
 
         // 2) DP best-fit
         List<TableCandidate> free = getFreeTables(conn);
@@ -544,7 +550,11 @@ public class RestaurantTableDAO {
 
      // 1) try your existing single-table waiting reserve first
      String one = reserveFreeTableForWaitingReturnTableId(conn, waitingId, people);
-     if (one != null) return List.of(one);
+     if (one != null){
+    	 List<String> list = new ArrayList<>();
+    	 list.add(one);
+    	 return list; 
+    	 }
 
      // 2) DP best-fit on all FREE tables
      List<TableCandidate> free = getFreeTables(conn);

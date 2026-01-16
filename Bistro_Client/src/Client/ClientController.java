@@ -407,7 +407,27 @@ public class ClientController implements ClientUI {
         // Disable OK until valid
         Button okButton = (Button) dialog.getDialogPane().lookupButton(okBtn);
         okButton.setDisable(true);
+        Runnable validate = () -> {
+            String email = emailField.getText() == null ? "" : emailField.getText().trim();
+            String phone = phoneField.getText() == null ? "" : phoneField.getText().trim();
 
+            boolean okEmail = isValidEmailFormat(email);
+            boolean okPhone = isValidPhone10Digits(phone);
+
+            if (!email.isBlank() && !okEmail) {
+                lblError.setText("Invalid email format.");
+            } else if (!phone.isBlank() && !okPhone) {
+                lblError.setText("Invalid phone (must be 10 digits like 05XXXXXXXX).");
+            } else {
+                lblError.setText("");
+            }
+
+            okButton.setDisable(!(okEmail && okPhone));
+        };
+
+        emailField.textProperty().addListener((obs, oldV, newV) -> validate.run());
+        phoneField.textProperty().addListener((obs, oldV, newV) -> validate.run());
+        validate.run();
 
         dialog.setResultConverter(btn -> {
             if (btn == okBtn) {
