@@ -1,0 +1,125 @@
+.root-bg {
+    -fx-background-color: linear-gradient(to bottom right, #111827, #0b1220);
+}
+
+.login-card {
+    -fx-background-color: rgba(255, 255, 255, 0.96);
+    -fx-background-radius: 18;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.35), 18, 0.25, 0, 8);
+}
+
+.brand-panel {
+    -fx-background-color: linear-gradient(to bottom, #0f172a, #111827);
+    -fx-background-radius: 18 0 0 18;
+}
+
+.brand-title {
+    -fx-text-fill: white;
+    -fx-font-size: 28px;
+    -fx-font-weight: 800;
+}
+
+.brand-subtitle {
+    -fx-text-fill: rgba(255,255,255,0.85);
+    -fx-font-size: 14px;
+}
+
+.tip-text {
+    -fx-text-fill: rgba(255,255,255,0.7);
+    -fx-font-size: 12px;
+}
+
+.conn-text {
+    -fx-text-fill: rgba(255,255,255,0.9);
+    -fx-font-size: 13px;
+}
+
+.conn-dot { -fx-font-size: 14px; }
+.conn-dot-amber { -fx-text-fill: #fbbf24; }
+.conn-dot-green { -fx-text-fill: #22c55e; }
+.conn-dot-red   { -fx-text-fill: #ef4444; }
+
+.form-title {
+    -fx-font-size: 22px;
+    -fx-font-weight: 800;
+    -fx-text-fill: #111827;
+}
+
+.msg-error {
+    -fx-text-fill: #ef4444;
+    -fx-font-size: 12px;
+}
+
+.field-label {
+    -fx-text-fill: #374151;
+    -fx-font-weight: 700;
+}
+
+.text-input {
+    -fx-background-radius: 10;
+    -fx-border-radius: 10;
+    -fx-border-color: #e5e7eb;
+    -fx-padding: 10;
+    -fx-background-color: white;
+}
+.text-input:focused {
+    -fx-border-color: #93c5fd;
+    -fx-effect: dropshadow(gaussian, rgba(37,99,235,0.15), 10, 0.2, 0, 0);
+}
+
+.btn-primary {
+    -fx-background-color: #2563eb;
+    -fx-text-fill: white;
+    -fx-font-weight: 800;
+    -fx-background-radius: 10;
+    -fx-padding: 10 12;
+}
+.btn-primary:hover { -fx-background-color: #1d4ed8; }
+.btn-primary:pressed { -fx-background-color: #1e40af; }
+
+.btn-dark {
+    -fx-background-color: #111827;
+    -fx-text-fill: white;
+    -fx-font-weight: 800;
+    -fx-background-radius: 10;
+    -fx-padding: 10 12;
+}
+.btn-dark:hover { -fx-background-color: #0b1220; }
+.btn-dark:pressed { -fx-background-color: #000000; }
+
+.btn-outline {
+    -fx-background-color: transparent;
+    -fx-border-color: #d1d5db;
+    -fx-text-fill: #111827;
+    -fx-font-weight: 800;
+    -fx-border-radius: 10;
+    -fx-background-radius: 10;
+    -fx-padding: 10 12;
+}
+.btn-outline:hover { -fx-background-color: rgba(17,24,39,0.04); }
+.btn-outline:pressed { -fx-background-color: rgba(17,24,39,0.08); }
+
+.helper-text {
+    -fx-text-fill: #6b7280;
+    -fx-font-size: 12px;
+}
+
+.brand-image {
+    -fx-scale-x: 1.6;
+    -fx-scale-y: 1.6;
+
+    /* move it down */
+    -fx-translate-y: 10px;
+}
+
+
+.brand-panel {
+    -fx-padding: 22 22 22 22;
+}
+
+.brand-subtitle {
+    -fx-padding: 0 0 8px 0;
+}
+
+
+

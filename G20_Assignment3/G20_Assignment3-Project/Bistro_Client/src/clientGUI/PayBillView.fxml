@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.geometry.Insets?>
+<?import javafx.scene.control.*?>
+<?import javafx.scene.image.Image?>
+<?import javafx.scene.image.ImageView?>
+<?import javafx.scene.layout.*?>
+
+<VBox xmlns="http://javafx.com/javafx/21"
+      xmlns:fx="http://javafx.com/fxml/1"
+      fx:controller="Client.PayBillController"
+      spacing="14"
+      stylesheets="@/Styles/payBill.css"
+      styleClass="root-bg">
+
+    <!-- TOP BAR -->
+    <HBox spacing="10" alignment="CENTER_LEFT" styleClass="top-bar">
+        <Label text="Pay Bill" styleClass="page-title"/>
+        <Region HBox.hgrow="ALWAYS"/>
+
+        <Button text="Back" onAction="#onBack" styleClass="secondary-button"/>
+        <Button text="Logout" onAction="#onLogout" styleClass="danger-button"/>
+    </HBox>
+
+    <!-- CENTERED PAY CARD -->
+    <StackPane VBox.vgrow="ALWAYS">
+        <padding>
+            <Insets top="6" right="0" bottom="0" left="0"/>
+        </padding>
+
+        <VBox spacing="16" maxWidth="860" styleClass="pay-card">
+            <padding>
+                <Insets top="18" right="18" bottom="18" left="18"/>
+            </padding>
+
+            <!-- FIND BILL SECTION -->
+            <VBox spacing="10">
+                <HBox spacing="10" alignment="CENTER_LEFT">
+                    <ImageView fitWidth="18" fitHeight="18" preserveRatio="true" opacity="0.90">
+                        <image>
+                            <!-- Uses an icon you already have -->
+                            <Image url="@/logos/calendar-check.png"/>
+                        </image>
+                    </ImageView>
+                    <Label text="Find Bill by Confirmation Code" styleClass="section-title"/>
+                </HBox>
+
+                <HBox spacing="10" alignment="CENTER_LEFT">
+                    <TextField fx:id="txtBillCode"
+                               promptText="Enter code (e.g., A1B2C3)"
+                               HBox.hgrow="ALWAYS"/>
+                    <Button text="Find Bill" onAction="#onFindBill" styleClass="primary-button"/>
+                    <Button text="Clear" onAction="#onClear" styleClass="secondary-button"/>
+                </HBox>
+
+                <Label text="Note: Subscribers get 10% discount. Paying releases the table immediately."
+                       styleClass="hint-text"/>
+
+                <!-- status/result for lookup -->
+                <Label fx:id="lblBillLookupStatus" text="" styleClass="hint-text"/>
+            </VBox>
+
+            <Separator/>
+
+            <!-- BILL SUMMARY SECTION -->
+            <VBox spacing="10">
+                <HBox spacing="10" alignment="CENTER_LEFT">
+                    <ImageView fitWidth="18" fitHeight="18" preserveRatio="true" opacity="0.90">
+                        <image>
+                            <Image url="@/logos/receipt.png"/>
+                        </image>
+                    </ImageView>
+                    <Label text="Bill Summary" styleClass="section-title"/>
+                    <Region HBox.hgrow="ALWAYS"/>
+
+                    <!-- pill badge (e.g., "10% OFF") -->
+                    <Label fx:id="lblSubscriberBadge" text="" styleClass="pill"/>
+                </HBox>
+
+                <!-- summary grid -->
+                <GridPane hgap="14" vgap="10">
+                    <columnConstraints>
+                        <ColumnConstraints minWidth="110" halignment="RIGHT"/>
+                        <ColumnConstraints minWidth="180" hgrow="ALWAYS"/>
+                        <ColumnConstraints minWidth="110" halignment="RIGHT"/>
+                        <ColumnConstraints minWidth="140"/>
+                    </columnConstraints>
+
+                    <Label text="Customer:" styleClass="summary-key" GridPane.rowIndex="0" GridPane.columnIndex="0"/>
+                    <Label fx:id="lblBillCustomerName" text="-" styleClass="summary-val" GridPane.rowIndex="0" GridPane.columnIndex="1"/>
+
+                    <Label text="Subtotal:" styleClass="summary-key" GridPane.rowIndex="0" GridPane.columnIndex="2"/>
+                    <Label fx:id="lblBillSubtotal" text="-" styleClass="summary-val" GridPane.rowIndex="0" GridPane.columnIndex="3"/>
+
+                    <Label text="Items:" styleClass="summary-key" GridPane.rowIndex="1" GridPane.columnIndex="0"/>
+                    <Label fx:id="lblBillItemsCount" text="-" styleClass="summary-val" GridPane.rowIndex="1" GridPane.columnIndex="1"/>
+
+                    <Label text="Discount:" styleClass="summary-key" GridPane.rowIndex="1" GridPane.columnIndex="2"/>
+                    <Label fx:id="lblBillDiscount" text="-" styleClass="summary-val" GridPane.rowIndex="1" GridPane.columnIndex="3"/>
+
+                    <Label text="Due Date:" styleClass="summary-key" GridPane.rowIndex="2" GridPane.columnIndex="0"/>
+                    <Label fx:id="lblBillDueDate" text="-" styleClass="summary-val" GridPane.rowIndex="2" GridPane.columnIndex="1"/>
+
+                    <Label text="Total:" styleClass="summary-key" GridPane.rowIndex="2" GridPane.columnIndex="2"/>
+                    <Label fx:id="lblBillTotal" text="-" styleClass="total-val" GridPane.rowIndex="2" GridPane.columnIndex="3"/>
+                </GridPane>
+            </VBox>
+
+            <Separator/>
+
+            <!-- PAYMENT METHOD SECTION -->
+            <VBox spacing="12">
+                <HBox spacing="10" alignment="CENTER_LEFT">
+                    <ImageView fitWidth="18" fitHeight="18" preserveRatio="true" opacity="0.90">
+                        <image>
+                            <!-- Reuse an existing icon (you can swap later) -->
+                            <Image url="@/logos/user.png"/>
+                        </image>
+                    </ImageView>
+                    <Label text="Payment Method" styleClass="section-title"/>
+                </HBox>
+
+                <HBox spacing="18" alignment="CENTER_LEFT">
+                    <RadioButton fx:id="rbCreditCard" text="Credit Card"/>
+                    <RadioButton fx:id="rbCash" text="Cash (Demo)"/>
+                </HBox>
+
+                <GridPane fx:id="cardFieldsPane" hgap="12" vgap="10">
+                    <columnConstraints>
+                        <ColumnConstraints minWidth="110" halignment="RIGHT"/>
+                        <ColumnConstraints hgrow="ALWAYS"/>
+                        <ColumnConstraints minWidth="70" halignment="RIGHT"/>
+                        <ColumnConstraints minWidth="120"/>
+                    </columnConstraints>
+
+                    <Label text="Card Number:" GridPane.rowIndex="0" GridPane.columnIndex="0"/>
+                    <TextField fx:id="txtCardNumber" promptText="1234 5678 9012 3456"
+                               GridPane.rowIndex="0" GridPane.columnIndex="1" GridPane.columnSpan="3"/>
+
+                    <Label text="Expiry:" GridPane.rowIndex="1" GridPane.columnIndex="0"/>
+                    <TextField fx:id="txtCardExpiry" promptText="MM/YY"
+                               GridPane.rowIndex="1" GridPane.columnIndex="1"/>
+
+                    <Label text="CVV:" GridPane.rowIndex="1" GridPane.columnIndex="2"/>
+                    <TextField fx:id="txtCardCvv" promptText="123"
+                               GridPane.rowIndex="1" GridPane.columnIndex="3"/>
+
+                    <Label text="Card Holder:" GridPane.rowIndex="2" GridPane.columnIndex="0"/>
+                    <TextField fx:id="txtCardHolder" promptText="Full name"
+                               GridPane.rowIndex="2" GridPane.columnIndex="1" GridPane.columnSpan="3"/>
+                </GridPane>
+
+                <Button fx:id="btnPayNow" text="Pay Now" onAction="#onPayNow" disable="true"
+                        maxWidth="Infinity" styleClass="big-pay-button"/>
+
+                <Label fx:id="lblPaymentResult" text="" styleClass="hint-text"/>
+            </VBox>
+
+        </VBox>
+    </StackPane>
+
+</VBox>
