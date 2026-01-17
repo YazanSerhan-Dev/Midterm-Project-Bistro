@@ -218,6 +218,46 @@ public class EmailService {
         if (phone == null || phone.isBlank()) return;
         System.out.println("[SMS] phone=" + phone + " | " + msg);
     }
+    
+    /**
+     * Sends an email notification to a customer regarding a reservation cancellation.
+     * <p>
+     * This method formats a standard cancellation message explaining that the 
+     * restaurant's opening hours have changed and the customer's booking 
+     * falls outside the new operational window.
+     * </p>
+     *
+     * @param toEmail The recipient's email address.
+     * @param date The date of the reservation (e.g., "2025-01-20" or "Every Monday").
+     * @param reason The specific reason for cancellation (e.g., "Change in Opening Hours").
+     */
+    public static void sendCancellationNotification(String toEmail, String date, String reason) {
+        String subject = "Important: Reservation Cancellation - Bistro Restaurant";
+        String body = "Dear Customer,\n\n"
+                + "We regret to inform you that your reservation for " + date + " has been canceled.\n"
+                + "Reason: " + reason + "\n\n"
+                + "Our opening hours have changed for this date. Please check our new schedule and book a different time.\n\n"
+                + "We apologize for the inconvenience.\n"
+                + "Sincerely,\nBistro Management";
+        
+        sendEmail(toEmail, subject, body);
+    }
+
+    /**
+     * Sends a concise SMS notification to a customer regarding a reservation cancellation.
+     * <p>
+     * Uses the stubbed SMS service to alert the user that their reservation on a 
+     * specific date has been canceled due to schedule changes.
+     * </p>
+     *
+     * @param phone The recipient's phone number.
+     * @param date The date of the reservation.
+     */
+    public static void sendSMSCancellation(String phone, String date) {
+        if (phone == null || phone.isBlank()) return;
+        String msg = "Bistro Alert: Your reservation on " + date + " was canceled due to a change in opening hours. Please contact us.";
+        smsStub(phone, msg);
+    }
 
 
 }

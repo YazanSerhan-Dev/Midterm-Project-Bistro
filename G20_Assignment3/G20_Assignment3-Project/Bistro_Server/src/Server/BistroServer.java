@@ -1021,20 +1021,61 @@ public class BistroServer extends AbstractServer {
         }
     }
     /**
-     * Updates opening hour row by ID.
+     * Handles a request to update the opening hours for a specific day or time slot.
+     * <p>
+     * <b>Workflow:</b>
+     * <ol>
+     * <li>Updates the {@code opening_hours} table using the ID provided in the DTO.</li>
+     * <li>If successful, triggers a conflict check using {@link ReservationDAO#cancelConflictsAfterHoursUpdate}.</li>
+     * <li>If any reservations are auto-canceled, iterates through the list and sends 
+     * notifications (Email/SMS) via {@link #notifyCanceledCustomers}.</li>
+     * </ol>
+     * </p>
+     *
+     * @param req The request envelope containing the {@link OpeningHoursDTO}.
+     * @param client The client connection triggered the request.
      */
     private void handleUpdateOpeningHours(Envelope req, ConnectionToClient client) {
         try {
             common.dto.OpeningHoursDTO dto = (common.dto.OpeningHoursDTO) req.getPayload();
+            
             boolean ok = DataBase.dao.OpeningHoursDAO.updateOpeningHour(dto.getHoursId(), dto.getOpenTime(), dto.getCloseTime());
-            if (ok) sendOk(client, OpCode.RESPONSE_OPENING_HOURS_UPDATE, "Hours updated successfully.");
-            else sendError(client, OpCode.ERROR, "Update failed.");
+            
+            if (ok) {
+                List<String[]> affected = DataBase.dao.ReservationDAO.cancelConflictsAfterHoursUpdate(
+                    dto.getDayOfWeek(), // Used to find conflicts on this day
+                    dto.getSpecialDate(), // Used if it's a special date
+                    dto.getOpenTime(), 
+                    dto.getCloseTime()
+                );
+
+                if (affected != null && !affected.isEmpty()) {
+                    String dateLabel = (dto.getSpecialDate() != null) ? dto.getSpecialDate() : "Every " + dto.getDayOfWeek();
+                    notifyCanceledCustomers(affected, dateLabel);
+                }
+
+                sendOk(client, OpCode.RESPONSE_OPENING_HOURS_UPDATE, "Hours updated. " + (affected.size()) + " conflicts notified.");
+            } else {
+                sendError(client, OpCode.ERROR, "Update failed.");
+            }
         } catch (Exception e) {
             try { sendError(client, OpCode.ERROR, "Update error: " + e.getMessage()); } catch (Exception ignored) {}
         }
     }
     /**
-     * Inserts a special opening-hours row for a specific date.
+     * Handles a request to add a special opening hour (exception date).
+     * <p>
+     * <b>Workflow:</b>
+     * <ol>
+     * <li>Inserts a new record into {@code opening_hours} with {@code is_special='YES'}.</li>
+     * <li>Triggers a conflict check for that specific date using {@link ReservationDAO#cancelConflictsAfterHoursUpdate}.</li>
+     * <li>If the new special hours (e.g., closing early) conflict with existing bookings, 
+     * those bookings are canceled and customers are notified.</li>
+     * </ol>
+     * </p>
+     *
+     * @param req The request envelope containing the {@link OpeningHoursDTO}.
+     * @param client The client connection triggered the request.
      */
     private void handleAddSpecialHour(Envelope req, ConnectionToClient client) {
         try {
@@ -1774,5 +1815,67 @@ public class BistroServer extends AbstractServer {
             if (alternatives.size() == 5) break;
         }
         return alternatives;
+    }
+    
+    /**
+     * Helper method to send cancellation notifications (Email & SMS) to affected customers.
+     * <p>
+     * Iterates through the list of canceled reservations and sends a message explaining
+     * the cancellation due to a change in opening hours.
+     * </p>
+     * <p>
+     * <b>Logic:</b>
+     * <ul>
+     * <li>If the customer is a <b>Subscriber</b> (has a username), fresh contact details are fetched from the database.</li>
+     * <li>If the customer is a <b>Guest</b>, the email/phone stored in the reservation is used.</li>
+     * <li>Exceptions are caught individually to ensure that a failure to notify one customer does not stop the loop.</li>
+     * </ul>
+     * </p>
+     *
+     * @param canceledList A list of string arrays, where each array contains: {@code [username, guestEmail, guestPhone]}.
+     * @param date A label representing the date or day affected (e.g., "2025-01-20" or "Every Monday").
+     */
+    private void notifyCanceledCustomers(List<String[]> canceledList, String date) {
+        if (canceledList == null || canceledList.isEmpty()) return;
+
+        log(">>> Notifying " + canceledList.size() + " customers of cancellation...");
+
+        for (String[] row : canceledList) {
+            String username = row[0];
+            String email = row[1];
+            String phone = row[2];
+
+            // 1. Resolve Contact Info (Subscriber vs Guest)
+            try {
+                if (username != null && !username.isBlank()) {
+                    // It's a subscriber, fetch fresh info from DB
+                    String subEmail = DataBase.dao.SubscriberDAO.getEmailByUsername(username);
+                    String subPhone = DataBase.dao.SubscriberDAO.getPhoneByUsername(username);
+                    
+                    if (subEmail != null && !subEmail.isBlank()) email = subEmail;
+                    if (subPhone != null && !subPhone.isBlank()) phone = subPhone;
+                }
+            } catch (Exception e) {
+                System.out.println("Error fetching subscriber info for notification: " + e.getMessage());
+            }
+
+            // 2. Send Email
+            if (email != null && !email.isBlank()) {
+                try {
+                    EmailService.sendCancellationNotification(email, date, "Change in Restaurant Opening Hours");
+                } catch (Exception e) {
+                    System.out.println("Failed to email " + email);
+                }
+            }
+
+            // 3. Send SMS
+            if (phone != null && !phone.isBlank()) {
+                try {
+                    EmailService.sendSMSCancellation(phone, date);
+                } catch (Exception e) {
+                    System.out.println("Failed to SMS " + phone);
+                }
+            }
+        }
     }
 }
