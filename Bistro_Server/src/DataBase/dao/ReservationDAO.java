@@ -1296,6 +1296,120 @@ public class ReservationDAO {
 
         return needs;
     }
+    
+    
+    /**
+     * Identifies and cancels existing reservations that conflict with updated opening hours.
+     * <p>
+     * This method queries for "CONFIRMED" reservations that are now invalid because:
+     * <ul>
+     * <li>They fall on the specific date (if provided) or day of the week.</li>
+     * <li>Their time is before the new opening time.</li>
+     * <li>Their time is too close to the new closing time (less than 2 hours before close).</li>
+     * </ul>
+     * Any matching reservations are updated to "CANCELED".
+     * </p>
+     *
+     * @param dayOfWeek the day of the week to check (e.g., "Monday")
+     * @param specialDate a specific date string (YYYY-MM-DD) to check, or null for recurring weekly hours
+     * @param newOpen the new opening time string (HH:mm)
+     * @param newClose the new closing time string (HH:mm)
+     * @return a list of string arrays containing contact info for affected customers: 
+     * {@code [username, guestEmail, guestPhone]}
+     * @throws Exception if a database access error occurs during query or update
+     */
+    public static List<String[]> cancelConflictsAfterHoursUpdate(String dayOfWeek, String specialDate, String newOpen, String newClose) throws Exception {
+        List<String[]> affectedContacts = new ArrayList<>();
+        
+        // 1. Identify conflicting reservations
+        // logic: (Too Early) OR (Too Late for 2-hour meal)
+        // AND matches the specific Date OR the Day of Week
+        String selectSql = """
+            SELECT r.reservation_id, ua.subscriber_username, ua.guest_email, ua.guest_phone
+            FROM reservation r
+            JOIN user_activity ua ON r.reservation_id = ua.reservation_id
+            WHERE r.status = 'CONFIRMED'
+              AND r.reservation_time > NOW()
+              AND (
+                  ( ? IS NOT NULL AND DATE(r.reservation_time) = ? ) 
+                  OR 
+                  ( ? IS NULL AND DAYNAME(r.reservation_time) = ? )
+              )
+              AND (
+                  TIME(r.reservation_time) < CAST(? AS TIME)
+                  OR 
+                  TIME(r.reservation_time) > SUBTIME(CAST(? AS TIME), '02:00:00')
+              )
+        """;
+
+        String updateSql = """
+            UPDATE reservation r
+            SET r.status = 'CANCELED'
+            WHERE r.reservation_id = ?
+        """;
+
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try {
+            conn.setAutoCommit(false);
+
+            List<Integer> idsToCancel = new ArrayList<>();
+
+            // A. Find Conflicts
+            try (PreparedStatement ps = conn.prepareStatement(selectSql)) {
+                // Special Date Param (twice)
+                ps.setString(1, specialDate);
+                ps.setString(2, specialDate);
+                
+                // Weekly Param (twice)
+                // Note: SQL DAYNAME returns "Sunday", "Monday", etc. Ensure inputs match.
+                ps.setString(3, specialDate); // If specialDate is not null, this part is ignored by OR logic anyway
+                ps.setString(4, dayOfWeek); 
+                
+                // Time Constraints
+                ps.setString(5, newOpen);
+                ps.setString(6, newClose);
+
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        idsToCancel.add(rs.getInt("reservation_id"));
+                        
+                        // Collect contact info for Email/SMS
+                        String user = rs.getString("subscriber_username");
+                        String mail = rs.getString("guest_email");
+                        String phone = rs.getString("guest_phone");
+                        
+                        // If subscriber, we might need to fetch email separately if not in user_activity (depending on your schema)
+                        // But for now assuming simple collection:
+                        affectedContacts.add(new String[]{ user, mail, phone });
+                    }
+                }
+            }
+
+            // B. Cancel Them
+            if (!idsToCancel.isEmpty()) {
+                try (PreparedStatement ps = conn.prepareStatement(updateSql)) {
+                    for (int id : idsToCancel) {
+                        ps.setInt(1, id);
+                        ps.addBatch();
+                    }
+                    ps.executeBatch();
+                }
+            }
+
+            conn.commit();
+            return affectedContacts;
+
+        } catch (Exception e) {
+            conn.rollback();
+            throw e;
+        } finally {
+            conn.setAutoCommit(true);
+            pool.releaseConnection(pc);
+        }
+    }
 
 
 }

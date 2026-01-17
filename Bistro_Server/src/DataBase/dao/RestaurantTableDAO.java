@@ -734,6 +734,17 @@ public class RestaurantTableDAO {
      }
  }
  
+ /**
+  * Calculates the total number of seats currently available in the restaurant.
+  * <p>
+  * This method queries the sum of seats for all tables that currently have the status 'FREE'.
+  * It uses the provided connection to execute the query.
+  * </p>
+  *
+  * @param conn the active database connection
+  * @return the total count of free seats
+  * @throws Exception if a database access error occurs
+  */
  public static int getTotalSeatsAvailable(Connection conn) throws Exception {
 	    String sql = """
 	        SELECT COALESCE(SUM(num_of_seats),0) AS total
@@ -747,6 +758,19 @@ public class RestaurantTableDAO {
 	    }
 	}
 
+ /**
+  * Calculates the total seat capacity for a specific list of table IDs.
+  * <p>
+  * This helper method dynamically builds a {@code WHERE table_id IN (...)} query
+  * to sum the {@code num_of_seats} for the provided tables.
+  * Returns 0 if the list is null or empty.
+  * </p>
+  *
+  * @param conn the active database connection
+  * @param tableIds a list of table IDs to sum
+  * @return the combined seat count of the specified tables
+  * @throws Exception if a database access error occurs
+  */
 	public static int sumSeatsForTables(Connection conn, List<String> tableIds) throws Exception {
 	    if (tableIds == null || tableIds.isEmpty()) return 0;
 
@@ -767,7 +791,19 @@ public class RestaurantTableDAO {
 	        }
 	    }
 	}
-
+	
+	/**
+	 * Calculates the total number of seats currently held for pending reservations.
+	 * <p>
+	 * This method sums the seats of tables that are marked 'RESERVED' and are linked
+	 * to a reservation with status 'PENDING'. This represents capacity that is
+	 * technically "taken" but not yet occupied by customers (they haven't arrived yet).
+	 * </p>
+	 *
+	 * @param conn the active database connection
+	 * @return the total number of reserved seats for pending reservations
+	 * @throws Exception if a database access error occurs
+	 */
 	public static int sumReservedSeatsForPendingReservations(Connection conn) throws Exception {
 	    String sql = """
 	        SELECT COALESCE(SUM(t.num_of_seats), 0) AS total
@@ -785,6 +821,17 @@ public class RestaurantTableDAO {
 	    }
 	}
 	
+	/**
+	 * Retrieves a complete list of all restaurant tables from the database.
+	 * <p>
+	 * Returns a list of {@link RestaurantTableDTO} objects, including their ID,
+	 * seat count, and current status (FREE, OCCUPIED, RESERVED).
+	 * The list is sorted by {@code table_id}.
+	 * </p>
+	 *
+	 * @return a list of all restaurant tables
+	 * @throws Exception if a database access error occurs
+	 */
 	public static List<RestaurantTableDTO> getAllTables() throws Exception {
         List<RestaurantTableDTO> list = new ArrayList<>();
         String sql = "SELECT * FROM restaurant_table ORDER BY table_id";
@@ -809,6 +856,18 @@ public class RestaurantTableDAO {
         return list;
     }
 	
+	/**
+	 * Permanently deletes a table from the database by its ID.
+	 * <p>
+	 * <b>Note:</b> This method performs the raw SQL deletion. It does not check
+	 * if the table is currently occupied or needed for future reservations.
+	 * The {@link #isSafeToDelete(String)} method should usually be called before this.
+	 * </p>
+	 *
+	 * @param tableId the ID of the table to delete
+	 * @return {@code true} if the table was found and deleted; {@code false} otherwise
+	 * @throws Exception if a database access error occurs
+	 */
 	public static boolean deleteTable(String tableId) throws Exception {
         String sql = "DELETE FROM restaurant_table WHERE table_id = ?";
         MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
@@ -822,6 +881,17 @@ public class RestaurantTableDAO {
         }
     }
 	
+	/**
+	 * Updates the seating capacity of an existing table.
+	 * <p>
+	 * Modifies the {@code num_of_seats} column for the specified table ID.
+	 * </p>
+	 *
+	 * @param tableId the ID of the table to update
+	 * @param newSeats the new number of seats
+	 * @return {@code true} if the table was found and updated; {@code false} otherwise
+	 * @throws Exception if a database access error occurs
+	 */
 	public static boolean updateTableSeats(String tableId, int newSeats) throws Exception {
         String sql = "UPDATE restaurant_table SET num_of_seats = ? WHERE table_id = ?";
         MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
@@ -945,6 +1015,26 @@ public class RestaurantTableDAO {
 	    }
 	}
 
+	/**
+	 * Simulates whether the current inventory of FREE tables can accommodate upcoming reservations.
+	 * <p>
+	 * This method performs a "dry run" allocation planning logic:
+	 * <ol>
+	 * <li>Snapshots all currently FREE tables.</li>
+	 * <li>Fetches the party sizes of upcoming reservations (within the look-ahead window).</li>
+	 * <li>Iteratively attempts to match each reservation to the best-fit subset of free tables.</li>
+	 * </ol>
+	 * If the simulation successfully finds a seat configuration for every upcoming reservation
+	 * without running out of tables, it returns {@code true}.
+	 * This is useful for "Safe Delete" checks or capacity planning warnings.
+	 * </p>
+	 *
+	 * @param conn the active database connection
+	 * @param lookAheadMinutes how many minutes into the future to scan for upcoming reservations
+	 * @param limitReservations maximum number of upcoming reservations to consider (for performance)
+	 * @return {@code true} if all upcoming reservations can be seated with the current free tables; {@code false} otherwise.
+	 * @throws Exception if a database access error occurs
+	 */
 	public static boolean canSeatUpcomingReservationsFromFreeTables(
 	        Connection conn,
 	        int lookAheadMinutes,
@@ -967,6 +1057,19 @@ public class RestaurantTableDAO {
 	    return true;
 	}
 
+	/**
+	 * Retrieves a snapshot of all currently FREE tables for planning purposes.
+	 * <p>
+	 * Returns a list of {@link TableCandidate} objects containing the ID and seat count
+	 * for every table with status 'FREE', sorted by seat count in ascending order.
+	 * This list is typically used by simulation algorithms (like {@link #canSeatUpcomingReservationsFromFreeTables})
+	 * to test allocation strategies without modifying the actual database.
+	 * </p>
+	 *
+	 * @param conn the active database connection
+	 * @return a list of table candidates representing the current free inventory
+	 * @throws Exception if a database access error occurs
+	 */
 	private static List<TableCandidate> getFreeTablesForPlanning(Connection conn) throws Exception {
 	    List<TableCandidate> list = new ArrayList<>();
 	    try (PreparedStatement ps = conn.prepareStatement("""
@@ -982,6 +1085,153 @@ public class RestaurantTableDAO {
 	    }
 	    return list;
 	}
+	
+	/**
+	 * Checks if a table is safe to be deleted from the system.
+	 * <p>
+	 * Performs three distinct checks:
+	 * 1. <b>Status Check:</b> Ensures the table is currently "FREE" (not OCCUPIED or RESERVED).
+	 * 2. <b>Active Visit Check:</b> Ensures no customers are currently seated (linked via the visit table).
+	 * 3. <b>Future Capacity Check:</b> Ensures that removing this table will not cause overbooking
+	 * for any future reservation slot where the total booked guests would exceed the new total capacity.
+	 * </p>
+	 *
+	 * @param tableId the ID of the table to check
+	 * @return {@code null} if safe to delete; otherwise, a {@code String} containing the error message explaining the conflict.
+	 * @throws Exception if a database access error occurs
+	 */
+    public static String isSafeToDelete(String tableId) throws Exception {
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try {
+            // 1. Check Current Status & Seat Count
+            String sqlStatus = "SELECT status, num_of_seats FROM restaurant_table WHERE table_id = ?";
+            int tableSeats = 0;
+            
+            try (PreparedStatement ps = conn.prepareStatement(sqlStatus)) {
+                ps.setString(1, tableId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) {
+                        String status = rs.getString("status");
+                        tableSeats = rs.getInt("num_of_seats");
+                        
+                        if (!"FREE".equalsIgnoreCase(status)) {
+                            return "Table is currently " + status + ".";
+                        }
+                    } else {
+                        return "Table not found.";
+                    }
+                }
+            }
+
+            // 2. Check Active Visits (Double safety: checking the visit log)
+            String sqlVisit = "SELECT COUNT(*) FROM visit WHERE table_id = ? AND actual_end_time IS NULL";
+            try (PreparedStatement ps = conn.prepareStatement(sqlVisit)) {
+                ps.setString(1, tableId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next() && rs.getInt(1) > 0) {
+                        return "Table is currently occupied by active diners.";
+                    }
+                }
+            }
+
+            // 3. Check Future Capacity Conflicts
+            // Calculate what the NEW capacity would be if we delete this table
+            int currentTotalCapacity = getTotalSeats(); // Uses existing method
+            int newTotalCapacity = currentTotalCapacity - tableSeats;
+
+            // Find any future time slot where Booked Guests > New Capacity
+            // Note: This assumes aligned reservation slots. For strict overlap checks, logic is more complex.
+            String sqlCapacity = """
+                SELECT reservation_time, SUM(num_of_customers) as booked_count
+                FROM reservation
+                WHERE status IN ('CONFIRMED') AND reservation_time > NOW()
+                GROUP BY reservation_time
+                HAVING booked_count > ?
+                LIMIT 1
+            """;
+
+            try (PreparedStatement ps = conn.prepareStatement(sqlCapacity)) {
+                ps.setInt(1, newTotalCapacity);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) {
+                        java.sql.Timestamp conflictTime = rs.getTimestamp("reservation_time");
+                        int booked = rs.getInt("booked_count");
+                        return "Cannot delete: Overbooking conflict on " + conflictTime + 
+                               " (Booked: " + booked + ", Capacity after delete: " + newTotalCapacity + ")";
+                    }
+                }
+            }
+
+            return null; // Safe to delete (No errors found)
+
+        } finally {
+            pool.releaseConnection(pc);
+        }
+    }
+    
+    /**
+     * Inserts a new table into the database with an automatically generated ID.
+     * <p>
+     * This method calculates the next available ID in the sequence (e.g., T10 -> T11)
+     * by finding the current maximum numeric suffix in the 'restaurant_table' table.
+     * It is thread-safe regarding the connection pool but does not lock the table for strict serialization.
+     * </p>
+     *
+     * @param seats the number of seats for the new table
+     * @return the generated table ID (e.g., "T11")
+     * @throws Exception if a database access error occurs or generation fails
+     */
+    public static String insertTableAutoId(int seats) throws Exception {
+        MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
+        PooledConnection pc = pool.getConnection();
+        Connection conn = pc.getConnection();
+
+        try {
+            // 1. Find the highest existing ID (Assuming format 'T' + number, e.g., T1, T2, T10)
+            // We cast the substring to UNSIGNED to ensure T10 comes after T2
+            String sqlMax = """
+                SELECT table_id 
+                FROM restaurant_table 
+                WHERE table_id LIKE 'T%' 
+                ORDER BY CAST(SUBSTRING(table_id, 2) AS UNSIGNED) DESC 
+                LIMIT 1
+            """;
+            
+            String nextId = "T1"; // Default if empty
+
+            try (PreparedStatement ps = conn.prepareStatement(sqlMax);
+                 ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    String currentMax = rs.getString(1);
+                    try {
+                        // Extract number part (e.g. "10" from "T10")
+                        int num = Integer.parseInt(currentMax.substring(1));
+                        nextId = "T" + (num + 1);
+                    } catch (NumberFormatException e) {
+                        // Fallback if ID format is weird, just append timestamp or random
+                        nextId = "T" + (System.currentTimeMillis() % 10000);
+                    }
+                }
+            }
+
+            // 2. Insert the new table
+            String sqlInsert = "INSERT INTO restaurant_table (table_id, num_of_seats, status) VALUES (?, ?, ?)";
+            try (PreparedStatement ps = conn.prepareStatement(sqlInsert)) {
+                ps.setString(1, nextId);
+                ps.setInt(2, seats);
+                ps.setString(3, "FREE");
+                ps.executeUpdate();
+            }
+            
+            return nextId;
+
+        } finally {
+            pool.releaseConnection(pc);
+        }
+    }
 
 
 }
