@@ -710,8 +710,18 @@ public class BistroServer extends AbstractServer {
         }
     }
     /**
-     * Adds a new waiting-list entry for subscriber or guest.
-     * Also stores contact in user_activity for later notifications.
+     * Adds a customer to the waiting list with role-based validation.
+     * <p>
+     * <b>Logic:</b>
+     * <ul>
+     * <li><b>Subscribers:</b> If role is SUBSCRIBER or STAFF providing a username, contact info is fetched from DB.</li>
+     * <li><b>Guests:</b> Must provide at least one contact method (Email OR Phone).</li>
+     * </ul>
+     * Also enforces a check against current Opening Hours before adding.
+     * </p>
+     *
+     * @param req the request envelope containing {@code [role, username, WaitingListDTO]}
+     * @param client the connection to the client
      */
     private void handleWaitingList(Envelope req, ConnectionToClient client) {
         try {
@@ -725,114 +735,117 @@ public class BistroServer extends AbstractServer {
             String role = arr[0] == null ? "" : arr[0].toString();
             String username = arr[1] == null ? "" : arr[1].toString();
             
-         // Server/BistroServer.java
+            // ✅ FIX 1: Define the missing variable
+            boolean isStaffRequest = "STAFF".equalsIgnoreCase(role);
 
             Timestamp nowCheck = new Timestamp(System.currentTimeMillis());
             if (!OpeningHoursDAO.isOpenForReservation(nowCheck, 120)) {
-                 sendOk(client, OpCode.RESPONSE_WAITING_LIST, "Restaurant is closed (or closing soon).");
+                 String msg = "Restaurant is closed (or closing soon).";
+                 // ✅ FIX 2: Send specific POPUP response to Staff, regular LIST response to Terminal
+                 if (isStaffRequest) sendOk(client, OpCode.RESPONSE_WAITING_ADD, msg);
+                 else sendOk(client, OpCode.RESPONSE_WAITING_LIST, msg);
                  return;
             }
             
             int people = dto.getPeopleCount();
             if (people <= 0) {
-                sendOk(client, OpCode.RESPONSE_WAITING_LIST, "People count must be > 0.");		
+                String msg = "People count must be > 0.";
+                if (isStaffRequest) sendOk(client, OpCode.RESPONSE_WAITING_ADD, msg);
+                else sendOk(client, OpCode.RESPONSE_WAITING_LIST, msg);
                 return;
             }
 
-            
             int totalSeats = RestaurantTableDAO.getTotalSeats();
             if (totalSeats <= 0) {
-                sendOk(client, OpCode.RESPONSE_WAITING_LIST, "Restaurant tables are not configured. Please contact staff.");
+                sendOk(client, OpCode.RESPONSE_WAITING_LIST, "Restaurant tables are not configured.");
                 return;
             }
 
             if (people > totalSeats) {
-                String msg = "Group size (" + people + ") exceeds restaurant capacity (" + totalSeats + " seats). "
-                        + "Please split into smaller groups or contact staff.";
-                sendOk(client, OpCode.RESPONSE_WAITING_LIST, msg);
+                String msg = "Group size (" + people + ") exceeds capacity (" + totalSeats + ").";
+                if (isStaffRequest) sendOk(client, OpCode.RESPONSE_WAITING_ADD, msg);
+                else sendOk(client, OpCode.RESPONSE_WAITING_LIST, msg);
                 return;
             }
 
             String email;
             String phone;
 
-            if ("SUBSCRIBER".equalsIgnoreCase(role)) {
+            // Condition to identify a Subscriber (Self-service OR Staff-assisted)
+            boolean isSubscriberTarget = "SUBSCRIBER".equalsIgnoreCase(role) || 
+                                        ("STAFF".equalsIgnoreCase(role) && !username.equalsIgnoreCase("Guest"));
+
+            if (isSubscriberTarget) {
                 if (username.isBlank()) {
                     sendOk(client, OpCode.RESPONSE_WAITING_LIST, "Missing subscriber username.");
                     return;
                 }
 
                 email = DataBase.dao.SubscriberDAO.getEmailByUsername(username);
-
-                phone = SubscriberDAO.getPhoneByUsername(username);
+                phone = DataBase.dao.SubscriberDAO.getPhoneByUsername(username);
                 if (phone == null) phone = "";
 
                 if (email == null || email.isBlank()) {
                     sendOk(client, OpCode.RESPONSE_WAITING_LIST, "Subscriber email not found.");
                     return;
                 }
+
             } else {
-             // CUSTOMER: must provide at least ONE contact method (email OR phone)
+                // CUSTOMER / GUEST Logic
                 email = dto.getEmail() == null ? "" : dto.getEmail().trim();
                 phone = dto.getPhone() == null ? "" : dto.getPhone().trim();
 
-                if (email.isBlank() || phone.isBlank()) {
-                    sendOk(client, OpCode.RESPONSE_WAITING_LIST, "Email and phone is required for customers.");
+                if (email.isBlank() && phone.isBlank()) {
+                    String msg = "At least one contact method Email or Phone are required for customers.";
+                    // This now works because isStaffRequest is defined
+                    if (isStaffRequest) sendOk(client, OpCode.RESPONSE_WAITING_ADD, msg);
+                    else sendOk(client, OpCode.RESPONSE_WAITING_LIST, msg);
                     return;
                 }
             }
 
             Timestamp now = new Timestamp(System.currentTimeMillis());
 
-            // ✅ Insert ONCE with unique code retry
             String code = null;
             int waitingId = -1;
 
             for (int i = 0; i < 5; i++) {
-                code = "W" + java.util.UUID.randomUUID()
-                        .toString()
-                        .replace("-", "")
-                        .substring(0, 8)
-                        .toUpperCase();
-
+                code = "W" + java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 8).toUpperCase();
                 try {
-                    waitingId = WaitingListDAO.insertWaitingReturnId(
-                            people,
-                            now,
-                            "WAITING",
-                            code
-                    );
-                    if (waitingId > 0) break; // success
+                    waitingId = WaitingListDAO.insertWaitingReturnId(people, now, "WAITING", code);
+                    if (waitingId > 0) break; 
                 } catch (Exception ex) {
-                    // if duplicate code, retry
-                    String msg = ex.getMessage() == null ? "" : ex.getMessage().toLowerCase();
-                    if (!msg.contains("duplicate")) {
-                        throw ex;
-                    }
+                    if (ex.getMessage() != null && !ex.getMessage().toLowerCase().contains("duplicate")) throw ex;
                 }
             }
 
             if (waitingId <= 0 || code == null) {
-                sendOk(client, OpCode.RESPONSE_WAITING_LIST, "Failed to generate unique waiting code. Please try again.");
+                String msg = "Failed to generate code.";
+                if (isStaffRequest) sendOk(client, OpCode.RESPONSE_WAITING_ADD, msg);
+                else sendOk(client, OpCode.RESPONSE_WAITING_LIST, msg);
                 return;
             }
 
-            if ("SUBSCRIBER".equalsIgnoreCase(role)) {
+            // ✅ FIX 3: Use the same condition as above to correctly log Staff-added Subscribers
+            if (isSubscriberTarget) {
                 UserActivityDAO.insertSubscriberWaitingActivity(waitingId, username);
             } else {
                 UserActivityDAO.insertWaitingActivity(waitingId, email, phone);
             }
 
-            // ✅ build response DTO
-            WaitingListDTO resp = new WaitingListDTO();
-            resp.setId(waitingId);
-            resp.setPeopleCount(people);
-            resp.setStatus("WAITING");
-            resp.setConfirmationCode(code);
-            resp.setEmail(email);
-            resp.setPhone(phone);
-
-            sendOk(client, OpCode.RESPONSE_WAITING_LIST, resp);
+            // Response Logic
+            if (isStaffRequest) {
+                 sendOk(client, OpCode.RESPONSE_WAITING_ADD, "Customer added. Code: " + code);
+            } else {
+                WaitingListDTO resp = new WaitingListDTO();
+                resp.setId(waitingId);
+                resp.setPeopleCount(people);
+                resp.setStatus("WAITING");
+                resp.setConfirmationCode(code);
+                resp.setEmail(email);
+                resp.setPhone(phone);
+                sendOk(client, OpCode.RESPONSE_WAITING_LIST, resp);
+            }
 
         } catch (Exception e) {
             try {
@@ -948,31 +961,83 @@ public class BistroServer extends AbstractServer {
         }
     }
     /**
-     * Adds a table (or updates it depending on DAO behavior).
+     * Handles a request to add a new table using auto-generated IDs.
+     * <p>
+     * Extracts the seat count from the payload and delegates to {@link RestaurantTableDAO#insertTableAutoId(int)}.
+     * Returns the generated ID to the client upon success.
+     * </p>
+     *
+     * @param req the request envelope containing the {@link common.dto.RestaurantTableDTO}
+     * @param client the connection to the client sending the request
      */
     private void handleAddTable(Envelope req, ConnectionToClient client) {
         try {
-            if (req.getPayload() instanceof common.dto.RestaurantTableDTO dto) {
-                // Default status FREE if not set
-                String status = (dto.getStatus() == null || dto.getStatus().isEmpty()) ? "FREE" : dto.getStatus();
-                DataBase.dao.RestaurantTableDAO.insertTable(dto.getTableId(), dto.getSeats(), status);
-                sendOk(client, OpCode.RESPONSE_TABLE_ADD, "Table added/updated successfully.");
+            common.dto.RestaurantTableDTO dto = (common.dto.RestaurantTableDTO) req.getPayload();
+            
+            int seats = dto.getSeats();
+            if (seats <= 0) {
+                sendOk(client, OpCode.RESPONSE_TABLE_ADD, "Error: Seats must be positive.");
+                return;
             }
+
+            // ✅ CALL AUTO-ID METHOD
+            String newId = DataBase.dao.RestaurantTableDAO.insertTableAutoId(seats);
+            
+            sendOk(client, OpCode.RESPONSE_TABLE_ADD, "Success: Table " + newId + " added.");
+
         } catch (Exception e) {
-            try { sendError(client, OpCode.ERROR, "Add table failed: " + e.getMessage()); } catch (Exception ignored) {}
+            try {
+                sendOk(client, OpCode.RESPONSE_TABLE_ADD, "Error: " + e.getMessage());
+            } catch (Exception ignored) {}
         }
     }
     /**
-     * Removes a table by tableId.
+     * Handles a request to remove a restaurant table.
+     * <p>
+     * First executes a "Safety Check" using {@link RestaurantTableDAO#isSafeToDelete(String)}.
+     * If the check fails (table occupied or needed for future capacity), an error message is returned.
+     * Otherwise, the table is permanently deleted.
+     * </p>
+     *
+     * @param req the request envelope containing the table ID string or DTO
+     * @param client the connection to the client sending the request
      */
     private void handleRemoveTable(Envelope req, ConnectionToClient client) {
         try {
-            String tableId = (String) req.getPayload();
+
+        	Object payload = req.getPayload();
+            String tableId = null;
+
+            if (payload instanceof String s) {
+                tableId = s;
+            } else if (payload instanceof common.dto.RestaurantTableDTO dto) {
+                tableId = dto.getTableId();
+            }
+
+            if (tableId == null || tableId.isBlank()) {
+                sendOk(client, OpCode.RESPONSE_TABLE_REMOVE, "Error: Invalid Table ID.");
+                return;
+            }
+
+            String error = DataBase.dao.RestaurantTableDAO.isSafeToDelete(tableId);
+            if (error != null) {
+                // Send failure message (Client will show Alert)
+                sendOk(client, OpCode.RESPONSE_TABLE_REMOVE, "Error: " + error);
+                return;
+            }
+
             boolean ok = DataBase.dao.RestaurantTableDAO.deleteTable(tableId);
-            if (ok) sendOk(client, OpCode.RESPONSE_TABLE_REMOVE, "Table removed.");
-            else sendError(client, OpCode.ERROR, "Table not found or could not be removed.");
+            
+            if (ok) {
+                sendOk(client, OpCode.RESPONSE_TABLE_REMOVE, "Success: Table " + tableId + " removed.");
+            } else {
+                sendOk(client, OpCode.RESPONSE_TABLE_REMOVE, "Error: Deletion failed (Database error).");
+            }
+
         } catch (Exception e) {
-            try { sendError(client, OpCode.ERROR, "Remove table failed: " + e.getMessage()); } catch (Exception ignored) {}
+            try {
+                sendOk(client, OpCode.RESPONSE_TABLE_REMOVE, "Error: " + e.getMessage());
+            } catch (Exception ignored) {}
         }
     }
     /**
@@ -1000,14 +1065,63 @@ public class BistroServer extends AbstractServer {
         }
     }
     /**
-     * Updates opening hour row by ID.
+     * Handles a request to update the restaurant's opening hours.
+     * <p>
+     * Updates the hours in the database and immediately triggers a conflict check.
+     * If existing reservations violate the new hours, they are auto-canceled,
+     * and the affected customers' contact details are printed to the server console.
+     * </p>
+     *
+     * @param req the request envelope containing the {@link common.dto.OpeningHoursDTO}
+     * @param client the connection to the client sending the request
      */
     private void handleUpdateOpeningHours(Envelope req, ConnectionToClient client) {
         try {
             common.dto.OpeningHoursDTO dto = (common.dto.OpeningHoursDTO) req.getPayload();
-            boolean ok = DataBase.dao.OpeningHoursDAO.updateOpeningHour(dto.getHoursId(), dto.getOpenTime(), dto.getCloseTime());
-            if (ok) sendOk(client, OpCode.RESPONSE_OPENING_HOURS_UPDATE, "Hours updated successfully.");
-            else sendError(client, OpCode.ERROR, "Update failed.");
+            
+            // 1. Perform the Update
+            boolean ok = DataBase.dao.OpeningHoursDAO.updateOpeningHour(
+                dto.getHoursId(), dto.getOpenTime(), dto.getCloseTime()
+            );
+
+            if (ok) {
+                // 2. Check for conflicts and cancel them
+                String dateArg = (dto.getSpecialDate() != null && !dto.getSpecialDate().isBlank()) 
+                                 ? dto.getSpecialDate() : null;
+                                 
+                List<String[]> affected = DataBase.dao.ReservationDAO.cancelConflictsAfterHoursUpdate(
+                    dto.getDayOfWeek(), 
+                    dateArg,            
+                    dto.getOpenTime(),  
+                    dto.getCloseTime()  
+                );
+
+                // 3. ✅ CHANGED: Print to Terminal instead of EmailService
+                for (String[] contact : affected) {
+                    String username = contact[0];
+                    String email = contact[1]; 
+                    String phone = contact[2];
+                    
+                    // Fetch Subscriber email if missing
+                    if (username != null && !username.isBlank() && (email == null || email.isBlank())) {
+                         email = DataBase.dao.SubscriberDAO.getEmailByUsername(username);
+                    }
+
+                    // Console Output
+                    System.out.println("\n>>> [AUTO-CANCEL NOTIFICATION] <<<");
+                    System.out.println("Reason:   Opening Hours Changed by Staff");
+                    System.out.println("User:     " + (username != null ? username : "Guest"));
+                    System.out.println("Email:    " + (email != null ? email : "N/A"));
+                    System.out.println("Phone:    " + (phone != null ? phone : "N/A"));
+                    System.out.println("Action:   Reservation Canceled & Customer Notified.");
+                    System.out.println("------------------------------------\n");
+                }
+
+                sendOk(client, OpCode.RESPONSE_OPENING_HOURS_UPDATE, 
+                       "Hours updated. " + affected.size() + " conflicting reservation(s) canceled.");
+            } else {
+                sendError(client, OpCode.ERROR, "Update failed.");
+            }
         } catch (Exception e) {
             try { sendError(client, OpCode.ERROR, "Update error: " + e.getMessage()); } catch (Exception ignored) {}
         }
@@ -1169,14 +1283,20 @@ public class BistroServer extends AbstractServer {
         if (!dto.isSubscriber()) {
             String ge = dto.getGuestEmail() == null ? "" : dto.getGuestEmail().trim();
             String gp = dto.getGuestPhone() == null ? "" : dto.getGuestPhone().trim();
+            
+            if (ge.isEmpty() && gp.isEmpty()) {
+                sendOk(client, OpCode.RESPONSE_MAKE_RESERVATION,
+                       new MakeReservationResponseDTO(false, -1, null, "Guest must provide Email OR Phone."));
+                return;
+            }
 
-            if (!isValidEmailFormat(ge)) {
+            if (!ge.isEmpty() && !isValidEmailFormat(ge)) {
                 sendOk(client, OpCode.RESPONSE_MAKE_RESERVATION,
                         new MakeReservationResponseDTO(false, -1, null, "Invalid guest email."));
                 return;
             }
 
-            if (!isValidPhone10Digits(gp)) {
+            if (!gp.isEmpty() && !isValidPhone10Digits(gp)) {
                 sendOk(client, OpCode.RESPONSE_MAKE_RESERVATION,
                         new MakeReservationResponseDTO(false, -1, null, "Invalid guest phone (must be 10 digits)."));
                 return;
