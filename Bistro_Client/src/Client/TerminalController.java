@@ -136,6 +136,20 @@ public class TerminalController implements ClientUI {
         }
         // Buttons stay enabled always by design (no setDisable calls here)
     }
+    
+    /**
+     * Sets whether this terminal screen should behave in "subscriber intent" mode.
+     * <p>
+     * Subscriber intent means the UI will expose subscriber-specific elements (like the active
+     * reservations/waiting-list list) and will expect the subscriber to be identified either via the
+     * previous QR/login entry page (stored in {@link ClientSession}) or not at all.
+     * <p>
+     * If the FXML has already been loaded and controls are initialized, this method immediately
+     * re-applies the entry mode UI rules by calling {@link #applyEntryModeUI()}.
+     *
+     * @param subscriberModeIntent {@code true} to enable subscriber intent mode; {@code false} for customer mode.
+     */
+    
     public void setSubscriberModeIntent(boolean subscriberModeIntent) {
         this.subscriberModeIntent = subscriberModeIntent;
 
@@ -143,6 +157,18 @@ public class TerminalController implements ClientUI {
         applyEntryModeUI();
     }
 
+    /**
+     * Updates the "Recover confirmation code" UI area according to whether the current terminal session
+     * is a subscriber session.
+     * <ul>
+     *   <li><b>Subscriber:</b> auto-fills the recover field with the subscriber contact (prefers email,
+     *       falls back to phone), disables editing, and updates the prompt to indicate the contact is known.</li>
+     *   <li><b>Customer:</b> clears the field, enables editing, and prompts the user to enter an email or phone.</li>
+     * </ul>
+     * This method is safe to call even before FXML injection completes; it will no-op if the input
+     * field is not available.
+     */
+    
     private void applyRecoverModeUI() {
         if (txtRecoverPhoneOrEmail == null) return;
 
@@ -160,6 +186,32 @@ public class TerminalController implements ClientUI {
         }
     }
 
+    /**
+     * Applies the terminal entry mode UI rules (subscriber vs. customer).
+     * <p>
+     * The mode is derived from two signals:
+     * <ol>
+     *   <li><b>Intent:</b> {@code subscriberModeIntent} which is set when navigating into the terminal.</li>
+     *   <li><b>Identity:</b> {@link ClientSession} values (role + username) that persist across navigation.</li>
+     * </ol>
+     * If a subscriber identity already exists in {@link ClientSession} (role {@code "SUBSCRIBER"} and a
+     * non-blank username), this method forces {@code subscriberModeIntent = true} to ensure that
+     * navigation (e.g., Pay Bill → Back) returns to the terminal in subscriber mode.
+     * <p>
+     * Behavior:
+     * <ul>
+     *   <li><b>Subscriber intent mode:</b>
+     *     <ul>
+     *       <li>Shows the subscriber active list UI container.</li>
+     *       <li>If already resolved (identity present in {@link ClientSession}), marks this terminal session
+     *           as subscriber, restores subscriber contact (email/phone) from session, updates the recover UI,
+     *           and refreshes the subscriber active list.</li>
+     *       <li>If not resolved, displays a message instructing the user to go back and identify (scan/login).</li>
+     *     </ul>
+     *   </li>
+     *   <li><b>Customer mode:</b> hides the subscriber active list container and resets terminal subscriber state.</li>
+     * </ul>
+     */
     private void applyEntryModeUI() {
     	
         // ✅ If session already has subscriber identity, force subscriber intent mode

@@ -26,6 +26,16 @@ public class TerminalEntryController implements ClientUI {
 
     private volatile boolean resolveInFlight = false;
 
+    /**
+     * JavaFX initialization hook invoked by the FXMLLoader after all @FXML fields are injected.
+     * <p>
+     * Responsibilities:
+     * <ul>
+     *   <li>Binds this controller to {@link ClientSession} so server callbacks are routed here.</li>
+     *   <li>Clears any previous UI message.</li>
+     *   <li>Allows pressing ENTER in the QR text field to trigger subscriber continuation.</li>
+     * </ul>
+     */
     @FXML
     private void initialize() {
         ClientSession.bindUI(this);
@@ -36,7 +46,14 @@ public class TerminalEntryController implements ClientUI {
             txtSubscriberQR.setOnAction(e -> onSubscriberContinue());
         }
     }
-
+    
+    
+    /**
+     * Continues into the terminal as a customer (no subscriber identification).
+     * <p>
+     * This method clears any subscriber identity stored in {@link ClientSession} and navigates
+     * to the terminal in customer mode.
+     */
     @FXML
     private void onCustomer() {
         // Clear any subscriber identity
@@ -44,7 +61,19 @@ public class TerminalEntryController implements ClientUI {
         ClientSession.setUsername("");
         SceneManager.showTerminal(false);
     }
-
+      
+    /**
+     * Continues into the terminal as a subscriber using the subscriber QR code.
+     * <p>
+     * Validates that:
+     * <ul>
+     *   <li>A QR code was entered/scanned.</li>
+     *   <li>The client is connected to the server.</li>
+     * </ul>
+     * Sends {@link OpCode#REQUEST_TERMINAL_RESOLVE_SUBSCRIBER_QR} with the QR value to the server.
+     * <p>
+     * Uses {@code resolveInFlight} to prevent duplicate requests while a previous request is pending.
+     */
     @FXML
     private void onSubscriberContinue() {
         if (resolveInFlight) return;
@@ -74,6 +103,12 @@ public class TerminalEntryController implements ClientUI {
         }
     }
     
+    /**
+     * Shows or hides the username/password login fallback panel for subscribers who forgot their QR.
+     * <p>
+     * When opened, this method focuses the username field for faster input.
+     * Also clears any message label text.
+     */
     @FXML
     private void onToggleLogin() {
         boolean show = !loginBox.isVisible();
@@ -87,6 +122,13 @@ public class TerminalEntryController implements ClientUI {
         }
     }
 
+    /**
+     * Attempts to authenticate a subscriber using username and password (fallback flow).
+     * <p>
+     * Validates that both username and password are provided, then sends
+     * {@link OpCode#REQUEST_LOGIN_SUBSCRIBER} with a {@link LoginRequestDTO} payload.
+     * Disables the login button until a response is received to prevent duplicate submits.
+     */
     @FXML
     private void onLoginSubscriber() {
         if (lblMsg != null) lblMsg.setText("");
@@ -116,13 +158,35 @@ public class TerminalEntryController implements ClientUI {
     }
 
     // ===== ClientUI =====
+    /**
+     * Callback invoked when the client successfully connects to the server.
+     * <p>
+     * Currently no special UI handling is required for this screen.
+     */
     @Override public void onConnected() {}
+    
+    /**
+     * Callback invoked when the client disconnects from the server.
+     * <p>
+     * Resets any in-flight QR resolve request and re-enables the subscriber continue button
+     * so the UI does not remain stuck in a disabled state.
+     * Runs on the JavaFX Application Thread via {@link Platform#runLater(Runnable)}.
+     */
     @Override public void onDisconnected() {
         Platform.runLater(() -> {
             resolveInFlight = false;
             if (btnSubscriberContinue != null) btnSubscriberContinue.setDisable(false);
         });
     }
+    
+    /**
+     * Callback invoked when the connection fails or an I/O error occurs.
+     * <p>
+     * Resets any in-flight QR resolve request and re-enables the subscriber continue button.
+     * Runs on the JavaFX Application Thread via {@link Platform#runLater(Runnable)}.
+     *
+     * @param e the underlying connection error.
+     */
     @Override public void onConnectionError(Exception e) {
         Platform.runLater(() -> {
             resolveInFlight = false;
@@ -130,6 +194,22 @@ public class TerminalEntryController implements ClientUI {
         });
     }
 
+    /**
+     * Receives server messages routed to this controller and updates the UI accordingly.
+     * <p>
+     * This method unwraps the incoming object into an {@link Envelope} (either directly or from a
+     * {@link KryoMessage}) and then handles specific response opcodes:
+     * <ul>
+     *   <li>{@link OpCode#RESPONSE_TERMINAL_RESOLVE_SUBSCRIBER_QR}: resolves subscriber identity from a QR code.</li>
+     *   <li>{@link OpCode#RESPONSE_LOGIN_SUBSCRIBER}: resolves subscriber identity from username/password login.</li>
+     * </ul>
+     * <p>
+     * On successful subscriber resolution, the method stores subscriber identity (and contact info, when provided)
+     * into {@link ClientSession} so that the terminal screen can restore subscriber mode across navigation.
+     * All UI work is executed on the JavaFX Application Thread via {@link Platform#runLater(Runnable)}.
+     *
+     * @param message the raw message object received from the networking layer.
+     */
     @Override
     public void handleServerMessage(Object message) {
         Platform.runLater(() -> {
@@ -226,6 +306,11 @@ public class TerminalEntryController implements ClientUI {
 
 
     // ===== helpers =====
+    /**
+     * Checks whether the client networking layer is currently connected to the server.
+     *
+     * @return {@code true} if a client instance exists and is connected; otherwise {@code false}.
+     */
     private boolean isConnected() {
         try {
             var c = ClientSession.getClient();
@@ -235,6 +320,18 @@ public class TerminalEntryController implements ClientUI {
         }
     }
 
+    /**
+     * Converts a raw network message into an {@link Envelope}.
+     * <p>
+     * Supported formats:
+     * <ul>
+     *   <li>{@link Envelope} directly.</li>
+     *   <li>{@link KryoMessage} of type {@code "ENVELOPE"} whose payload is a serialized {@link Envelope}.</li>
+     * </ul>
+     *
+     * @param msg raw message object received from the server/client networking layer.
+     * @return the decoded {@link Envelope}, or {@code null} if the message is not an envelope or cannot be decoded.
+     */
     private Envelope unwrapEnvelope(Object msg) {
         try {
             if (msg instanceof Envelope e) return e;

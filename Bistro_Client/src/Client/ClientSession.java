@@ -37,16 +37,62 @@ public class ClientSession {
         ClientSession.port = port;
     }
     
+    /**
+     * Returns the cached subscriber email address for the current terminal subscriber session.
+     * <p>
+     * This value is filled when the subscriber is identified (via QR resolve or login) and is
+     * kept in {@code ClientSession} so it survives navigation between screens (e.g., Pay Bill → Back).
+     *
+     * @return subscriber email, or an empty string if not loaded/unknown.
+     */
     public static String getSubscriberEmail() { return subscriberEmail; }
+    
+    /**
+     * Sets (caches) the subscriber email address for the current terminal subscriber session.
+     * <p>
+     * The value is normalized:
+     * <ul>
+     *   <li>{@code null} becomes an empty string.</li>
+     *   <li>Leading/trailing whitespace is trimmed.</li>
+     * </ul>
+     *
+     * @param email subscriber email to store; may be {@code null}.
+     */
     public static void setSubscriberEmail(String email) {
         subscriberEmail = (email == null) ? "" : email.trim();
     }
 
+    /**
+     * Returns the cached subscriber phone number for the current terminal subscriber session.
+     * <p>
+     * This value is filled when the subscriber is identified and is stored in {@code ClientSession}
+     * to survive UI navigation.
+     *
+     * @return subscriber phone number, or an empty string if not loaded/unknown.
+     */
     public static String getSubscriberPhone() { return subscriberPhone; }
+    
+    /**
+     * Sets (caches) the subscriber phone number for the current terminal subscriber session.
+     * <p>
+     * The value is normalized:
+     * <ul>
+     *   <li>{@code null} becomes an empty string.</li>
+     *   <li>Leading/trailing whitespace is trimmed.</li>
+     * </ul>
+     *
+     * @param phone subscriber phone number to store; may be {@code null}.
+     */
     public static void setSubscriberPhone(String phone) {
         subscriberPhone = (phone == null) ? "" : phone.trim();
     }
 
+    /**
+     * Clears any cached subscriber contact details (email and phone) from {@code ClientSession}.
+     * <p>
+     * This should be called when leaving subscriber mode or logging out, to avoid leaking
+     * subscriber contact details into a future session on the terminal.
+     */
     public static void clearSubscriberContact() {
         subscriberEmail = "";
         subscriberPhone = "";
