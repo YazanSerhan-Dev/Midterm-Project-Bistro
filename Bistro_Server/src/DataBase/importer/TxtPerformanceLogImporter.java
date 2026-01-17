@@ -5,7 +5,15 @@ import java.io.FileReader;
 import java.sql.Date;
 
 import DataBase.dao.PerformanceLogDAO;
-
+/**
+ * Imports performance log records from a CSV (txt) file into the database.
+ * <p>
+ * Each record represents performance metrics of a visit,
+ * including late arrival minutes and overstay duration.
+ * <p>
+ * The importer skips the header row and inserts all remaining rows
+ * into the performance_log table.
+ */
 public class TxtPerformanceLogImporter {
 
     public static void importFromFile(String filePath) throws Exception {

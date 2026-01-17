@@ -7,10 +7,27 @@ import DataBase.MySQLConnectionPool;
 import DataBase.PooledConnection;
 
 /**
- * Resets all database tables before import
+ * Utility class responsible for clearing all database tables
+ * before running data import processes.
+ * <p>
+ * The reset is performed using TRUNCATE statements in a safe order
+ * while temporarily disabling foreign key checks.
+ * <p>
+ * Intended for testing, development, and initial data loading only.
  */
 public class DatabaseResetter {
-
+	/**
+	 * Resets the entire database content by truncating all tables.
+	 * <p>
+	 * Process:
+	 * <ul>
+	 *   <li>Disables foreign key constraints</li>
+	 *   <li>Truncates tables from dependent to base entities</li>
+	 *   <li>Re-enables foreign key constraints</li>
+	 * </ul>
+	 *
+	 * @throws Exception if a database error occurs
+	 */
     public static void resetDatabase() throws Exception {
 
         MySQLConnectionPool pool = MySQLConnectionPool.getInstance();

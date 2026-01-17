@@ -5,9 +5,22 @@ import java.io.FileReader;
 import java.sql.Timestamp;
 
 import DataBase.dao.WaitingListDAO;
-
+/**
+ * Imports waiting list records from a CSV (txt) file into the waiting_list table.
+ * <p>
+ * Each record represents a waiting list request with number of customers,
+ * request time, status, and confirmation code.
+ */
 public class TxtWaitingListImporter {
-
+	/**
+	 * Reads waiting list data from a text file and inserts it into the database.
+	 * <p>
+	 * Expected file format (comma-separated):
+	 * num_of_customers, request_time, status, confirmation_code
+	 *
+	 * @param filePath path to the waiting list data file
+	 * @throws Exception if file reading, parsing, or database insertion fails
+	 */
     public static void importFromFile(String filePath) throws Exception {
 
         try (BufferedReader br = new BufferedReader(new FileReader(filePath))) {

@@ -5,9 +5,30 @@ import java.io.FileReader;
 import java.sql.Timestamp;
 
 import DataBase.dao.UserActivityDAO;
-
+/**
+ * Imports user activity records from a CSV (txt) file into the user_activity table.
+ * <p>
+ * Supports both subscribers and guests, and handles optional reservation
+ * and waiting list references.
+ */
 public class TxtUserActivityImporter {
-
+	/**
+	 * Reads user activity data from a text file and inserts it into the database.
+	 * <p>
+	 * Handles:
+	 * <ul>
+	 *   <li>Empty or whitespace lines</li>
+	 *   <li>Optional reservation_id and waiting_id</li>
+	 *   <li>UTF-8 BOM characters</li>
+	 * </ul>
+	 *
+	 * Expected file format (comma-separated):
+	 * subscriber_username, guest_phone, guest_email,
+	 * reservation_id, waiting_id, activity_date
+	 *
+	 * @param filePath path to the user_activity data file
+	 * @throws Exception if file reading, parsing, or database insertion fails
+	 */
     public static void importFromFile(String filePath) throws Exception {
 
         try (BufferedReader br = new BufferedReader(new FileReader(filePath))) {
