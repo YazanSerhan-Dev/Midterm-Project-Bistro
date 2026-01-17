@@ -1,0 +1,163 @@
+/* Root background like your terminal page */
+.root {
+    -fx-background-color: #eef2f6;
+    -fx-font-family: "Segoe UI", "Inter", "Arial";
+}
+
+/* Center content */
+.entry-container {
+    -fx-padding: 40 20 40 20;
+    -fx-spacing: 18;
+}
+
+/* Header */
+.header .h1 {
+    -fx-font-size: 38px;
+    -fx-font-weight: 800;
+    -fx-text-fill: #1f2937;
+}
+
+.header .sub {
+    -fx-font-size: 15px;
+    -fx-text-fill: #6b7280;
+}
+
+/* Card container */
+.card {
+    -fx-background-color: white;
+    -fx-background-radius: 18;
+    -fx-border-radius: 18;
+    -fx-border-color: #e5e7eb;
+    -fx-border-width: 1;
+    -fx-padding: 18 18 18 18;
+    -fx-spacing: 14;
+
+    /* Soft shadow */
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.10), 18, 0.18, 0, 6);
+    -fx-min-width: 520;
+    -fx-max-width: 740;
+}
+
+/* Icons (emoji labels) */
+.icon {
+    -fx-font-size: 28px;
+    -fx-background-color: #f3f4f6;
+    -fx-background-radius: 999;
+    -fx-padding: 10;
+    -fx-min-width: 52;
+    -fx-alignment: center;
+}
+
+/* Card titles */
+.card-title {
+    -fx-font-size: 18px;
+    -fx-font-weight: 800;
+    -fx-text-fill: #111827;
+}
+
+.card-sub {
+    -fx-font-size: 13px;
+    -fx-text-fill: #6b7280;
+}
+
+/* Input */
+.input {
+    -fx-background-color: #f9fafb;
+    -fx-background-radius: 12;
+    -fx-border-radius: 12;
+    -fx-border-color: #e5e7eb;
+    -fx-border-width: 1;
+
+    -fx-padding: 12 14 12 14;
+    -fx-font-size: 14px;
+}
+
+.input:focused {
+    -fx-background-color: white;
+    -fx-border-color: #60a5fa;
+    -fx-effect: dropshadow(gaussian, rgba(96,165,250,0.35), 10, 0.2, 0, 0);
+}
+
+/* Buttons base */
+.button {
+    -fx-cursor: hand;
+    -fx-font-size: 15px;
+    -fx-font-weight: 800;
+    -fx-background-radius: 12;
+    -fx-padding: 12 18 12 18;
+}
+
+/* Primary (Subscriber) */
+.btn-primary {
+    -fx-text-fill: white;
+    -fx-background-color: linear-gradient(to bottom, #5b8def, #2f6fe0);
+    -fx-effect: dropshadow(gaussian, rgba(47,111,224,0.35), 14, 0.2, 0, 6);
+}
+
+.btn-primary:hover {
+    -fx-background-color: linear-gradient(to bottom, #6a97f1, #2b66cf);
+}
+
+.btn-primary:pressed {
+    -fx-translate-y: 1;
+    -fx-effect: dropshadow(gaussian, rgba(47,111,224,0.25), 10, 0.15, 0, 4);
+}
+
+/* Secondary (Customer) */
+.btn-secondary {
+    -fx-text-fill: #111827;
+    -fx-background-color: #e7eefb;
+    -fx-border-color: #cfe0ff;
+    -fx-border-width: 1;
+}
+
+.btn-secondary:hover {
+    -fx-background-color: #dde7fb;
+}
+
+.btn-secondary:pressed {
+    -fx-translate-y: 1;
+}
+
+/* "or" label */
+.or {
+    -fx-text-fill: #6b7280;
+    -fx-font-size: 13px;
+    -fx-font-weight: 700;
+}
+
+/* Error message */
+.error {
+    -fx-text-fill: #b00020;
+    -fx-font-size: 12px;
+}
+
+/* Tip */
+.tip {
+    -fx-text-fill: #6b7280;
+    -fx-font-size: 12px;
+}
+
+.link {
+    -fx-text-fill: #2f6fe0;
+    -fx-font-size: 12px;
+    -fx-font-weight: 700;
+}
+
+.link:hover {
+    -fx-underline: true;
+}
+
+.login-box {
+    -fx-background-color: #ffffff;
+    -fx-background-radius: 14;
+    -fx-border-radius: 14;
+    -fx-border-color: #e5e7eb;
+    -fx-border-width: 1;
+    -fx-padding: 14;
+    -fx-spacing: 10;
+
+    /* same “soft” feel as cards but lighter */
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.06), 14, 0.15, 0, 5);
+}
+
