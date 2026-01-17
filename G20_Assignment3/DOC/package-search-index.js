@@ -1,1 +1,0 @@
-packageSearchIndex = [{"l":"All Packages","u":"allpackages-index.html","k":"18"},{"l":"Client"},{"l":"clientGUI"},{"l":"common"},{"l":"common.dto"},{"l":"DataBase"},{"l":"DataBase.dao"},{"l":"DataBase.importer"},{"l":"Server"}];updateSearchResults();

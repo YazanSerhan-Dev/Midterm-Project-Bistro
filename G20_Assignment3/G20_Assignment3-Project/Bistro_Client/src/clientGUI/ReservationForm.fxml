@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.Button?>
+<?import javafx.scene.control.ComboBox?>
+<?import javafx.scene.control.DatePicker?>
+<?import javafx.scene.control.Label?>
+<?import javafx.scene.control.ListView?>
+<?import javafx.scene.control.RadioButton?>
+<?import javafx.scene.control.Separator?>
+<?import javafx.scene.control.TextField?>
+<?import javafx.scene.layout.AnchorPane?>
+<?import javafx.scene.layout.HBox?>
+<?import javafx.scene.layout.VBox?>
+<?import javafx.scene.text.Font?>
+
+<AnchorPane prefHeight="550.0" prefWidth="400.0" xmlns="http://javafx.com/javafx/21" xmlns:fx="http://javafx.com/fxml/1" fx:controller="Client.ReservationFormController">
+   <children>
+      <VBox spacing="10.0" AnchorPane.bottomAnchor="20.0" AnchorPane.leftAnchor="20.0" AnchorPane.rightAnchor="20.0" AnchorPane.topAnchor="20.0">
+         <children>
+            <Label text="New Reservation">
+               <font>
+                  <Font name="System Bold" size="18.0" />
+               </font>
+            </Label>
+            <Separator prefWidth="200.0" />
+            
+            <Label text="1. Reservation Details" textFill="#7f8c8d" />
+            <HBox spacing="10.0">
+               <children>
+                  <VBox HBox.hgrow="ALWAYS">
+                     <children>
+                        <Label text="Date:" />
+                        <DatePicker fx:id="dpDate" maxWidth="1.7976931348623157E308" />
+                     </children>
+                  </VBox>
+                  <VBox HBox.hgrow="ALWAYS">
+                     <children>
+                        <Label text="Time:" />
+                        <ComboBox fx:id="cbTime" maxWidth="1.7976931348623157E308" />
+                     </children>
+                  </VBox>
+               </children>
+            </HBox>
+            
+            <VBox>
+               <children>
+                  <Label text="Diners:" />
+                  <TextField fx:id="tfDiners" text="2" />
+               </children>
+            </VBox>
+            
+            <Button fx:id="btnCheck" maxWidth="1.7976931348623157E308" mnemonicParsing="false" onAction="#onCheckAvailability" text="Check Availability" />
+            
+            <Separator prefWidth="200.0" />
+            
+            <Label text="2. Customer Info" textFill="#7f8c8d" />
+            <HBox spacing="15.0">
+               <children>
+                  <RadioButton fx:id="rbCasual" mnemonicParsing="false" selected="true" text="Casual / Guest" />
+                  <RadioButton fx:id="rbSubscriber" mnemonicParsing="false" text="Subscriber" />
+               </children>
+            </HBox>
+            
+            <VBox spacing="5.0">
+               <children>
+                  <TextField fx:id="tfSubscriberID" disable="true" promptText="Subscriber ID" />
+                  <TextField fx:id="tfPhone" promptText="Phone Number" />
+                  <TextField fx:id="tfEmail" promptText="Email Address" />
+               </children>
+            </VBox>
+            
+            <Separator prefWidth="200.0" />
+            
+            <Label text="Status:" />
+            <Label fx:id="lblStatus" text="..." wrapText="true" textFill="#2980b9" />
+            
+            <ListView fx:id="listAlternatives" prefHeight="100.0" />
+            
+            <Button fx:id="btnConfirm" disable="true" maxWidth="1.7976931348623157E308" mnemonicParsing="false" onAction="#onConfirm" style="-fx-background-color: #27ae60;" text="Confirm Booking" textFill="WHITE">
+               <font>
+                  <Font name="System Bold" size="14.0" />
+               </font>
+            </Button>
+         </children>
+      </VBox>
+   </children>
+</AnchorPane>
