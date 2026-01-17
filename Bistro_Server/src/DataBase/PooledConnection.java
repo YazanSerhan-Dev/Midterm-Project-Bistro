@@ -2,10 +2,10 @@ package DataBase;
 
 import java.sql.Connection;
 import java.sql.SQLException;
-
 /**
- * Wraps a real JDBC Connection and stores when it was last used.
- * The connection pool uses this information to close idle connections.
+ * Creates a new pooled connection wrapper.
+ *
+ * @param conn the physical JDBC connection to wrap
  */
 public class PooledConnection {
 
@@ -22,8 +22,11 @@ public class PooledConnection {
 
     /**
      * Returns the underlying JDBC Connection.
-     * Also updates the last-used timestamp.
+     * Updates the last-used timestamp to reflect active usage.
+     *
+     * @return active JDBC Connection
      */
+
     public Connection getConnection() {
         touch();
         return conn;

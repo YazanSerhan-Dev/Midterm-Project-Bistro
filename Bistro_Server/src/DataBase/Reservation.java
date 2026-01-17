@@ -6,6 +6,7 @@ import java.sql.Timestamp;
  * Entity that matches table: reservation
  *
  * Columns:
+ * 
  *  - reservation_id
  *  - num_of_customers
  *  - reservation_time

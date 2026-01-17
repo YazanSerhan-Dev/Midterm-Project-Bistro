@@ -90,9 +90,10 @@ public class MySQLConnectionPool {
     }
 
     /**
-     * Returns a connection wrapper to the pool after use.
-     * If the pool is full, the physical connection is closed instead.
+     * Returns a pooled connection back to the pool.
+     * If the pool is already full, the underlying JDBC connection is closed.
      */
+
     public void releaseConnection(PooledConnection pConn) {
         if (pConn == null) {
             return;
