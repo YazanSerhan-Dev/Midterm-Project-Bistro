@@ -18,32 +18,34 @@ USE `bistro`;
 /*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
 
 --
--- Table structure for table `performance_log`
+-- Table structure for table `bill`
 --
 
-DROP TABLE IF EXISTS `performance_log`;
+DROP TABLE IF EXISTS `bill`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `performance_log` (
-  `log_id` int NOT NULL AUTO_INCREMENT,
+CREATE TABLE `bill` (
+  `bill_id` int NOT NULL AUTO_INCREMENT,
   `visit_id` int NOT NULL,
-  `late_minutes` int DEFAULT '0',
-  `overstay_minutes` int DEFAULT '0',
-  `report_date` date NOT NULL,
-  PRIMARY KEY (`log_id`),
+  `total_amount` decimal(10,2) NOT NULL,
+  `is_subscriber_discount` enum('YES','NO') NOT NULL DEFAULT 'NO',
+  `is_paid` enum('YES','NO') NOT NULL DEFAULT 'NO',
+  `reminder_sent` enum('YES','NO') NOT NULL DEFAULT 'NO',
+  `reminder_sent_at` datetime DEFAULT NULL,
+  PRIMARY KEY (`bill_id`),
   KEY `visit_id` (`visit_id`),
-  CONSTRAINT `performance_log_ibfk_1` FOREIGN KEY (`visit_id`) REFERENCES `visit` (`visit_id`)
+  CONSTRAINT `bill_ibfk_1` FOREIGN KEY (`visit_id`) REFERENCES `visit` (`visit_id`) ON DELETE CASCADE
 ) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
--- Dumping data for table `performance_log`
+-- Dumping data for table `bill`
 --
 
-LOCK TABLES `performance_log` WRITE;
-/*!40000 ALTER TABLE `performance_log` DISABLE KEYS */;
-INSERT INTO `performance_log` VALUES (1,1,0,0,'2025-12-20'),(2,2,5,0,'2025-12-21'),(3,3,0,10,'2025-12-22'),(4,4,3,0,'2025-12-06'),(5,5,0,0,'2025-12-23'),(6,6,2,8,'2025-12-24'),(7,7,0,0,'2025-12-25'),(8,8,4,0,'2025-12-07'),(9,9,0,6,'2025-12-26'),(10,10,1,0,'2025-12-27');
-/*!40000 ALTER TABLE `performance_log` ENABLE KEYS */;
+LOCK TABLES `bill` WRITE;
+/*!40000 ALTER TABLE `bill` DISABLE KEYS */;
+INSERT INTO `bill` VALUES (1,1,110.00,'YES','YES','NO',NULL),(2,2,120.00,'YES','YES','NO',NULL),(3,3,130.00,'YES','YES','NO',NULL),(4,4,140.00,'NO','YES','NO',NULL),(5,5,150.00,'YES','YES','NO',NULL),(6,6,160.00,'YES','YES','NO',NULL),(7,7,170.00,'YES','YES','NO',NULL),(8,8,180.00,'NO','YES','NO',NULL),(9,9,190.00,'YES','YES','NO',NULL),(10,10,200.00,'YES','YES','NO',NULL);
+/*!40000 ALTER TABLE `bill` ENABLE KEYS */;
 UNLOCK TABLES;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
@@ -55,4 +57,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2026-01-16 19:46:41
+-- Dump completed on 2026-01-17 18:40:18

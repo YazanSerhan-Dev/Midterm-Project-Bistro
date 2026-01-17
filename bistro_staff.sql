@@ -18,31 +18,32 @@ USE `bistro`;
 /*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
 
 --
--- Table structure for table `restaurant_table`
+-- Table structure for table `staff`
 --
 
-DROP TABLE IF EXISTS `restaurant_table`;
+DROP TABLE IF EXISTS `staff`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `restaurant_table` (
-  `table_id` varchar(10) NOT NULL,
-  `num_of_seats` int NOT NULL,
-  `status` enum('FREE','OCCUPIED','RESERVED') NOT NULL,
-  `reserved_for_reservation_id` int DEFAULT NULL,
-  `reserved_for_waiting_id` int DEFAULT NULL,
-  `reserved_until` datetime DEFAULT NULL,
-  PRIMARY KEY (`table_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE `staff` (
+  `staff_id` int NOT NULL AUTO_INCREMENT,
+  `username` varchar(50) NOT NULL,
+  `password` varchar(100) NOT NULL,
+  `staff_role` enum('MANAGER','AGENT') NOT NULL,
+  `full_name` varchar(100) NOT NULL,
+  PRIMARY KEY (`staff_id`),
+  UNIQUE KEY `username` (`username`),
+  UNIQUE KEY `password` (`password`)
+) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
--- Dumping data for table `restaurant_table`
+-- Dumping data for table `staff`
 --
 
-LOCK TABLES `restaurant_table` WRITE;
-/*!40000 ALTER TABLE `restaurant_table` DISABLE KEYS */;
-INSERT INTO `restaurant_table` VALUES ('T01',2,'FREE',NULL,NULL,NULL),('T02',3,'OCCUPIED',NULL,NULL,NULL),('T03',4,'RESERVED',NULL,NULL,NULL),('T04',3,'FREE',NULL,NULL,NULL),('T05',5,'OCCUPIED',NULL,NULL,NULL),('T06',1,'RESERVED',NULL,NULL,NULL),('T07',2,'FREE',NULL,NULL,NULL),('T08',4,'OCCUPIED',NULL,NULL,NULL),('T09',3,'RESERVED',NULL,NULL,NULL),('T10',4,'FREE',NULL,NULL,NULL);
-/*!40000 ALTER TABLE `restaurant_table` ENABLE KEYS */;
+LOCK TABLES `staff` WRITE;
+/*!40000 ALTER TABLE `staff` DISABLE KEYS */;
+INSERT INTO `staff` VALUES (1,'staff1','spass1','MANAGER','Staff Member 1'),(2,'staff2','spass2','AGENT','Staff Member 2'),(3,'staff3','spass3','AGENT','Staff Member 3'),(4,'staff4','spass4','AGENT','Staff Member 4'),(5,'staff5','spass5','AGENT','Staff Member 5'),(6,'staff6','spass6','AGENT','Staff Member 6'),(7,'staff7','spass7','AGENT','Staff Member 7'),(8,'staff8','spass8','AGENT','Staff Member 8'),(9,'staff9','spass9','AGENT','Staff Member 9'),(10,'staff10','spass10','AGENT','Staff Member 10');
+/*!40000 ALTER TABLE `staff` ENABLE KEYS */;
 UNLOCK TABLES;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
@@ -54,4 +55,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2026-01-16 19:46:41
+-- Dump completed on 2026-01-17 18:40:19

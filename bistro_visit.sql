@@ -18,34 +18,34 @@ USE `bistro`;
 /*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
 
 --
--- Table structure for table `bill`
+-- Table structure for table `visit`
 --
 
-DROP TABLE IF EXISTS `bill`;
+DROP TABLE IF EXISTS `visit`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
-CREATE TABLE `bill` (
-  `bill_id` int NOT NULL AUTO_INCREMENT,
-  `visit_id` int NOT NULL,
-  `total_amount` decimal(10,2) NOT NULL,
-  `is_subscriber_discount` enum('YES','NO') NOT NULL DEFAULT 'NO',
-  `is_paid` enum('YES','NO') NOT NULL DEFAULT 'NO',
-  `reminder_sent` enum('YES','NO') NOT NULL DEFAULT 'NO',
-  `reminder_sent_at` datetime DEFAULT NULL,
-  PRIMARY KEY (`bill_id`),
-  KEY `visit_id` (`visit_id`),
-  CONSTRAINT `bill_ibfk_1` FOREIGN KEY (`visit_id`) REFERENCES `visit` (`visit_id`) ON DELETE CASCADE
+CREATE TABLE `visit` (
+  `visit_id` int NOT NULL AUTO_INCREMENT,
+  `activity_id` int NOT NULL,
+  `table_id` varchar(10) NOT NULL,
+  `actual_start_time` datetime NOT NULL,
+  `actual_end_time` datetime DEFAULT NULL,
+  PRIMARY KEY (`visit_id`),
+  KEY `activity_id` (`activity_id`),
+  KEY `table_id` (`table_id`),
+  CONSTRAINT `visit_ibfk_1` FOREIGN KEY (`activity_id`) REFERENCES `user_activity` (`activity_id`),
+  CONSTRAINT `visit_ibfk_2` FOREIGN KEY (`table_id`) REFERENCES `restaurant_table` (`table_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=11 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 /*!40101 SET character_set_client = @saved_cs_client */;
 
 --
--- Dumping data for table `bill`
+-- Dumping data for table `visit`
 --
 
-LOCK TABLES `bill` WRITE;
-/*!40000 ALTER TABLE `bill` DISABLE KEYS */;
-INSERT INTO `bill` VALUES (1,1,110.00,'YES','YES','NO',NULL),(2,2,120.00,'YES','YES','NO',NULL),(3,3,130.00,'YES','YES','NO',NULL),(4,4,140.00,'NO','YES','NO',NULL),(5,5,150.00,'YES','YES','NO',NULL),(6,6,160.00,'YES','YES','NO',NULL),(7,7,170.00,'YES','YES','NO',NULL),(8,8,180.00,'NO','YES','NO',NULL),(9,9,190.00,'YES','YES','NO',NULL),(10,10,200.00,'YES','YES','NO',NULL);
-/*!40000 ALTER TABLE `bill` ENABLE KEYS */;
+LOCK TABLES `visit` WRITE;
+/*!40000 ALTER TABLE `visit` DISABLE KEYS */;
+INSERT INTO `visit` VALUES (1,1,'T01','2025-12-28 11:05:09','2025-12-20 12:01:09'),(2,2,'T02','2025-12-28 11:05:09','2025-12-21 12:02:09'),(3,3,'T03','2025-12-28 11:05:09','2025-12-22 12:03:09'),(4,4,'T04','2025-12-28 11:05:09','2025-12-06 12:06:09'),(5,5,'T05','2025-12-28 11:05:09','2025-12-23 12:04:09'),(6,6,'T06','2025-12-28 11:05:09','2025-12-24 12:05:09'),(7,7,'T07','2025-12-28 11:05:09','2025-12-25 12:06:09'),(8,8,'T08','2025-12-28 11:05:09','2025-12-07 12:07:09'),(9,9,'T09','2025-12-28 11:05:09','2025-12-26 12:07:09'),(10,10,'T10','2025-12-28 11:05:09','2025-12-27 12:08:09');
+/*!40000 ALTER TABLE `visit` ENABLE KEYS */;
 UNLOCK TABLES;
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 
@@ -57,4 +57,4 @@ UNLOCK TABLES;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
 /*!40111 SET SQL_NOTES=@OLD_SQL_NOTES */;
 
--- Dump completed on 2026-01-16 19:46:41
+-- Dump completed on 2026-01-17 18:40:18
