@@ -1019,6 +1019,7 @@ public class RestaurantTableDAO {
 	 * Simulates whether the current inventory of FREE tables can accommodate upcoming reservations.
 	 * <p>
 	 * This method performs a "dry run" allocation planning logic:
+	 * </p>
 	 * <ol>
 	 * <li>Snapshots all currently FREE tables.</li>
 	 * <li>Fetches the party sizes of upcoming reservations (within the look-ahead window).</li>
@@ -1027,7 +1028,7 @@ public class RestaurantTableDAO {
 	 * If the simulation successfully finds a seat configuration for every upcoming reservation
 	 * without running out of tables, it returns {@code true}.
 	 * This is useful for "Safe Delete" checks or capacity planning warnings.
-	 * </p>
+	 * 
 	 *
 	 * @param conn the active database connection
 	 * @param lookAheadMinutes how many minutes into the future to scan for upcoming reservations
