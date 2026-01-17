@@ -52,7 +52,6 @@ public class TerminalController implements ClientUI {
     @FXML private Label lblWaitMessage;
 
     @FXML private Button btnCheckIn;
-    @FXML private Button btnScanSubscriberQR;
     @FXML private Label lblTerminalStatus;
 
     // Lost code
@@ -89,10 +88,17 @@ public class TerminalController implements ClientUI {
     private volatile String lastCheckedInCode = "";
     private volatile String lastValidatedCode = "";
     
+ // cached subscriber contact for quick recover
+    private volatile String subscriberEmail = "";
+    private volatile String subscriberPhone = "";
+
+    
  // Terminal identity (public terminal session)
     private volatile boolean terminalIsSubscriber = false;
     private volatile String terminalSubscriberUsername = "";
 
+ // Intent selected in the entry page (BEFORE QR scan)
+    private volatile boolean subscriberModeIntent = false;
 
     /**
      * JavaFX lifecycle hook invoked after FXML injection is complete.
@@ -113,7 +119,8 @@ public class TerminalController implements ClientUI {
         // Register this screen as the current UI receiver
         ClientSession.bindUI(this);
 
-        applyRoleVisibility();       
+        applyEntryModeUI(); 
+        
         if (lstSubscriberActive != null) {
             lstSubscriberActive.setOnMouseClicked(e -> {
                 var dto = lstSubscriberActive.getSelectionModel().getSelectedItem();
@@ -128,6 +135,89 @@ public class TerminalController implements ClientUI {
             });
         }
         // Buttons stay enabled always by design (no setDisable calls here)
+    }
+    public void setSubscriberModeIntent(boolean subscriberModeIntent) {
+        this.subscriberModeIntent = subscriberModeIntent;
+
+        // If FXML is already loaded, apply UI changes immediately
+        applyEntryModeUI();
+    }
+
+    private void applyRecoverModeUI() {
+        if (txtRecoverPhoneOrEmail == null) return;
+
+        if (terminalIsSubscriber) {
+            // prefer email, fallback phone
+            String fill = !subscriberEmail.isBlank() ? subscriberEmail : subscriberPhone;
+
+            txtRecoverPhoneOrEmail.setText(fill);
+            txtRecoverPhoneOrEmail.setDisable(true); // subscriber should just click
+            txtRecoverPhoneOrEmail.setPromptText("Using your subscriber contact");
+        } else {
+            txtRecoverPhoneOrEmail.clear();
+            txtRecoverPhoneOrEmail.setDisable(false);
+            txtRecoverPhoneOrEmail.setPromptText("Enter email or phone");
+        }
+    }
+
+    private void applyEntryModeUI() {
+    	
+        // ✅ If session already has subscriber identity, force subscriber intent mode
+        if ("SUBSCRIBER".equalsIgnoreCase(ClientSession.getRole())
+                && ClientSession.getUsername() != null
+                && !ClientSession.getUsername().isBlank()) {
+            subscriberModeIntent = true;
+        }
+
+        if (subscriberModeIntent) {
+
+            boolean alreadyResolved =
+                    "SUBSCRIBER".equalsIgnoreCase(ClientSession.getRole())
+                    && ClientSession.getUsername() != null
+                    && !ClientSession.getUsername().isBlank();
+
+            terminalIsSubscriber = false;
+            terminalSubscriberUsername = "";
+
+            // show subscriber active box always in subscriber intent mode
+            if (subscriberActiveBox != null) {
+                subscriberActiveBox.setVisible(true);
+                subscriberActiveBox.setManaged(true);
+            }
+
+            if (alreadyResolved) {
+                terminalIsSubscriber = true;
+                terminalSubscriberUsername = ClientSession.getUsername();
+
+                // ✅ ADD THESE 2 LINES:
+                subscriberEmail = ClientSession.getSubscriberEmail();
+                subscriberPhone = ClientSession.getSubscriberPhone();
+
+                applyRecoverModeUI();
+                refreshSubscriberActiveListIfNeeded();
+            }
+            else {
+                // since scan button is removed, user MUST go back to entry page
+                if (lblTerminalStatus != null) {
+                    lblTerminalStatus.setText("Subscriber not identified. Go back and scan QR in the previous page.");
+                }
+            }
+
+            return;
+        }
+
+        // CUSTOMER MODE
+        terminalIsSubscriber = false;
+        terminalSubscriberUsername = "";
+
+        if (subscriberActiveBox != null) {
+            subscriberActiveBox.setVisible(false);
+            subscriberActiveBox.setManaged(false);
+        }
+
+        if (lblTerminalStatus != null) {
+            lblTerminalStatus.setText("Customer mode: enter confirmation code.");
+        }
     }
 
     // =========================
@@ -219,6 +309,11 @@ public class TerminalController implements ClientUI {
      */
     @FXML
     private void onJoinWaitingList() {
+    	// If terminal is in subscriber intent mode, force QR verification first
+    	if (subscriberModeIntent && !terminalIsSubscriber) {
+    	    lblTerminalStatus.setText("Subscriber mode: scan QR first.");
+    	    return;
+    	}
         if (joinWLInFlight) {
             lblTerminalStatus.setText("Join request already in progress...");
             return;
@@ -420,54 +515,39 @@ public class TerminalController implements ClientUI {
         sendToServer(OpCode.REQUEST_TERMINAL_CHECK_IN, code);
     }
     /**
-     * Simulates scanning a subscriber QR code.
-     *
-     * Flow:
-     * <ul>
-     *   <li>Prompts the terminal operator to paste barcode data.</li>
-     *   <li>Sends {@code REQUEST_TERMINAL_RESOLVE_SUBSCRIBER_QR} with the barcode string.</li>
-     * </ul>
-     */
-    @FXML
-    private void onScanSubscriberQR() {
-
-        if (resolveQrInFlight) {
-            lblTerminalStatus.setText("QR resolve already in progress...");
-            return;
-        }
-
-        if (!isConnected()) {
-            lblTerminalStatus.setText("Not connected.");
-            return;
-        }
-
-        // Fake scan dialog: the subscriber types/pastes barcode_data
-        TextInputDialog d = new TextInputDialog();
-        d.setTitle("Scan Subscriber QR");
-        d.setHeaderText("Simulated scan");
-        d.setContentText("Paste subscriber barcode_data:");
-
-        d.showAndWait().ifPresent(barcode -> {
-            barcode = safeTrim(barcode);
-            if (barcode.isEmpty()) {
-                lblTerminalStatus.setText("Scan cancelled / empty.");
-                return;
-            }
-
-            resolveQrInFlight = true;
-            lblTerminalStatus.setText("Resolving subscriber QR...");
-
-            // Send barcode_data to server
-            sendToServer(OpCode.REQUEST_TERMINAL_RESOLVE_SUBSCRIBER_QR, barcode);
-        });
-    }
-    /**
      * Requests recovery of a confirmation code by phone/email.
      *
      * Sends {@code REQUEST_RECOVER_CONFIRMATION_CODE} with the user-provided key.
      */
     @FXML
     private void onRecoverCode() {
+
+        // ✅ subscriber: allow click even if field is empty (but it should be auto-filled)
+        if (terminalIsSubscriber) {
+            String fill = safeTrim(txtRecoverPhoneOrEmail.getText());
+            if (fill.isBlank()) {
+                // try fallback from cached values
+                fill = !subscriberEmail.isBlank() ? subscriberEmail : subscriberPhone;
+            }
+
+            if (fill.isBlank()) {
+                lblRecoverResult.setText("Subscriber contact not loaded yet.");
+                return;
+            }
+
+            if (!isConnected()) {
+                lblRecoverResult.setText("Not connected.");
+                lblTerminalStatus.setText("Cannot recover: not connected to server.");
+                return;
+            }
+
+            sendToServer(OpCode.REQUEST_RECOVER_CONFIRMATION_CODE, fill);
+            lblRecoverResult.setText("Sending recovery request...");
+            lblTerminalStatus.setText("Recovering confirmation code...");
+            return;
+        }
+
+        // ✅ customer: must enter phone/email
         String key = safeTrim(txtRecoverPhoneOrEmail.getText());
         if (key.isEmpty()) {
             lblRecoverResult.setText("Enter phone/email first.");
@@ -481,10 +561,10 @@ public class TerminalController implements ClientUI {
         }
 
         sendToServer(OpCode.REQUEST_RECOVER_CONFIRMATION_CODE, key);
-
         lblRecoverResult.setText("Sending recovery request...");
         lblTerminalStatus.setText("Recovering confirmation code...");
     }
+
     /**
      * Clears all input fields, UI labels, and local state flags.
      * Also unlocks all in-flight flags to allow fresh requests.
@@ -527,7 +607,10 @@ public class TerminalController implements ClientUI {
     /** Navigates to the Pay Bill screen. */
     @FXML private void onGoToPayBill() { SceneManager.showPayBill(); }
     /** Logs out to the login screen. */
-    @FXML private void onLogout()      { SceneManager.showLogin(); }
+    @FXML private void onLogout()      { 
+    	ClientSession.clearSubscriberContact();
+    	SceneManager.showLogin(); 
+    }
 
     // =========================
     // ClientUI required methods
@@ -828,11 +911,46 @@ public class TerminalController implements ClientUI {
 
                         Object payload = env.getPayload();
 
-                        // Expect: Object[] { username, List<TerminalActiveItemDTO> }
-                        if (payload instanceof Object[] arr && arr.length >= 2) {
+                        // ✅ NEW format: Object[] { username, email, phone, List<TerminalActiveItemDTO> }
+                        if (payload instanceof Object[] arr && arr.length >= 4) {
 
                             String username = safeStr(arr[0]);
-                            
+                            subscriberEmail = safeStr(arr[1]);
+                            subscriberPhone = safeStr(arr[2]);
+                            ClientSession.setSubscriberEmail(subscriberEmail);
+                            ClientSession.setSubscriberPhone(subscriberPhone);
+
+                            terminalIsSubscriber = true;
+                            terminalSubscriberUsername = username;
+
+                            lblTerminalStatus.setText("Subscriber detected: " + username);
+
+                            // ✅ Auto-fill recover field now
+                            applyRecoverModeUI();
+
+                            lstSubscriberActive.getItems().clear();
+
+                            if (arr[3] instanceof java.util.List<?> list) {
+                                for (Object o : list) {
+                                    if (o instanceof TerminalActiveItemDTO dto) {
+                                        lstSubscriberActive.getItems().add(dto);
+                                    }
+                                }
+                            }
+
+                            if (lstSubscriberActive.getItems().isEmpty()) {
+                                lblTerminalStatus.setText("No active reservation or waiting list for " + username);
+                            } else {
+                                lblTerminalStatus.setText("Select an item to validate.");
+                            }
+
+                            return;
+                        }
+
+                        // ⬇️ Backward compatible: old format Object[] { username, items }
+                        if (payload instanceof Object[] arr && arr.length >= 2) {
+                            String username = safeStr(arr[0]);
+
                             terminalIsSubscriber = true;
                             terminalSubscriberUsername = username;
 
@@ -848,11 +966,8 @@ public class TerminalController implements ClientUI {
                                 }
                             }
 
-                            if (lstSubscriberActive.getItems().isEmpty()) {
-                                lblTerminalStatus.setText("No active reservation or waiting list for " + username);
-                            } else {
-                                lblTerminalStatus.setText("Select an item to validate.");
-                            }
+                            // no email/phone in old format -> recover stays empty
+                            applyRecoverModeUI();
 
                             return;
                         }
@@ -1238,19 +1353,6 @@ public class TerminalController implements ClientUI {
                 })
                 .filter(n -> n > 0)
                 .orElse(null);
-    }
-    /**
-     * Applies visibility/management rules for terminal controls.
-     * Currently keeps QR button and subscriber active list visible.
-     */
-    private void applyRoleVisibility() {
-        // Button visible to ALL
-        btnScanSubscriberQR.setVisible(true);
-        btnScanSubscriberQR.setManaged(true);
-
-        // The list can stay visible if you want, but usually keep it visible too
-        subscriberActiveBox.setVisible(true);
-        subscriberActiveBox.setManaged(true);
     }
     /**
      * Refreshes active items (reservation/waiting) for the currently resolved subscriber terminal session.

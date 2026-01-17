@@ -81,8 +81,15 @@ public class SceneManager {
     /**
      * Navigates to the terminal screen and stores history.
      */
-    public static void showTerminal() {
-        setRootWithHistory("/clientGUI/TerminalView.fxml", "Bistro Client - Terminal");
+    public static void showTerminal(boolean subscriberMode) {
+        setRootWithHistoryTerminalMode("/clientGUI/TerminalView.fxml",
+                "Bistro Client - Terminal",
+                subscriberMode);
+    }
+    
+    public static void showTerminalEntry() {
+        setRootWithHistory("/clientGUI/TerminalEntryView.fxml",
+                "Bistro Client - Terminal");
     }
     /**
      * Navigates to the pay bill screen and stores history.
@@ -132,9 +139,50 @@ public class SceneManager {
 
         currentFxml = fxml;
         currentTitle = title;
+        
+        if ("/clientGUI/TerminalView.fxml".equals(fxml)) {
+            boolean sub = "SUBSCRIBER".equalsIgnoreCase(ClientSession.getRole())
+                    && ClientSession.getUsername() != null
+                    && !ClientSession.getUsername().isBlank();
 
+            showTerminal(sub);
+            return;
+        }
         setRoot(fxml, title);
     }
+    
+    private static void setRootWithHistoryTerminalMode(String fxmlPath, String title, boolean subscriberMode) {
+        if (currentFxml != null && !currentFxml.equals(fxmlPath)) {
+            history.push(currentFxml + "||" + currentTitle);
+        }
+        currentFxml = fxmlPath;
+        currentTitle = title;
+
+        try {
+            FXMLLoader loader = new FXMLLoader(SceneManager.class.getResource(fxmlPath));
+            Parent root = loader.load();
+
+            Object controller = loader.getController();
+
+            // ✅ Bind UI like you already do
+            if (controller instanceof ClientUI ui) {
+                ClientSession.bindUI(ui);
+            }
+
+            // ✅ Pass mode ONLY if this is the terminal controller
+            if (controller instanceof TerminalController tc) {
+                tc.setSubscriberModeIntent(subscriberMode);
+            }
+
+            stage.setTitle(title);
+            stage.setScene(new Scene(root));
+            stage.show();
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
 
 
 }

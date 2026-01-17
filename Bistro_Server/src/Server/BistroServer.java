@@ -377,7 +377,17 @@ public class BistroServer extends AbstractServer {
             if (items == null) items = new ArrayList<>();
             else items = new ArrayList<>(items);
 
-            sendOk(client, OpCode.RESPONSE_TERMINAL_RESOLVE_SUBSCRIBER_QR, new Object[]{ username, items });
+            String email = SubscriberDAO.getEmailByUsername(username);
+            String phone = SubscriberDAO.getPhoneByUsername(username);
+
+            if (email == null) email = "";
+            if (phone == null) phone = "";
+
+            sendOk(client,
+                OpCode.RESPONSE_TERMINAL_RESOLVE_SUBSCRIBER_QR,
+                new Object[]{ username, email, phone, items }
+            );
+
 
         } catch (Exception e) {
             try {
@@ -772,15 +782,31 @@ public class BistroServer extends AbstractServer {
                     return;
                 }
             } else {
-             // CUSTOMER: must provide at least ONE contact method (email OR phone)
+                // CUSTOMER: must provide at least ONE contact method (email OR phone)
                 email = dto.getEmail() == null ? "" : dto.getEmail().trim();
                 phone = dto.getPhone() == null ? "" : dto.getPhone().trim();
 
-                if (email.isBlank() || phone.isBlank()) {
-                    sendOk(client, OpCode.RESPONSE_WAITING_LIST, "Email and phone is required for customers.");
+                // ✅ require at least one
+                if (email.isBlank() && phone.isBlank()) {
+                    sendOk(client, OpCode.RESPONSE_WAITING_LIST,
+                            "Please provide email or phone (at least one).");
+                    return;
+                }
+
+                // ✅ validate only what was provided
+                if (!email.isBlank() && !isValidEmailFormat(email)) {
+                    sendOk(client, OpCode.RESPONSE_WAITING_LIST,
+                            "Invalid email format.");
+                    return;
+                }
+
+                if (!phone.isBlank() && !isValidPhone10Digits(phone)) {
+                    sendOk(client, OpCode.RESPONSE_WAITING_LIST,
+                            "Invalid phone (must start with 05 and be 10 digits).");
                     return;
                 }
             }
+
 
             Timestamp now = new Timestamp(System.currentTimeMillis());
 

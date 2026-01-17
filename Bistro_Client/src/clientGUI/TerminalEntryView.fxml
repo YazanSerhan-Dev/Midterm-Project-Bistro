@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<?import javafx.scene.control.*?>
+<?import javafx.scene.layout.*?>
+
+<AnchorPane xmlns="http://javafx.com/javafx/17.0.2"
+            xmlns:fx="http://javafx.com/fxml/1"
+            fx:controller="Client.TerminalEntryController"
+            styleClass="root"
+            prefWidth="1000" prefHeight="650"
+            stylesheets="@/Styles/terminal-entry.css">
+
+    <VBox styleClass="entry-container"
+          spacing="18"
+          alignment="CENTER"
+          AnchorPane.topAnchor="0"
+          AnchorPane.bottomAnchor="0"
+          AnchorPane.leftAnchor="0"
+          AnchorPane.rightAnchor="0">
+
+        <!-- Header -->
+        <VBox styleClass="header" alignment="CENTER" spacing="6">
+            <Label text="Bistro Terminal" styleClass="h1"/>
+            <Label text="Choose how you want to continue" styleClass="sub"/>
+        </VBox>
+
+        <!-- CUSTOMER CARD -->
+        <VBox styleClass="card">
+            <HBox spacing="14" alignment="CENTER_LEFT">
+                <Label text="👤" styleClass="icon"/>
+                <VBox spacing="4">
+                    <Label text="Continue as Customer" styleClass="card-title"/>
+                    <Label text="Proceed without a subscriber account." styleClass="card-sub"/>
+                </VBox>
+            </HBox>
+
+            <Button fx:id="btnCustomer"
+                    text="Continue as Customer"
+                    onAction="#onCustomer"
+                    maxWidth="1.7976931348623157E308"
+                    styleClass="btn-secondary"/>
+        </VBox>
+
+        <Label text="or" styleClass="or"/>
+
+        <!-- SUBSCRIBER CARD (QR + Login fallback all inside SAME card) -->
+        <VBox styleClass="card">
+            <HBox spacing="14" alignment="CENTER_LEFT">
+                <Label text="🔳" styleClass="icon"/>
+                <VBox spacing="4">
+                    <Label text="Subscriber" styleClass="card-title"/>
+                    <Label text="Scan or enter your subscriber QR code." styleClass="card-sub"/>
+                </VBox>
+            </HBox>
+
+            <TextField fx:id="txtSubscriberQR"
+                       promptText="e.g. BAR12"
+                       styleClass="input"
+                       maxWidth="1.7976931348623157E308"/>
+
+            <Button fx:id="btnSubscriberContinue"
+                    text="Continue as Subscriber"
+                    onAction="#onSubscriberContinue"
+                    maxWidth="1.7976931348623157E308"
+                    styleClass="btn-primary"/>
+
+            <!-- ✅ Login fallback toggle INSIDE the card -->
+            <Hyperlink text="Forgot QR? Login with username + password"
+                       onAction="#onToggleLogin"
+                       styleClass="link"/>
+
+            <!-- ✅ Login box INSIDE the card (so it matches width) -->
+            <VBox fx:id="loginBox"
+                  spacing="10"
+                  visible="false"
+                  managed="false"
+                  styleClass="login-box"
+                  maxWidth="1.7976931348623157E308">
+
+                <TextField fx:id="txtSubUsername"
+                           promptText="Username"
+                           styleClass="input"
+                           maxWidth="1.7976931348623157E308"/>
+
+                <PasswordField fx:id="txtSubPassword"
+                               promptText="Password"
+                               styleClass="input"
+                               maxWidth="1.7976931348623157E308"/>
+
+                <Button fx:id="btnLoginSubscriber"
+                        text="Login as Subscriber"
+                        onAction="#onLoginSubscriber"
+                        styleClass="btn-primary"
+                        maxWidth="1.7976931348623157E308"/>
+            </VBox>
+
+            <Label fx:id="lblMsg"
+                   text=""
+                   wrapText="true"
+                   maxWidth="1.7976931348623157E308"
+                   styleClass="error"/>
+        </VBox>
+
+        <Label text="Tip: If you don’t have your QR, ask staff for help."
+               styleClass="tip"/>
+
+    </VBox>
+</AnchorPane>

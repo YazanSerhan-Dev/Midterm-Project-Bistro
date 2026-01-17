@@ -22,6 +22,8 @@ public class ClientSession {
  // ===== Guest (Customer) identity (for "My Reservations") =====
     private static String guestEmail;
     private static String guestPhone;
+    private static String subscriberEmail = "";
+    private static String subscriberPhone = "";
 
     /**
      * Configures the server connection parameters.
@@ -34,6 +36,22 @@ public class ClientSession {
         ClientSession.host = host;
         ClientSession.port = port;
     }
+    
+    public static String getSubscriberEmail() { return subscriberEmail; }
+    public static void setSubscriberEmail(String email) {
+        subscriberEmail = (email == null) ? "" : email.trim();
+    }
+
+    public static String getSubscriberPhone() { return subscriberPhone; }
+    public static void setSubscriberPhone(String phone) {
+        subscriberPhone = (phone == null) ? "" : phone.trim();
+    }
+
+    public static void clearSubscriberContact() {
+        subscriberEmail = "";
+        subscriberPhone = "";
+    }
+
     /**
      * Returns the shared client instance.
      *

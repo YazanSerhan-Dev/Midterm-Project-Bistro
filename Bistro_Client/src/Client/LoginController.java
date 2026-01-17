@@ -143,7 +143,7 @@ public class LoginController implements ClientUI {
      */
     @FXML
     private void onGoToTerminal() {
-        SceneManager.showTerminal(); // or SceneManager.showTerminalPage()
+    	SceneManager.showTerminalEntry();
     }
 
     // ===== ClientUI callbacks =====
