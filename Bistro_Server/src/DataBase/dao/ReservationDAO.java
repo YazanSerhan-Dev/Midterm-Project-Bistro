@@ -1302,13 +1302,14 @@ public class ReservationDAO {
      * Identifies and cancels existing reservations that conflict with updated opening hours.
      * <p>
      * This method queries for "CONFIRMED" reservations that are now invalid because:
+     * </p>
      * <ul>
      * <li>They fall on the specific date (if provided) or day of the week.</li>
      * <li>Their time is before the new opening time.</li>
      * <li>Their time is too close to the new closing time (less than 2 hours before close).</li>
      * </ul>
      * Any matching reservations are updated to "CANCELED".
-     * </p>
+     * 
      *
      * @param dayOfWeek the day of the week to check (e.g., "Monday")
      * @param specialDate a specific date string (YYYY-MM-DD) to check, or null for recurring weekly hours
