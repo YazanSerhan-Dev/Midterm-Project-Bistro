@@ -12,11 +12,36 @@ import java.util.ArrayList;
 import java.util.List;
 
 
+/**
+ * Data Access Object (DAO) for handling billing operations.
+ *
+ * Responsibilities:
+ * <ul>
+ *   <li>Locate bills by reservation or waiting-list confirmation code</li>
+ *   <li>Create bills on demand for active visits</li>
+ *   <li>Process bill payments using database transactions</li>
+ *   <li>Apply subscriber discounts when applicable</li>
+ *   <li>Close visits and release occupied tables after payment</li>
+ *   <li>Support reminder queries for unpaid bills</li>
+ * </ul>
+ *
+ * All database access is performed using {@link MySQLConnectionPool}.
+ * Transaction safety (commit / rollback) is enforced for payment operations.
+ */
 public class BillDAO {
 
     // =========================
     // Existing insert (kept)
     // =========================
+    /**
+     * Inserts a new bill record for a given visit.
+     *
+     * @param visitId  the visit identifier
+     * @param amount   total bill amount
+     * @param discount subscriber discount flag ("YES"/"NO")
+     * @param paid     payment status ("YES"/"NO")
+     * @throws Exception if database operation fails
+     */
     public static void insertBill(int visitId, double amount, String discount, String paid) throws Exception {
         String sql = """
             INSERT INTO bill (visit_id, total_amount, is_subscriber_discount, is_paid)
@@ -41,6 +66,16 @@ public class BillDAO {
     // =========================================================
     // 1) Lookup bill by confirmation code (reservation OR waiting)
     // =========================================================
+    /**
+     * Retrieves a bill by confirmation code (reservation or waiting list).
+     * <p>
+     * If no bill exists for the active visit, a new bill is created on demand.
+     * Handles cases where the bill is already paid.
+     *
+     * @param code confirmation code
+     * @return lookup result containing bill data or error status
+     * @throws Exception if database access fails
+     */
     public static BillLookupResult getBillByConfirmationCode(String code) throws Exception {
         if (code == null) code = "";
         code = code.trim();
@@ -123,6 +158,22 @@ public class BillDAO {
     //    - end visit (actual_end_time = NOW())
     //    - free table (status = FREE)
     // =========================================================
+
+    /**
+     * Processes payment for a bill identified by confirmation code.
+     * <p>
+     * This method performs a transactional operation:
+     * <ul>
+     *   <li>Marks the bill as paid</li>
+     *   <li>Ends all active visits for the activity</li>
+     *   <li>Releases occupied tables</li>
+     *   <li>Updates reservation or waiting-list status</li>
+     * </ul>
+     *
+     * @param code confirmation code
+     * @return payment result
+     * @throws Exception if payment fails or database error occurs
+     */
     public static PayBillResult payBillByConfirmationCode(String code) throws Exception {
         if (code == null) code = "";
         code = code.trim();
@@ -552,6 +603,10 @@ public class BillDAO {
     // =========================
     // Results (simple)
     // =========================
+
+    /**
+     * Result wrapper for bill lookup operations.
+     */
     public static class BillLookupResult {
         public final boolean ok;
         public final boolean alreadyPaid;
@@ -570,6 +625,9 @@ public class BillDAO {
         public static BillLookupResult notFound(String msg) { return new BillLookupResult(false, false, msg, null); }
     }
 
+    /**
+     * Result wrapper for payment operations.
+     */
     public static class PayBillResult {
         public final boolean ok;
         public final String message;
@@ -584,7 +642,10 @@ public class BillDAO {
         public static PayBillResult ok(String msg, String tableId) { return new PayBillResult(true, msg, tableId); }
         public static PayBillResult fail(String msg) { return new PayBillResult(false, msg, null); }
     }
-    
+
+    /**
+     * Lightweight record used for reminder processing.
+     */
     public static class BillReminderRow {
         public final int billId;
         public final String email;
@@ -648,7 +709,16 @@ public class BillDAO {
             pool.releaseConnection(pc);
         }
     }
-
+    /**
+     * Marks a bill reminder as sent.
+     * <p>
+     * Updates the bill record by setting the reminder flag and
+     * storing the timestamp of when the reminder was sent.
+     * This method is typically used after sending an email or SMS reminder.
+     *
+     * @param billId the identifier of the bill to update
+     * @throws Exception if a database error occurs
+     */
     public static void markReminderSent(int billId) throws Exception {
         String sql = """
             UPDATE bill

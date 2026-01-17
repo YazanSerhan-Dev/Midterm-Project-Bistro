@@ -8,10 +8,30 @@ import java.util.List;
 import DataBase.MySQLConnectionPool;
 import DataBase.PooledConnection;
 import common.dto.ReportDTO;
-
+/**
+ * Data Access Object for generating management reports.
+ * <p>
+ * Provides aggregated monthly data for:
+ * <ul>
+ *   <li>Performance reports (late arrivals, overstays)</li>
+ *   <li>Subscriber activity reports (reservations vs waiting list)</li>
+ * </ul>
+ * Data is returned in a daily aggregated form for charting and analysis.
+ */
 public class ReportDAO {
 
     // 1. Performance Report
+	/**
+	 * Retrieves a monthly performance report.
+	 * <p>
+	 * Aggregates late arrival minutes and overstay minutes per day
+	 * based on records stored in the performance_log table.
+	 *
+	 * @param month report month (1–12)
+	 * @param year  report year (e.g. 2025)
+	 * @return list of daily performance report entries
+	 * @throws Exception if a database error occurs
+	 */
     public static List<ReportDTO> getPerformanceReport(int month, int year) throws Exception {
         List<ReportDTO> list = new ArrayList<>();
         String sql = """
@@ -51,6 +71,17 @@ public class ReportDAO {
     }
 
     // 2. Activity Report
+    /**
+     * Retrieves a monthly subscriber activity report.
+     * <p>
+     * Counts the number of reservations and waiting-list entries
+     * per day based on user activity records.
+     *
+     * @param month report month (1–12)
+     * @param year  report year (e.g. 2025)
+     * @return list of daily activity report entries
+     * @throws Exception if a database error occurs
+     */
     public static List<ReportDTO> getSubscriberActivityReport(int month, int year) throws Exception {
         List<ReportDTO> list = new ArrayList<>();
         // Note: Using LEFT JOIN or just checking tables. 

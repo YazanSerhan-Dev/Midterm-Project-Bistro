@@ -9,9 +9,25 @@ import java.sql.Date;
 
 import DataBase.MySQLConnectionPool;
 import DataBase.PooledConnection;
-
+/**
+ * Data Access Object for performance and behavior logging.
+ * <p>
+ * Stores visit-related metrics such as late arrival,
+ * overstay duration, and monthly performance data
+ * used for management reports.
+ */
 public class PerformanceLogDAO {
-
+	/**
+	 * Inserts a performance log entry for a completed visit.
+	 * <p>
+	 * Used when visit timing data (late / overstay) is known explicitly.
+	 *
+	 * @param visitId         visit identifier
+	 * @param lateMinutes     minutes late (0 if on time)
+	 * @param overstayMinutes minutes beyond allowed duration
+	 * @param reportDate      date associated with the report
+	 * @throws Exception if a database error occurs
+	 */
     public static void insertLog(
             int visitId,
             int lateMinutes,
@@ -38,7 +54,15 @@ public class PerformanceLogDAO {
             pool.releaseConnection(pc);
         }
     }
-    
+    /**
+     * Logs an automatically-reserved visit that was not yet confirmed.
+     * <p>
+     * Uses a sentinel value (-999) to mark unconfirmed auto-reservations.
+     *
+     * @param conn    active DB connection (part of a transaction)
+     * @param visitId visit identifier
+     * @throws Exception if a database error occurs
+     */
     public static void insertAutoReservedNotConfirmed(Connection conn, int visitId) throws Exception {
         String sql = """
             INSERT INTO performance_log (visit_id, late_minutes, overstay_minutes, report_date)
@@ -49,7 +73,14 @@ public class PerformanceLogDAO {
             ps.executeUpdate();
         }
     }
-
+    /**
+     * Checks whether a visit was auto-reserved and not confirmed yet.
+     *
+     * @param conn    active DB connection
+     * @param visitId visit identifier
+     * @return true if the visit is marked as auto-reserved and unconfirmed
+     * @throws Exception if a database error occurs
+     */
     public static boolean isAutoReservedNotConfirmed(Connection conn, int visitId) throws Exception {
         String sql = """
             SELECT 1
@@ -64,7 +95,15 @@ public class PerformanceLogDAO {
             }
         }
     }
-
+    /**
+     * Confirms an auto-reserved visit by clearing the sentinel value.
+     * <p>
+     * Converts the temporary auto-reservation marker into a normal log entry.
+     *
+     * @param conn    active DB connection
+     * @param visitId visit identifier
+     * @throws Exception if a database error occurs
+     */
     public static void confirmAutoReserved(Connection conn, int visitId) throws Exception {
         String sql = """
             UPDATE performance_log
@@ -76,7 +115,13 @@ public class PerformanceLogDAO {
             ps.executeUpdate();
         }
     }
-
+    /**
+     * Deletes all performance log records for a specific visit.
+     *
+     * @param conn    active DB connection
+     * @param visitId visit identifier
+     * @throws Exception if a database error occurs
+     */
     public static void deleteByVisitId(Connection conn, int visitId) throws Exception {
         String sql = "DELETE FROM performance_log WHERE visit_id = ?";
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -84,7 +129,14 @@ public class PerformanceLogDAO {
             ps.executeUpdate();
         }
     }
-    
+    /**
+     * Generates performance log entries for the previous month.
+     * <p>
+     * Calculates late arrivals and overstays for completed visits
+     * and avoids inserting duplicate records.
+     *
+     * @return number of log rows inserted
+     */
     public static int generateMonthlyReport() {
         int rowsAffected = 0;
         
