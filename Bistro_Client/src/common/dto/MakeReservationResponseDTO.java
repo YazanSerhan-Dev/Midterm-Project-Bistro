@@ -8,12 +8,13 @@ import java.util.List;
  *
  * <p>
  * The response can represent:
+ * </p>
  * <ul>
  *   <li>a successful reservation (with ID and confirmation code)</li>
  *   <li>a failed reservation (with an explanatory message)</li>
  *   <li>an availability response containing alternative suggested times</li>
  * </ul>
- * </p>
+ * 
  */
 public class MakeReservationResponseDTO implements Serializable {
 	   /** Indicates whether the operation succeeded */

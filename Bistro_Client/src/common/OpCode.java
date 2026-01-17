@@ -9,7 +9,7 @@ package common;
  * action and the expected response type.
  * </p>
  *
- * <h3>Naming Convention</h3>
+ * <b>Naming Convention</b>
  * <ul>
  *   <li><b>REQUEST_*</b> - Sent from client to server to ask for an operation.</li>
  *   <li><b>RESPONSE_*</b> - Sent from server to client as a reply to a request.</li>

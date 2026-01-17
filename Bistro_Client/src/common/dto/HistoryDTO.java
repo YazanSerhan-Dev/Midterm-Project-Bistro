@@ -9,11 +9,12 @@ import java.util.List;
  * Used to transfer history data such as past reservations,
  * visits, and financial summaries between server and client.
  * This DTO may represent either:
+ * </p>
  * <ul>
  *   <li>A single history entry (date/time/type)</li>
  *   <li>A grouped history response (lists of reservations and visits)</li>
  * </ul>
- * </p>
+ *
  */
 public class HistoryDTO implements Serializable {
     private static final long serialVersionUID = 1L;

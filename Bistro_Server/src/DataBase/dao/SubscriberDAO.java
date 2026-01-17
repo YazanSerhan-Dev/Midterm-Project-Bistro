@@ -191,14 +191,6 @@ public class SubscriberDAO {
             pool.releaseConnection(pc);
         }
     }
-    /**
-     * Retrieves subscriber email by username.
-     *
-     * @param username subscriber username
-     * @return email address or null if not found
-     * @throws Exception on database error
-     */
-    public static String getEmailByUsername(...)
 
     /**
      * Retrieves subscriber phone number by username.
@@ -325,9 +317,9 @@ public class SubscriberDAO {
         }
     }
     /**
-     * Retrieves member code by username.
+     * Retrieves member username by barcodeData.
      *
-     * @param username subscriber username
+     * @param barcodeData
      * @return member code or null if not found
      * @throws Exception on database error
      */

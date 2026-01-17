@@ -16,11 +16,13 @@ import java.util.UUID;
  *
  * <p>
  * The {@code payload} field may contain:
+ * </p>
  * <ul>
  *   <li>A single DTO</li>
  *   <li>A list of DTOs</li>
  *   <li>A primitive wrapper or String</li>
  * </ul>
+ * <p>
  * depending on the {@link OpCode}.
  * </p>
  *

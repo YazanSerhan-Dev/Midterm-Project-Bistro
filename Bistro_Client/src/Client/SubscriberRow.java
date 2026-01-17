@@ -6,17 +6,18 @@ import javafx.beans.property.*;
  * JavaFX row-model for displaying Subscriber data in a TableView.
  * <p>
  * This class wraps subscriber fields using JavaFX {@link Property} types so the UI can:
+ * </p>
  * <ul>
  *   <li>Bind table columns to properties</li>
  *   <li>Support automatic refresh if values change (if you later add setters)</li>
  * </ul>
- * </p>
+ *
  *
  * Typical usage:
- * <pre>
- * TableColumn&lt;SubscriberRow, String&gt; col = new TableColumn<>("Email");
+ * <pre>{@code
+ * TableColumn<SubscriberRow, String> col = new TableColumn<>("Email");
  * col.setCellValueFactory(new PropertyValueFactory<>("email"));
- * </pre>
+ * }</pre>
  */
 public class SubscriberRow {
 	 /** Unique subscriber identifier (username / subscriber id). */

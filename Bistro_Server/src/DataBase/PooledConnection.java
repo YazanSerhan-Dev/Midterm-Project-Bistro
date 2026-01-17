@@ -5,7 +5,6 @@ import java.sql.SQLException;
 /**
  * Creates a new pooled connection wrapper.
  *
- * @param conn the physical JDBC connection to wrap
  */
 public class PooledConnection {
 

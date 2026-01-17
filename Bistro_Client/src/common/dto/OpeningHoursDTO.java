@@ -7,11 +7,12 @@ import java.io.Serializable;
  *
  * <p>
  * Supports both:
+ * </p>
  * <ul>
  *   <li><b>Regular weekly hours</b> (by day of week)</li>
  *   <li><b>Special date exceptions</b> (specific calendar dates)</li>
  * </ul>
- * </p>
+ *
  */
 public class OpeningHoursDTO implements Serializable {
     private static final long serialVersionUID = 1L;

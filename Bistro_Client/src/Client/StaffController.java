@@ -41,13 +41,14 @@ import javafx.util.StringConverter;
  * Staff dashboard controller (Agent/Manager) for managing restaurant operations.
  * <p>
  * Responsibilities include:
+ * </p>
  * <ul>
  *   <li>Viewing and managing reservations, waiting list, current diners.</li>
  *   <li>Managing subscribers and viewing subscriber history.</li>
  *   <li>Managing restaurant tables and opening hours.</li>
  *   <li>Manager-only reports (performance/activity charts).</li>
  * </ul>
- * </p>
+ * 
  * <p>
  * This controller implements {@link ClientUI} to receive server callbacks through the shared client connection
  * stored in {@link ClientSession}. All UI updates are executed on the JavaFX UI thread using {@link Platform#runLater(Runnable)}.

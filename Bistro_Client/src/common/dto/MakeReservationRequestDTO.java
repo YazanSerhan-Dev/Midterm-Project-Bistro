@@ -8,11 +8,12 @@ import java.sql.Timestamp;
  *
  * <p>
  * The request may represent either:
+ * </p>
  * <ul>
  *   <li>a subscriber reservation (identified by {@code subscriberUsername})</li>
  *   <li>a guest reservation (identified by {@code guestPhone} and/or {@code guestEmail})</li>
  * </ul>
- * </p>
+ *
  */
 public class MakeReservationRequestDTO implements Serializable {
 

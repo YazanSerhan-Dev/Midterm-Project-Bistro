@@ -45,13 +45,14 @@ import DataBase.dao.RestaurantTableDAO; // From MAIN
  * Main OCSF server of the Bistro system.
  * <p>
  * Responsibilities:
+ * </p>
  * <ul>
  *   <li>Starts/stops server and background jobs.</li>
  *   <li>Receives client requests (as {@link Envelope}) and routes them by {@link OpCode}.</li>
  *   <li>Performs business validations and calls DAO layer.</li>
  *   <li>Sends responses back using {@link KryoMessage} serialization.</li>
  * </ul>
- * </p>
+ *
  */
 public class BistroServer extends AbstractServer {
 	 /** UI controller for the server window (may be null when running headless). */
