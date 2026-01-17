@@ -1111,52 +1111,67 @@ public class StaffController implements ClientUI {
         TextField tfEmail = new TextField(); tfEmail.setPromptText("guest@example.com");
         TextField tfPhone = new TextField(); tfPhone.setPromptText("0500000000");
         
-        CheckBox IsSubscriber = new CheckBox("Subscriber?");
+        CheckBox chkSubscriber = new CheckBox("Subscriber?");
         TextField tfSubscriberId = new TextField();
         tfSubscriberId.setPromptText("Subscriber ID");
         tfSubscriberId.setDisable(true);
         
-        IsSubscriber.setOnAction(e -> {
-            boolean isSub = IsSubscriber.isSelected();
+        chkSubscriber.setOnAction(e -> {
+            boolean isSub = chkSubscriber.isSelected();
             tfSubscriberId.setDisable(!isSub);
             tfEmail.setDisable(isSub);
             tfPhone.setDisable(isSub);
-            if (isSub) { tfEmail.clear(); tfPhone.clear(); }
+            if (isSub) { 
+                tfEmail.clear(); 
+                tfPhone.clear(); 
+            }
         });
         
         grid.add(new Label("Group Size:"), 0, 0); grid.add(tfSize, 1, 0);
-        grid.add(IsSubscriber, 0, 1);             grid.add(tfSubscriberId, 1, 1);
+        grid.add(chkSubscriber, 0, 1);            grid.add(tfSubscriberId, 1, 1);
         grid.add(new Label("Email:"), 0, 2);      grid.add(tfEmail, 1, 2);
         grid.add(new Label("Phone:"), 0, 3);      grid.add(tfPhone, 1, 3);
 
         dialog.getDialogPane().setContent(grid);
 
-        // Validation Filter
         final Button addBtn = (Button) dialog.getDialogPane().lookupButton(addButtonType);
         addBtn.addEventFilter(ActionEvent.ACTION, ae -> {
-            if (!IsSubscriber.isSelected()) {
+            
+            if (chkSubscriber.isSelected()) {
+                if (tfSubscriberId.getText().trim().isEmpty()) {
+                    showAlert("Invalid Input", "Please enter the Subscriber ID.");
+                    ae.consume(); 
+                    return;
+                }
+            
+            } else {
                 String p = tfPhone.getText().trim();
                 String e = tfEmail.getText().trim();
                 
-                // Require at least one, and validate if present
                 if (p.isEmpty() && e.isEmpty()) {
-                    showAlert("Invalid Input", "Enter at least a Phone OR Email.");
-                    ae.consume(); return;
+                    showAlert("Invalid Input", "Please enter at least a Phone OR Email.");
+                    ae.consume(); 
+                    return;
                 }
+                
                 if (!p.isEmpty() && !isValidPhone(p)) {
-                    showAlert("Invalid Input", "Invalid Phone Number.");
-                    ae.consume(); return;
+                    showAlert("Invalid Input", "Invalid Phone Number (must start with 05 and be 10 digits).");
+                    ae.consume(); 
+                    return;
                 }
+                
                 if (!e.isEmpty() && !isValidEmail(e)) {
                     showAlert("Invalid Input", "Invalid Email Address.");
-                    ae.consume(); return;
+                    ae.consume(); 
+                    return;
                 }
             }
+
             try {
                 int s = Integer.parseInt(tfSize.getText().trim());
                 if (s <= 0) throw new NumberFormatException();
             } catch (Exception ex) {
-                showAlert("Invalid Input", "Invalid Group Size.");
+                showAlert("Invalid Input", "Group Size must be a number greater than 0.");
                 ae.consume();
             }
         });
@@ -1167,7 +1182,7 @@ public class StaffController implements ClientUI {
                     int size = Integer.parseInt(tfSize.getText().trim());
                     WaitingListDTO dto = new WaitingListDTO();
                     dto.setPeopleCount(size);
-                    if (!IsSubscriber.isSelected()) {
+                    if (!chkSubscriber.isSelected()) {
                         dto.setEmail(tfEmail.getText().trim());
                         dto.setPhone(tfPhone.getText().trim());
                     }
@@ -1179,11 +1194,12 @@ public class StaffController implements ClientUI {
 
         dialog.showAndWait().ifPresent(dto -> {
             String role = "STAFF";
-            String username = IsSubscriber.isSelected() ? tfSubscriberId.getText().trim() : "Guest";
+            String username = chkSubscriber.isSelected() ? tfSubscriberId.getText().trim() : "Guest";
             Object[] payload = new Object[] { role, username, dto };
             sendToServer(Envelope.request(OpCode.REQUEST_WAITING_ADD, payload));
         });
     }
+    
     /**
      * Removes the selected waiting list entry after confirmation.
      * Sends {@link OpCode#REQUEST_WAITING_REMOVE} to the server with the selected waiting id.
@@ -1238,7 +1254,8 @@ public class StaffController implements ClientUI {
 
         DatePicker dpDate = new DatePicker(java.time.LocalDate.now());
         ComboBox<String> cbTime = new ComboBox<>();
-        for (int h = 10; h < 24; h++) {
+        
+        for (int h = 0; h < 24; h++) {
             cbTime.getItems().add(String.format("%02d:00", h));
             cbTime.getItems().add(String.format("%02d:30", h));
         }
@@ -1270,18 +1287,18 @@ public class StaffController implements ClientUI {
 
         dialog.getDialogPane().setContent(grid);
 
-        // Prevent closing if input is invalid
         final Button confirmBtn = (Button) dialog.getDialogPane().lookupButton(confirmBtnType);
         confirmBtn.addEventFilter(ActionEvent.ACTION, ae -> {
             if (!chkSubscriber.isSelected()) {
                 String p = tfPhone.getText().trim();
                 String e = tfEmail.getText().trim();
                 
+                
                 if (p.isEmpty() && e.isEmpty()) {
                     showAlert("Invalid Input", "Please enter at least a Phone Number OR an Email Address.");
                     ae.consume(); return;
                 }
-                
+
                 if (!p.isEmpty() && !isValidPhone(p)) {
                     showAlert("Invalid Input", "Phone must start with '05' and be 10 digits.");
                     ae.consume(); return;
@@ -1386,7 +1403,6 @@ public class StaffController implements ClientUI {
      */
     @FXML
     private void onAddTable(ActionEvent event) {
-        // 1. Get only the seats input (ignore ID field)
         String seatsStr = tfTableSeats.getText().trim();
 
         if (seatsStr.isEmpty()) {
@@ -1398,22 +1414,20 @@ public class StaffController implements ClientUI {
             int seats = Integer.parseInt(seatsStr);
             if (seats <= 0) throw new NumberFormatException();
 
-            // 2. Create DTO with NULL ID
-            // The server will detect the null ID and generate the next one (e.g., "T11")
+           
             RestaurantTableDTO dto = new RestaurantTableDTO(null, seats, "FREE");
             
-            // 3. Send request
             sendToServer(Envelope.request(OpCode.REQUEST_TABLE_ADD, dto));
             
-            // 4. Clear the inputs
             tfTableSeats.clear();
-            // Optional: You can explicitly clear the disabled ID field if you want
-            tfTableId.clear(); 
+            if (tfTableId != null) tfTableId.clear(); 
 
         } catch (NumberFormatException e) {
             showAlert("Error", "Seats must be a valid positive number.");
         }
-    }    /**
+    }
+    
+    /**
      * Deletes the selected restaurant table after confirmation.
      * Sends {@link OpCode#REQUEST_TABLE_REMOVE} to the server with table id payload.
      *
