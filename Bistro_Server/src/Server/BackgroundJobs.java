@@ -12,7 +12,21 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
-
+/**
+ * Manages all background and scheduled jobs of the Bistro server.
+ *
+ * This class is responsible for running periodic maintenance tasks such as:
+ * <ul>
+ *   <li>Canceling no-show reservations</li>
+ *   <li>Handling waiting list assignments</li>
+ *   <li>Releasing expired table reservations</li>
+ *   <li>Sending reminder emails and SMS messages</li>
+ *   <li>Generating monthly performance reports</li>
+ * </ul>
+ *
+ * All jobs run in background threads using a {@link ScheduledExecutorService}.
+ * The class is designed to start once per server lifecycle.
+ */
 public class BackgroundJobs {
 
     private static ScheduledExecutorService scheduler;
@@ -21,7 +35,12 @@ public class BackgroundJobs {
 
     // ✅ In-memory protection: reminder sent once per server run (reservation reminder only)
     private static final Set<Integer> reminderSent = ConcurrentHashMap.newKeySet();
-
+    /**
+     * Starts all background jobs.
+     *
+     * This method initializes the scheduler and registers all periodic tasks.
+     * If the jobs are already running, the method exits without effect.
+     */
     public static void start() {
 
         // ✅ prevents duplicates
@@ -159,7 +178,11 @@ public class BackgroundJobs {
             }
         }, 0, 24, TimeUnit.HOURS); // Start immediately, repeat every 24 hours
     }
-
+    /**
+     * Stops all background jobs immediately.
+     *
+     * Shuts down the scheduler and prevents further execution of tasks.
+     */
     public static void stop() {
 
         if (!started.compareAndSet(true, false)) {
@@ -179,6 +202,12 @@ public class BackgroundJobs {
     // =========================================================
     // Bill reminder logic (visit-based) - runs ONCE each time thread triggers
     // =========================================================
+    /**
+     * Sends payment reminders for visits that exceeded the allowed time.
+     *
+     * This method is triggered periodically and runs once per execution cycle.
+     * A reminder is sent only if it was not already sent before.
+     */
     private static void runBillReminderJobOnce() throws Exception {
 
         List<BillDAO.BillReminderRow> due = BillDAO.findBillsNeedingReminder(25);
@@ -203,6 +232,12 @@ public class BackgroundJobs {
     // =========================================================
     //  Upcoming reservation reminder (~2 hours before reservation_time)
     // =========================================================
+    /**
+     * Sends reminder emails for upcoming reservations.
+     *
+     * A reminder is sent approximately two hours before the reservation time.
+     * Each reservation is reminded only once per server runtime.
+     */
     private static void runUpcomingReservationReminderOnce() throws Exception {
 
         List<Reservation> all = new ReservationDAO().getAllReservations();

@@ -41,45 +41,88 @@ import DataBase.dao.UserActivityDAO;
 import DataBase.dao.VisitDAO;
 import DataBase.dao.WaitingListDAO;
 import DataBase.dao.RestaurantTableDAO; // From MAIN
-
+/**
+ * Main OCSF server of the Bistro system.
+ * <p>
+ * Responsibilities:
+ * <ul>
+ *   <li>Starts/stops server and background jobs.</li>
+ *   <li>Receives client requests (as {@link Envelope}) and routes them by {@link OpCode}.</li>
+ *   <li>Performs business validations and calls DAO layer.</li>
+ *   <li>Sends responses back using {@link KryoMessage} serialization.</li>
+ * </ul>
+ * </p>
+ */
 public class BistroServer extends AbstractServer {
-
+	 /** UI controller for the server window (may be null when running headless). */
     private final ServerController controller;
+    /** DAO for reservation operations (non-static methods exist here). */
     private final ReservationDAO reservationDAO = new ReservationDAO();
+    /** DAO for subscriber operations (kept for future/consistency). */
     private final SubscriberDAO subscriberDAO = new SubscriberDAO();
-
+    /**
+     * Creates a new server instance.
+     *
+     * @param port       listening port
+     * @param controller JavaFX controller used to update UI/logs (can be null)
+     */
     public BistroServer(int port, ServerController controller) {
         super(port);
         this.controller = controller;
     }
-
+    /**
+     * Writes a log line either to the UI (if available) or to console.
+     *
+     * @param text message to log
+     */
     private void log(String text) {
         if (controller != null) controller.appendLogFromServer(text);
         else System.out.println(text);
     }
-
+    /**
+     * Extracts host name from client connection.
+     *
+     * @param c client connection
+     * @return host name or "unknown" if missing
+     */
     private String host(ConnectionToClient c) {
         return (c.getInetAddress() != null) ? c.getInetAddress().getHostName() : "unknown";
     }
-
+    /**
+     * Extracts IP address from client connection.
+     *
+     * @param c client connection
+     * @return ip address or "unknown" if missing
+     */
     private String ip(ConnectionToClient c) {
         return (c.getInetAddress() != null) ? c.getInetAddress().getHostAddress() : "unknown";
     }
-
+    /**
+     * Called by OCSF when server starts listening.
+     * Starts background jobs and updates UI.
+     */
     @Override
     protected void serverStarted() {
         log("Server started on port " + getPort());
         if (controller != null) controller.onServerStarted(getPort());
         BackgroundJobs.start();
     }
-
+    /**
+     * Called by OCSF when server is stopped.
+     * Stops background jobs and updates UI.
+     */
     @Override
     protected void serverStopped() {
         log("Server stopped.");
         if (controller != null) controller.onServerStopped();
         BackgroundJobs.stop();
     }
-
+    /**
+     * Called when a client connects.
+     * Stores host/ip as client info and updates UI.
+     *
+     * @param client client that connected
+     */
     @Override
     protected void clientConnected(ConnectionToClient client) {
         super.clientConnected(client);
@@ -90,7 +133,11 @@ public class BistroServer extends AbstractServer {
         client.setInfo("ip", ip);
         if (controller != null) controller.onClientConnected(host, ip);
     }
-
+    /**
+     * Called when a client disconnects normally.
+     *
+     * @param client client that disconnected
+     */
     @Override
     protected void clientDisconnected(ConnectionToClient client) {
         super.clientDisconnected(client);
@@ -102,6 +149,12 @@ public class BistroServer extends AbstractServer {
         if (controller != null) controller.onClientDisconnected(host, ip);
     }
 
+    /**
+     * Called when client disconnects due to an exception.
+     *
+     * @param client    client connection
+     * @param exception thrown error
+     */
     @Override
     protected void clientException(ConnectionToClient client, Throwable exception) {
         super.clientException(client, exception);
@@ -113,7 +166,12 @@ public class BistroServer extends AbstractServer {
         if (controller != null) controller.onClientDisconnected(host, ip);
     }
 
-
+    /**
+     * Main message handler. Decodes request into {@link Envelope} and routes by {@link OpCode}.
+     *
+     * @param msg    incoming object from client (usually {@link KryoMessage} or {@link Envelope})
+     * @param client client connection
+     */
     @Override
     protected void handleMessageFromClient(Object msg, ConnectionToClient client) {
         try {
@@ -194,7 +252,13 @@ public class BistroServer extends AbstractServer {
             } catch (Exception ignored) {}
         }
     }
-
+    /**
+     * Converts incoming object into {@link Envelope}.
+     * Supports direct {@link Envelope} or {@link KryoMessage} that contains an Envelope payload.
+     *
+     * @param msg received message object
+     * @return envelope or null if cannot decode
+     */
     private Envelope unwrapToEnvelope(Object msg) {
         try {
             if (msg instanceof Envelope e) return e;
@@ -210,25 +274,48 @@ public class BistroServer extends AbstractServer {
     }
 
     /* ==================== Envelope replies ==================== */
-
+    /**
+     * Sends a successful response.
+     *
+     * @param client  target client
+     * @param op      response opcode
+     * @param payload response payload object
+     * @throws IOException if send fails
+     */
     private void sendOk(ConnectionToClient client, OpCode op, Object payload) throws IOException {
         Envelope resp = Envelope.ok(op, payload);
         sendEnvelope(client, resp);
     }
-
+    /**
+     * Sends an error response.
+     *
+     * @param client  target client
+     * @param op      response opcode (usually ERROR or specific response)
+     * @param message human readable error message
+     * @throws IOException if send fails
+     */
     private void sendError(ConnectionToClient client, OpCode op, String message) throws IOException {
         Envelope resp = Envelope.error(message);
         resp.setOp(op);
         sendEnvelope(client, resp);
     }
 
+    /**
+     * Serializes envelope via Kryo and sends it.
+     *
+     * @param client target client
+     * @param env    envelope to send
+     * @throws IOException if sending fails
+     */
     private void sendEnvelope(ConnectionToClient client, Envelope env) throws IOException {
         byte[] bytes = KryoUtil.toBytes(env);
         client.sendToClient(new KryoMessage("ENVELOPE", bytes));
     }
 
     /* ==================== Handlers ==================== */
-    
+    /**
+     * Returns active reservation/waiting codes for a subscriber username (terminal screen use).
+     */
     private void handleTerminalGetSubscriberActiveCodes(Envelope req, ConnectionToClient client) {
         try {
             String username = (String) req.getPayload();
@@ -254,7 +341,11 @@ public class BistroServer extends AbstractServer {
             } catch (Exception ignored) {}
         }
     }
-    
+
+    /**
+     * Resolves subscriber QR (barcode) into username and list of active terminal items.
+     * Response payload is Object[] { username, items } or an error string.
+     */
     private void handleTerminalResolveSubscriberQR(Envelope req, ConnectionToClient client) {
         try {
             Object payload = readEnvelopePayload(req);
@@ -295,7 +386,9 @@ public class BistroServer extends AbstractServer {
             } catch (Exception ignored) {}
         }
     }
-
+    /**
+     * Returns available reservation time slots for a given date string (YYYY-MM-DD).
+     */
     
     private void handleGetAvailableTimes(Envelope req, ConnectionToClient client) {
         try {
@@ -327,7 +420,9 @@ public class BistroServer extends AbstractServer {
             } catch (Exception ignored) {}
         }
     }
-    
+    /**
+     * Returns subscriber reservation history + visits list.
+     */
     private void handleSubscriberHistory(Envelope req, ConnectionToClient client) {
         try {
             Object payload = readEnvelopePayload(req);
@@ -357,7 +452,9 @@ public class BistroServer extends AbstractServer {
             } catch (Exception ignored) {}
         }
     }
-    
+    /**
+     * Cancels reservation by confirmation code (terminal cancel flow).
+     */
     private void handleTerminalCancelReservation(Envelope req, ConnectionToClient client) {
         try {
             Object payload = readEnvelopePayload(req);
@@ -379,7 +476,10 @@ public class BistroServer extends AbstractServer {
             } catch (Exception ignored) {}
         }
     }
-    
+    /**
+     * Recovers an active confirmation code by email/phone (lost-code flow).
+     * Sends the code by email (and SMS stub).
+     */
     private void handleRecoverConfirmationCode(Envelope req, ConnectionToClient client) {
         try {
             Object payload = req.getPayload();
@@ -421,7 +521,10 @@ public class BistroServer extends AbstractServer {
         }
     }
 
-    
+    /**
+     * Retrieves bill by confirmation code.
+     * Response payload is Object[] { ok, alreadyPaid, message, BillDTO }.
+     */
     private void handleBillGetByCode(Envelope req, ConnectionToClient client) {
         try {
             Object payload = readEnvelopePayload(req);
@@ -440,7 +543,11 @@ public class BistroServer extends AbstractServer {
             } catch (Exception ignored) {}
         }
     }
-
+    /**
+     * Pays bill by confirmation code.
+     * Accepts payload: String code OR Object[] { code, method }.
+     * Response payload is Object[] { ok, message, tableId }.
+     */
     private void handlePayBill(Envelope req, ConnectionToClient client) {
         try {
             Object payload = readEnvelopePayload(req);
@@ -465,7 +572,9 @@ public class BistroServer extends AbstractServer {
             } catch (Exception ignored) {}
         }
     }
-    
+    /**
+     * Loads subscriber profile by member code.
+     */
     private void handleGetProfile(Envelope req, ConnectionToClient client) {
         try {
             Object payload = readEnvelopePayload(req);
@@ -487,6 +596,10 @@ public class BistroServer extends AbstractServer {
     }
 
 
+    /**
+     * Updates subscriber profile (by member number/member_code).
+     * Payload must be {@link ProfileDTO}.
+     */
     private void handleUpdateProfile(Envelope req, ConnectionToClient client) {
         try {
             Object payload = readEnvelopePayload(req);
@@ -525,7 +638,10 @@ public class BistroServer extends AbstractServer {
         }
     }
 
-    
+    /**
+     * Allows a user to leave the waiting list by confirmation code.
+     * Blocks cancel if a visit already exists (checked-in).
+     */
     private void handleLeaveWaitingList(Envelope req, ConnectionToClient client) {
         try {
             Object payload = readEnvelopePayload(req);
@@ -592,7 +708,10 @@ public class BistroServer extends AbstractServer {
             } catch (Exception ignored) {}
         }
     }
-
+    /**
+     * Adds a new waiting-list entry for subscriber or guest.
+     * Also stores contact in user_activity for later notifications.
+     */
     private void handleWaitingList(Envelope req, ConnectionToClient client) {
         try {
             Object payload = readEnvelopePayload(req);
@@ -713,7 +832,10 @@ public class BistroServer extends AbstractServer {
             } catch (Exception ignored) {}
         }
     }
-    
+    /**
+     * Cancels reservation by reservationId with identity check.
+     * Payload expected: Object[] { role, username, guestEmail, guestPhone, reservationId }.
+     */
     @SuppressWarnings("unchecked")
     private void handleCancelReservation(Envelope req, ConnectionToClient client) {
         try {
@@ -789,7 +911,9 @@ public class BistroServer extends AbstractServer {
             }
         }
     }
-    
+    /**
+     * Returns current diners (active visits) for dashboard.
+     */
     private void handleCurrentDiners(Envelope req, ConnectionToClient client) {
         try {
             // Log that we started the request (This helps debug!)
@@ -804,7 +928,9 @@ public class BistroServer extends AbstractServer {
             e.printStackTrace(); // Print error to console
         }
     }
-    
+    /**
+     * Sends list of restaurant tables.
+     */
     private void handleGetTables(ConnectionToClient client) {
         try {
             List<common.dto.RestaurantTableDTO> list = DataBase.dao.RestaurantTableDAO.getAllTables();
@@ -813,7 +939,9 @@ public class BistroServer extends AbstractServer {
             try { sendError(client, OpCode.ERROR, "Fetch tables failed: " + e.getMessage()); } catch (Exception ignored) {}
         }
     }
-
+    /**
+     * Adds a table (or updates it depending on DAO behavior).
+     */
     private void handleAddTable(Envelope req, ConnectionToClient client) {
         try {
             if (req.getPayload() instanceof common.dto.RestaurantTableDTO dto) {
@@ -826,7 +954,9 @@ public class BistroServer extends AbstractServer {
             try { sendError(client, OpCode.ERROR, "Add table failed: " + e.getMessage()); } catch (Exception ignored) {}
         }
     }
-
+    /**
+     * Removes a table by tableId.
+     */
     private void handleRemoveTable(Envelope req, ConnectionToClient client) {
         try {
             String tableId = (String) req.getPayload();
@@ -837,7 +967,9 @@ public class BistroServer extends AbstractServer {
             try { sendError(client, OpCode.ERROR, "Remove table failed: " + e.getMessage()); } catch (Exception ignored) {}
         }
     }
-
+    /**
+     * Updates seats of an existing table.
+     */
     private void handleUpdateTable(Envelope req, ConnectionToClient client) {
         try {
             common.dto.RestaurantTableDTO dto = (common.dto.RestaurantTableDTO) req.getPayload();
@@ -848,7 +980,9 @@ public class BistroServer extends AbstractServer {
             try { sendError(client, OpCode.ERROR, "Update table failed: " + e.getMessage()); } catch (Exception ignored) {}
         }
     }
-    
+    /**
+     * Returns all opening hours rows.
+     */
     private void handleGetOpeningHours(ConnectionToClient client) {
         try {
             List<common.dto.OpeningHoursDTO> list = DataBase.dao.OpeningHoursDAO.getAllOpeningHours();
@@ -857,6 +991,9 @@ public class BistroServer extends AbstractServer {
             try { sendError(client, OpCode.ERROR, "Fetch hours failed: " + e.getMessage()); } catch (Exception ignored) {}
         }
     }
+    /**
+     * Updates opening hour row by ID.
+     */
     private void handleUpdateOpeningHours(Envelope req, ConnectionToClient client) {
         try {
             common.dto.OpeningHoursDTO dto = (common.dto.OpeningHoursDTO) req.getPayload();
@@ -867,7 +1004,9 @@ public class BistroServer extends AbstractServer {
             try { sendError(client, OpCode.ERROR, "Update error: " + e.getMessage()); } catch (Exception ignored) {}
         }
     }
-    
+    /**
+     * Inserts a special opening-hours row for a specific date.
+     */
     private void handleAddSpecialHour(Envelope req, ConnectionToClient client) {
         try {
             common.dto.OpeningHoursDTO dto = (common.dto.OpeningHoursDTO) req.getPayload();
@@ -878,7 +1017,9 @@ public class BistroServer extends AbstractServer {
             try { sendError(client, OpCode.ERROR, "Add special date failed: " + e.getMessage()); } catch (Exception ignored) {}
         }
     }
-
+    /**
+     * Removes opening-hours row (special or regular) by ID.
+     */
     private void handleRemoveSpecialHour(Envelope req, ConnectionToClient client) {
         try {
             int id = (int) req.getPayload();
@@ -889,7 +1030,9 @@ public class BistroServer extends AbstractServer {
             try { sendError(client, OpCode.ERROR, "Remove failed: " + e.getMessage()); } catch (Exception ignored) {}
         }
     }
-    
+    /**
+     * Returns opening-hours string for today (used in UI for quick display).
+     */
     private void handleGetTodayHours(ConnectionToClient client) {
         try {
             String hours = DataBase.dao.OpeningHoursDAO.getHoursForDate(java.time.LocalDate.now());
@@ -900,7 +1043,9 @@ public class BistroServer extends AbstractServer {
     }
     
     
-    
+    /**
+     * Creates performance report data for given month/year.
+     */
     private void handleReportPerformance(Envelope req, ConnectionToClient client) {
         try {
             common.dto.ReportRequestDTO dto = (common.dto.ReportRequestDTO) req.getPayload();
@@ -911,7 +1056,9 @@ public class BistroServer extends AbstractServer {
             try { sendError(client, OpCode.ERROR, "Perf Report Failed"); } catch (Exception ignored) {}
         }
     }
-
+    /**
+     * Creates subscriber activity report data for given month/year.
+     */
     private void handleReportActivity(Envelope req, ConnectionToClient client) {
         try {
             common.dto.ReportRequestDTO dto = (common.dto.ReportRequestDTO) req.getPayload();
@@ -927,6 +1074,10 @@ public class BistroServer extends AbstractServer {
     // -----------------------------------------------------------
     // 1. REGISTRATION (From your HEAD branch)
     // -----------------------------------------------------------
+    /**
+     * Registers a new subscriber (customer registration screen).
+     * Payload must be {@link RegistrationDTO}.
+     */
     private void handleRegisterCustomer(Envelope req, ConnectionToClient client) throws IOException {
         try {
             RegistrationDTO dto = (RegistrationDTO) req.getPayload();
@@ -962,19 +1113,38 @@ public class BistroServer extends AbstractServer {
     // -----------------------------------------------------------
     // 2. MAKE RESERVATION (From the Main branch)
     // -----------------------------------------------------------
-    
+    /**
+     * Validates email format with a simple regex.
+     *
+     * @param email raw email
+     * @return true if matches pattern
+     */
     private static boolean isValidEmailFormat(String email) {
         if (email == null) return false;
         String e = email.trim();
         return e.matches("^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$");
     }
-
+    /**
+     * Validates Israeli phone format: must start with 05 and be exactly 10 digits.
+     *
+     * @param phone raw phone string
+     * @return true if matches pattern
+     */
     private static boolean isValidPhone10Digits(String phone) {
         if (phone == null) return false;
         String p = phone.trim();
         return p.matches("^05\\d{8}$");
     }
-
+    /**
+     * Creates a reservation after validating constraints:
+     * <ul>
+     *   <li>guest must provide valid email + phone</li>
+     *   <li>reservation up to 1 month ahead</li>
+     *   <li>reservation at least 1 hour from now</li>
+     *   <li>capacity check + alternative suggestions</li>
+     * </ul>
+     * Sends confirmation email/SMS stub on success.
+     */
     private void handleMakeReservation(Envelope req, ConnectionToClient client) throws Exception {
 
         Object payloadObj = readEnvelopePayload(req);
@@ -1063,7 +1233,10 @@ public class BistroServer extends AbstractServer {
     // -----------------------------------------------------------
     // 3. OTHER HANDLERS
     // -----------------------------------------------------------
-
+    /**
+     * Checks capacity availability without creating a reservation.
+     * Returns alternative suggestions if cannot fit.
+     */
     private void handleCheckAvailability(Envelope req, ConnectionToClient client) throws Exception {
         Object payloadObj = readEnvelopePayload(req);
         if (!(payloadObj instanceof MakeReservationRequestDTO dto)) {
@@ -1091,7 +1264,14 @@ public class BistroServer extends AbstractServer {
                 new MakeReservationResponseDTO(true, -1, null, "Available"));
 
     }
-
+    /**
+     * Validates a confirmation code at the terminal:
+     * <ul>
+     *   <li>first checks reservation code</li>
+     *   <li>if not reservation → checks waiting-list code</li>
+     *   <li>maps waiting-list status into valid/check-in allowed flags</li>
+     * </ul>
+     */
     private void handleTerminalValidateCode(Envelope req, ConnectionToClient client) {
         try {
             Object payload = readEnvelopePayload(req);
@@ -1158,7 +1338,13 @@ public class BistroServer extends AbstractServer {
             } catch (Exception ignored) {}
         }
     }
-
+    /**
+     * Performs terminal check-in:
+     * <ul>
+     *   <li>reservation check-in: marks ARRIVED or PENDING (if no table yet)</li>
+     *   <li>waiting-list check-in: delegates to {@link WaitingListDAO#checkInWaitingListByCode(String)}</li>
+     * </ul>
+     */
     private void handleTerminalCheckIn(Envelope req, ConnectionToClient client) {
         try {
             Object payload = readEnvelopePayload(req);
@@ -1213,7 +1399,9 @@ public class BistroServer extends AbstractServer {
     }
 
 
-
+    /**
+     * Handles subscriber login (returns member_code for profile flow).
+     */
     private void handleLoginSubscriber(Envelope env, ConnectionToClient client) {
         try {
             var req = (common.dto.LoginRequestDTO) env.getPayload();
@@ -1272,7 +1460,9 @@ public class BistroServer extends AbstractServer {
         }
     }
 
-
+    /**
+     * Handles staff login and returns staff role (AGENT/MANAGER).
+     */
     private void handleLoginStaff(Envelope env, ConnectionToClient client) {
         try {
             var req = (common.dto.LoginRequestDTO) env.getPayload();
@@ -1293,7 +1483,10 @@ public class BistroServer extends AbstractServer {
         }
     }
 
-
+    /**
+     * Returns reservation list for subscriber or guest based on role.
+     * Payload expected: Object[] { role, username, email, phone }.
+     */
     private void handleReservationsList(Envelope req, ConnectionToClient client) throws Exception {
         Object payload = readEnvelopePayload(req);
         Object[] arr = (Object[]) payload;
@@ -1317,6 +1510,9 @@ public class BistroServer extends AbstractServer {
         sendOk(client, OpCode.RESPONSE_RESERVATIONS_LIST, dtoList);
     }
 
+    /**
+     * Sends list of subscribers for staff view.
+     */
     private void handleSubscribersList(Envelope req,ConnectionToClient client) {
         try {
             List<SubscriberDTO> list = DataBase.dao.SubscriberDAO.getAllSubscribers();
@@ -1327,7 +1523,9 @@ public class BistroServer extends AbstractServer {
             try { sendError(client, OpCode.ERROR, "Fetch failed"); } catch (Exception ignored) {}
         }
     }
-
+    /**
+     * Sends list of all reservations for agent dashboard.
+     */
     private void handleAgentReservationsList(Envelope req,ConnectionToClient client) {
         try {
             List<Reservation> rows = reservationDAO.getAllReservations();
@@ -1351,7 +1549,9 @@ public class BistroServer extends AbstractServer {
             e.printStackTrace();
         }
     }
-    
+    /**
+     * Staff removes a waiting-list entry by ID (sets to CANCELED and releases reserved tables).
+     */
     private void handleRemoveWaitingCustomer(Envelope req, ConnectionToClient client) {
         try {
             Object payload = readEnvelopePayload(req);
@@ -1381,7 +1581,9 @@ public class BistroServer extends AbstractServer {
             } catch (Exception ignored) {}
         }
     }
-    
+    /**
+     * Returns waiting list items for agent view (WAITING/ASSIGNED).
+     */
     private void handlgeteWaitingList(Envelope req,ConnectionToClient client) {
         try {
         	List<common.dto.WaitingListDTO> list = DataBase.dao.WaitingListDAO.getAllWaitingList();
@@ -1397,7 +1599,13 @@ public class BistroServer extends AbstractServer {
     }
 
     /* ==================== Helpers ==================== */
-
+    /**
+     * Converts {@link Reservation} entity to ReservationDTO using reflection,
+     * to remain compatible with different DTO versions.
+     *
+     * @param r reservation entity
+     * @return DTO object or null on failure
+     */
     private Object toReservationDTO(Reservation r) {
         try {
             Class<?> dtoCls = Class.forName("common.dto.ReservationDTO");
@@ -1426,13 +1634,20 @@ public class BistroServer extends AbstractServer {
             return null;
         }
     }
-
+    /**
+     * Reflection helper: invoke setter method if exists.
+     */
     private void invoke(Object obj, String method, Class<?> param, Object value) {
         try {
             obj.getClass().getMethod(method, param).invoke(obj, value);
         } catch (Exception ignored) {}
     }
-
+    /**
+     * Reads payload value from envelope using common getter variations.
+     *
+     * @param env envelope object
+     * @return payload object or null
+     */
     private Object readEnvelopePayload(Envelope env) {
         Object val = tryInvoke(env, "getPayload");
         if (val != null) return val;
@@ -1442,6 +1657,13 @@ public class BistroServer extends AbstractServer {
         return val;
     }
 
+    /**
+     * Tries to invoke a no-arg method by name.
+     *
+     * @param target object
+     * @param methodName method to call
+     * @return result or null if missing/fails
+     */
     private Object tryInvoke(Object target, String methodName) {
         try {
             var m = target.getClass().getMethod(methodName);
@@ -1450,7 +1672,22 @@ public class BistroServer extends AbstractServer {
             return null;
         }
     }
-
+    /**
+     * Finds up to 5 alternative reservation timestamps around a requested time.
+     * Filters by:
+     * <ul>
+     *   <li>minute alignment (00/30)</li>
+     *   <li>not in the past</li>
+     *   <li>not beyond 1 month</li>
+     *   <li>opening hours window</li>
+     *   <li>capacity availability</li>
+     * </ul>
+     *
+     * @param requested requested timestamp
+     * @param numCustomers group size
+     * @return list of candidate timestamps
+     * @throws Exception DAO checks may throw
+     */
     private List<Timestamp> findAlternativeTimes(Timestamp requested, int numCustomers) throws Exception {
         List<Timestamp> alternatives = new ArrayList<>();
         int[] offsets = { -120 ,-90, -60, -30, 30, 60, 90 ,120};

@@ -4,8 +4,10 @@ import javafx.beans.property.SimpleStringProperty;
 import javafx.beans.property.StringProperty;
 
 /**
- * Represents a single row in the server's client-connections table.
- * Holds host name, IP address and current connection status.
+ * Represents a single row in the server's client connections table.
+ * <p>
+ * Stores basic connection information for display purposes:
+ * host name, IP address, and current connection status.
  */
 public class ClientConnectionRow {
 
