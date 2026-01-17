@@ -11,9 +11,28 @@ import java.util.List;
 import DataBase.MySQLConnectionPool;
 import DataBase.PooledConnection;
 import common.dto.TerminalActiveItemDTO;
-
+/**
+ * Data Access Object for user activity tracking.
+ * <p>
+ * Manages all activity records related to subscribers and guests,
+ * including reservations, waiting list entries, terminal lookups,
+ * and lost confirmation-code recovery.
+ */
 public class UserActivityDAO {
-
+	/**
+	 * Inserts a new user activity record.
+	 * <p>
+	 * Used when creating a reservation or waiting-list entry.
+	 * Supports both subscribers and guests (nullable fields allowed).
+	 *
+	 * @param subscriberUsername subscriber username (nullable)
+	 * @param guestPhone guest phone number (nullable)
+	 * @param guestEmail guest email address (nullable)
+	 * @param reservationId linked reservation ID (nullable)
+	 * @param waitingId linked waiting-list ID (nullable)
+	 * @param activityDate activity timestamp
+	 * @throws Exception on database error
+	 */
     public static void insertActivity(
             String subscriberUsername,
             String guestPhone,
@@ -75,6 +94,21 @@ public class UserActivityDAO {
         }
     }
  // ADD THIS METHOD inside UserActivityDAO class
+    /**
+     * Inserts a user activity record using an existing connection.
+     * <p>
+     * Intended for transactional flows where activity creation
+     * must be committed or rolled back together with other operations.
+     *
+     * @param conn active database connection
+     * @param subscriberUsername subscriber username (nullable)
+     * @param guestPhone guest phone (nullable)
+     * @param guestEmail guest email (nullable)
+     * @param reservationId reservation ID (nullable)
+     * @param waitingId waiting-list ID (nullable)
+     * @param activityDate activity timestamp
+     * @throws Exception on database error
+     */
     public static void insertActivity(Connection conn,
                                       String subscriberUsername,
                                       String guestPhone,
@@ -122,7 +156,14 @@ public class UserActivityDAO {
             ps.executeUpdate();
         }
     }
-    
+    /**
+     * Inserts a waiting-list activity for a guest.
+     *
+     * @param waitingId waiting-list ID
+     * @param email guest email
+     * @param phone guest phone
+     * @throws Exception on database error
+     */
     public static void insertWaitingActivity(int waitingId, String email, String phone) throws Exception {
         String sql = """
             INSERT INTO user_activity (guest_phone, guest_email, waiting_id, activity_date)
@@ -142,7 +183,13 @@ public class UserActivityDAO {
             pool.releaseConnection(pc);
         }
     }
-    
+    /**
+     * Inserts a waiting-list activity for a subscriber.
+     *
+     * @param waitingId waiting-list ID
+     * @param subscriberUsername subscriber username
+     * @throws Exception on database error
+     */
     public static void insertSubscriberWaitingActivity(int waitingId, String subscriberUsername) throws Exception {
         String sql = """
             INSERT INTO user_activity (subscriber_username, waiting_id, activity_date)
@@ -162,7 +209,18 @@ public class UserActivityDAO {
         }
     }
 
-
+    /**
+     * Inserts a waiting-list activity and returns the generated activity ID.
+     * <p>
+     * Used when the caller needs to link further records to this activity.
+     *
+     * @param conn active database connection
+     * @param waitingId waiting-list ID
+     * @param email guest email
+     * @param phone guest phone
+     * @return generated activity ID, or -1 if not available
+     * @throws Exception on database error
+     */
     public static int insertWaitingActivityReturnActivityId(Connection conn, int waitingId, String email, String phone) throws Exception {
         String sql = """
             INSERT INTO user_activity (guest_phone, guest_email, waiting_id, activity_date)
@@ -185,6 +243,12 @@ public class UserActivityDAO {
  // ===============================
  // Lost-code recovery helper
  // ===============================
+    /**
+     * Result holder for lost confirmation-code recovery.
+     * <p>
+     * Represents either a reservation or waiting-list code
+     * associated with a specific contact.
+     */
     public static class LostCodeResult {
         public final String type;  // "RESERVATION" or "WAITING"
         public final String code;
@@ -199,17 +263,20 @@ public class UserActivityDAO {
         }
     }
 
- /**
-  * Rule A+ (ASSIGNED only priority):
-  * 1) If there is an active WAITING LIST with status = ASSIGNED -> send waiting code (urgent now)
-  * 2) Else send the closest upcoming active RESERVATION (CONFIRMED/PENDING/ARRIVED)
-  * 3) Else send latest WAITING LIST with status = WAITING
-  * 4) Else return null
-  *
-  * Works for both:
-  * - Guests: stored in user_activity.guest_email / guest_phone
-  * - Subscribers: stored in subscribers.email / subscribers.phone (user_activity has subscriber_username)
-  */
+    /**
+     * Finds the most relevant active confirmation code by contact details.
+     * <p>
+     * Priority order:
+     * 1) ASSIGNED waiting list (urgent)
+     * 2) Closest upcoming active reservation
+     * 3) Latest waiting-list entry still WAITING
+     *
+     * Works for both guests and subscribers.
+     *
+     * @param contact email or phone number
+     * @return LostCodeResult or null if nothing active found
+     * @throws Exception on database error
+     */
  public static LostCodeResult findActiveCodeByContact(String contact) throws Exception {
      if (contact == null) return null;
      contact = contact.trim();
@@ -322,7 +389,11 @@ public class UserActivityDAO {
          }
      }
  }
-
+ /**
+  * Simple holder for an active confirmation code.
+  * <p>
+  * Used mainly for terminal and subscriber quick-lookup flows.
+  */
  public static class ActiveCodeResult {
 	    public final String type;  // "RESERVATION" or "WAITING_LIST"
 	    public final String code;  // confirmation_code
@@ -332,7 +403,18 @@ public class UserActivityDAO {
 	        this.code = code;
 	    }
 	}
-
+ /**
+  * Finds the most relevant active confirmation code for a subscriber.
+  * <p>
+  * Priority:
+  * 1) ASSIGNED waiting list
+  * 2) Closest upcoming active reservation
+  * 3) Latest waiting-list entry
+  *
+  * @param subscriberUsername subscriber username
+  * @return ActiveCodeResult or null if none found
+  * @throws Exception on database error
+  */
  public static ActiveCodeResult findActiveCodeBySubscriberUsername(String subscriberUsername) throws Exception {
 
 	    // 1) Priority: ASSIGNED waiting list (urgent now)
@@ -424,7 +506,20 @@ public class UserActivityDAO {
 	    }
 	}
  
- 
+ /**
+  * Lists all active items for a subscriber.
+  * <p>
+  * Includes:
+  * - ASSIGNED waiting-list entries
+  * - Active reservations (CONFIRMED / PENDING / ARRIVED)
+  * - WAITING waiting-list entries
+  *
+  * Results are ordered by urgency and time.
+  *
+  * @param subscriberUsername subscriber username
+  * @return list of active terminal items
+  * @throws Exception on database error
+  */
  public static List<TerminalActiveItemDTO> listActiveItemsBySubscriberUsername(String subscriberUsername) throws Exception {
 
      List<TerminalActiveItemDTO> out = new ArrayList<>();

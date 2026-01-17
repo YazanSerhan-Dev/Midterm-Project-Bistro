@@ -19,7 +19,19 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
-
+/**
+ * JavaFX controller for the reservation creation form (popup/window).
+ * <p>
+ * Allows a user to select a reservation date/time and number of diners,
+ * check availability, and confirm a reservation request.
+ * </p>
+ * <p>
+ * Requests are sent to the server using the shared {@link BistroClient} instance
+ * provided by {@link ClientSession}. Responses are applied to the UI via
+ * {@link #handleAvailabilityResponse(MakeReservationResponseDTO)} and
+ * {@link #handleReservationResponse(MakeReservationResponseDTO)}.
+ * </p>
+ */
 public class ReservationFormController {
 
     @FXML private TextField tfDiners;
@@ -40,6 +52,13 @@ public class ReservationFormController {
 
     private boolean availabilityConfirmed = false;
 
+    /**
+     * Initializes the reservation form after the FXML has been loaded.
+     * <p>
+     * Populates the time list with half-hour intervals, sets default selections,
+     * and configures the UI toggle logic for subscriber vs. casual/guest reservation.
+     * </p>
+     */
     @FXML
     public void initialize() {
         // Init time slots (30 min intervals)
@@ -66,13 +85,23 @@ public class ReservationFormController {
         rbCasual.setOnAction(e -> toggleInputs());
     }
 
+    /**
+     * Updates input fields based on the selected reservation type.
+     * Subscriber reservations use a subscriber ID, while casual/guest reservations use
+     * phone and email fields.
+     */
     private void toggleInputs() {
         boolean isSub = rbSubscriber.isSelected();
         tfSubscriberID.setDisable(!isSub);
         tfPhone.setDisable(isSub);
         tfEmail.setDisable(isSub);
     }
-
+    /**
+     * UI action: checks reservation availability for the selected date, time, and number of diners.
+     * Sends an availability request to the server and clears any previously suggested alternatives.
+     *
+     * @param event action event from the button click
+     */
     @FXML
     private void onCheckAvailability(ActionEvent event) {
         lblStatus.setText("Checking...");
@@ -102,6 +131,12 @@ public class ReservationFormController {
         }
     }
 
+    /**
+     * UI action: confirms the reservation request after availability has been confirmed.
+     * Sends a reservation request to the server using subscriber or guest details based on the selected mode.
+     *
+     * @param event action event from the button click
+     */
     @FXML
     private void onConfirm(ActionEvent event) {
         if (!availabilityConfirmed) return;
@@ -126,8 +161,13 @@ public class ReservationFormController {
             lblStatus.setText("Error sending request.");
         }
     }
-
-    // ✅ HELPER: Sends message correctly using ClientSession
+    /**
+     * Sends an envelope-based request to the server using the shared client connection.
+     *
+     * @param op operation code indicating the request type
+     * @param payload request payload object (DTO or other supported object)
+     */
+    // HELPER: Sends message correctly using ClientSession
     private void sendRequest(OpCode op, Object payload) {
         BistroClient client = ClientSession.getClient();
         if (client == null || !client.isConnected()) {
@@ -145,7 +185,15 @@ public class ReservationFormController {
             e.printStackTrace();
         }
     }
-    
+    /**
+     * Applies the server response for availability check.
+     * <p>
+     * If available, enables the confirm button. Otherwise, shows the server message
+     * and displays suggested alternative times (if provided).
+     * </p>
+     *
+     * @param res server response DTO for availability check
+     */
     // ... Response Handlers (called by StaffController) ...
     public void handleAvailabilityResponse(MakeReservationResponseDTO res) {
          Platform.runLater(() -> {
@@ -165,7 +213,15 @@ public class ReservationFormController {
             }
         });
     }
-
+    /**
+     * Applies the server response for creating a reservation.
+     * <p>
+     * On success, displays the confirmation code and closes the form window.
+     * On failure, shows the error message on the form.
+     * </p>
+     *
+     * @param res server response DTO for reservation creation
+     */
     public void handleReservationResponse(MakeReservationResponseDTO res) {
         Platform.runLater(() -> {
             if (res.isOk()) {

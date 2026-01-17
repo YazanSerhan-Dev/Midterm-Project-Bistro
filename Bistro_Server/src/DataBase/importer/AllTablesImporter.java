@@ -1,11 +1,35 @@
 package DataBase.importer;
-
+/**
+ * Central importer runner for loading all system tables from TXT files.
+ * <p>
+ * Executes all importers in the correct order according to
+ * database foreign-key dependencies.
+ * Intended for initial data seeding and testing environments.
+ */
 public class AllTablesImporter {
 
     // Folder that contains ALL txt files
+	/**
+	 * Base folder containing all TXT data files.
+	 * <p>
+	 * Each importer receives a full file path built from this base.
+	 */
     private static final String BASE_PATH =
     		"C:/Users/yazan/git/Midterm-Project-Bistro/bistro_sample_data/";
-
+    /**
+     * Runs the full database import process.
+     * <p>
+     * Flow:
+     * <ul>
+     *   <li>Optionally resets the database (testing only)</li>
+     *   <li>Imports base tables without dependencies</li>
+     *   <li>Imports business entities (reservations, waiting list)</li>
+     *   <li>Imports user activity and visit mapping</li>
+     *   <li>Imports billing and performance logs</li>
+     * </ul>
+     *
+     * @param args not used
+     */
     public static void main(String[] args) {
 
         try {

@@ -12,9 +12,29 @@ import DataBase.MySQLConnectionPool;
 import DataBase.PooledConnection;
 import common.dto.ProfileDTO;
 import common.dto.SubscriberDTO;
-
+/**
+ * Data Access Object for subscriber management.
+ * <p>
+ * Handles persistence and retrieval of subscriber data,
+ * including registration, authentication, profile access,
+ * and lookup by member code or barcode.
+ */
 public class SubscriberDAO {
-
+	/**
+	 * Inserts a new subscriber into the system.
+	 * <p>
+	 * Automatically generates a member code and barcode.
+	 * If birth date is missing, defaults to current date
+	 * to prevent database errors.
+	 *
+	 * @param username unique subscriber username
+	 * @param password subscriber password
+	 * @param name full name
+	 * @param phone phone number
+	 * @param email email address
+	 * @param birthDate subscriber birth date (nullable)
+	 * @throws Exception on database error
+	 */
     public static void insertSubscriber(
             String username, String password, String name,
             String phone, String email,
@@ -53,7 +73,18 @@ public class SubscriberDAO {
             pool.releaseConnection(pc);
         }
     }
-    
+    /**
+     * Generates the next incremental identifier for a given column.
+     * <p>
+     * Used for member codes and barcode data.
+     * Scans existing values and returns the next available ID
+     * with the specified prefix.
+     *
+     * @param columnName database column to scan
+     * @param prefix string prefix (e.g., MEM, BAR)
+     * @return generated identifier
+     * @throws Exception on database error
+     */
     private static String generateNextId(String columnName, String prefix) throws Exception {
         String sql = "SELECT " + columnName + " FROM subscribers";
         
@@ -93,7 +124,14 @@ public class SubscriberDAO {
     // YOUR CODE (From HEAD) - Get List for Agent
     // ============================================
  // In getAllSubscribers() method:
-
+    /**
+     * Retrieves all subscribers for staff/agent view.
+     * <p>
+     * Returns basic subscriber details without sensitive data.
+     *
+     * @return list of subscribers
+     * @throws Exception on database error
+     */
     public static List<SubscriberDTO> getAllSubscribers() throws Exception {
         List<SubscriberDTO> list = new ArrayList<>();
         String sql = "SELECT * FROM subscribers"; 
@@ -127,6 +165,14 @@ public class SubscriberDAO {
     // ============================================
     // TEAMMATE'S CODE (From main) - Login Checks
     // ============================================
+    /**
+     * Validates subscriber login credentials.
+     *
+     * @param username subscriber username
+     * @param password subscriber password
+     * @return true if credentials are valid, false otherwise
+     * @throws Exception on database error
+     */
     public static boolean checkLogin(String username, String password) throws Exception {
         String sql = "SELECT 1 FROM subscribers WHERE username=? AND password=? LIMIT 1";
 
@@ -145,7 +191,22 @@ public class SubscriberDAO {
             pool.releaseConnection(pc);
         }
     }
-    
+    /**
+     * Retrieves subscriber email by username.
+     *
+     * @param username subscriber username
+     * @return email address or null if not found
+     * @throws Exception on database error
+     */
+    public static String getEmailByUsername(...)
+
+    /**
+     * Retrieves subscriber phone number by username.
+     *
+     * @param username subscriber username
+     * @return phone number or null if not found
+     * @throws Exception on database error
+     */
     public static String getEmailByUsername(String username) throws Exception {
         String sql = "SELECT email FROM subscribers WHERE username=? LIMIT 1";
 
@@ -182,7 +243,15 @@ public class SubscriberDAO {
             pool.releaseConnection(pc);
         }
     }
-
+    /**
+     * Retrieves subscriber profile details by member code.
+     * <p>
+     * Used for profile display and updates.
+     *
+     * @param memberCode unique member code
+     * @return populated ProfileDTO or null if not found
+     * @throws Exception on database error
+     */
     public static ProfileDTO getProfileByMemberCode(String memberCode) throws Exception {
         String sql = "SELECT member_code, name, phone, email, barcode_data " +
                      "FROM subscribers WHERE member_code = ? LIMIT 1";
@@ -209,7 +278,13 @@ public class SubscriberDAO {
             pool.releaseConnection(pc);
         }
     }
-
+    /**
+     * Updates subscriber profile details using member code.
+     *
+     * @param dto profile data transfer object
+     * @return true if update succeeded, false otherwise
+     * @throws Exception on database error
+     */
     public static boolean updateProfileByMemberCode(ProfileDTO dto) throws Exception {
         String sql = "UPDATE subscribers SET name = ?, phone = ?, email = ? " +
                      "WHERE member_code = ?";
@@ -249,7 +324,13 @@ public class SubscriberDAO {
             pool.releaseConnection(pc);
         }
     }
-
+    /**
+     * Retrieves member code by username.
+     *
+     * @param username subscriber username
+     * @return member code or null if not found
+     * @throws Exception on database error
+     */
     public static String getUsernameByBarcodeData(String barcodeData) throws Exception {
         String sql = "SELECT username FROM subscribers WHERE barcode_data = ? LIMIT 1";
 

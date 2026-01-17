@@ -10,9 +10,28 @@ import java.util.List;
 import DataBase.MySQLConnectionPool;
 import DataBase.PooledConnection;
 import common.dto.RestaurantTableDTO;
-
+/**
+ * Data Access Object for restaurant table management.
+ * <p>
+ * Responsible for table inventory operations including:
+ * allocation, reservation (hold), occupation, release,
+ * and feasibility planning for seating reservations.
+ * <p>
+ * Supports single-table and multi-table allocation,
+ * reservation waiting logic, and planning simulations
+ * without modifying table status.
+ */
 public class RestaurantTableDAO {
-
+	/**
+	 * Inserts or updates a restaurant table definition.
+	 * <p>
+	 * If the table already exists, only the seat count is updated.
+	 *
+	 * @param tableId unique table identifier
+	 * @param seats number of seats at the table
+	 * @param status initial table status (FREE / RESERVED / OCCUPIED)
+	 * @throws Exception on database error
+	 */
 	public static void insertTable(String tableId, int seats, String status) throws Exception {
         String sql = """
             INSERT INTO restaurant_table (table_id, num_of_seats, status)
@@ -33,7 +52,12 @@ public class RestaurantTableDAO {
             pool.releaseConnection(pc);
         }
     }
-    
+	/**
+	 * Calculates the total number of seats currently available (FREE tables only).
+	 *
+	 * @return total free seats
+	 * @throws Exception on query failure
+	 */
     public static int getTotalSeatsAvailable() throws Exception {
         String sql =
                 "SELECT COALESCE(SUM(num_of_seats),0) AS total " +
@@ -56,7 +80,12 @@ public class RestaurantTableDAO {
             pool.releaseConnection(pc);
         }
     }
-    
+    /**
+     * Calculates the total seating capacity of the restaurant.
+     *
+     * @return total number of seats across all tables
+     * @throws Exception on query failure
+     */
     public static int getTotalSeats() throws Exception {
         String sql =
                 "SELECT COALESCE(SUM(num_of_seats),0) AS total " +
@@ -76,7 +105,16 @@ public class RestaurantTableDAO {
         }
     }
 
-
+    /**
+     * Allocates a single FREE table that can fit the given number of customers.
+     * <p>
+     * Chooses the smallest suitable table (best-fit) and marks it OCCUPIED.
+     *
+     * @param conn active database connection
+     * @param numCustomers party size
+     * @return allocated table id, or null if none available
+     * @throws Exception on database error
+     */
     public static String allocateFreeTable(Connection conn, int numCustomers) throws Exception {
         String selectSql = """
             SELECT table_id
@@ -113,7 +151,18 @@ public class RestaurantTableDAO {
     }
     
  // === Option-1: REAL reservation hold using restaurant_table columns ===
-
+    /**
+     * Reserves a FREE table for a reservation for a limited hold time.
+     * <p>
+     * Marks the table as RESERVED and links it to the reservation id.
+     *
+     * @param conn active database connection
+     * @param numCustomers party size
+     * @param reservationId reservation identifier
+     * @param holdMinutes reservation hold duration
+     * @return reserved table id, or null if none available
+     * @throws Exception on database error
+     */
     public static String reserveFreeTableForReservation(Connection conn, int numCustomers, int reservationId, int holdMinutes) throws Exception {
 
         // pick smallest FREE that fits
@@ -388,8 +437,17 @@ public class RestaurantTableDAO {
     }
 
     /**
-     * Allocate MULTIPLE tables for a CONFIRMED reservation at check-in time.
-     * Marks them OCCUPIED and sets reserved_for_reservation_id = reservationId
+     * Allocates one or more FREE tables for a reservation at check-in time.
+     * <p>
+     * First attempts a single-table allocation.
+     * If not possible, uses a best-fit DP strategy
+     * to allocate multiple tables with minimal seat waste.
+     *
+     * @param conn active database connection
+     * @param reservationId reservation identifier
+     * @param numCustomers party size
+     * @return list of allocated table ids
+     * @throws Exception if allocation fails (atomic operation)
      */
     public static List<String> allocateFreeTablesBestFit(Connection conn, int reservationId, int numCustomers) throws Exception {
         // 1) try single-table fast path first
@@ -445,9 +503,19 @@ public class RestaurantTableDAO {
     }
 
     /**
-     * Reserve MULTIPLE tables for a PENDING reservation (hold).
-     * Marks them RESERVED, sets reserved_for_reservation_id and reserved_until.
+     * Reserves one or more FREE tables for a PENDING reservation.
+     * <p>
+     * Uses best-fit allocation and holds the tables
+     * for a limited time window.
+     *
+     * @param conn active database connection
+     * @param reservationId reservation identifier
+     * @param numCustomers party size
+     * @param holdMinutes reservation hold duration
+     * @return list of reserved table ids
+     * @throws Exception if reservation fails (atomic operation)
      */
+
     public static List<String> reserveFreeTablesBestFitForReservation(Connection conn, int reservationId, int numCustomers, int holdMinutes) throws Exception {
         // 1) try existing single-table reserve logic if possible
         String one = reserveFreeTableForReservation(conn, numCustomers, reservationId, holdMinutes);
@@ -506,10 +574,14 @@ public class RestaurantTableDAO {
         }
         return out;
     }
-
     /**
-     * Convert all RESERVED tables (for reservation) into OCCUPIED on check-in.
-     * Keep reserved_for_reservation_id so we can free all after payment.
+     * Converts all RESERVED tables of a reservation into OCCUPIED.
+     * Used when a customer checks in.
+     *
+     * @param conn active database connection
+     * @param reservationId reservation identifier
+     * @return number of tables updated
+     * @throws Exception on database error
      */
     public static int occupyReservedTablesForReservation(Connection conn, int reservationId) throws Exception {
         try (PreparedStatement ps = conn.prepareStatement("""
@@ -523,7 +595,15 @@ public class RestaurantTableDAO {
             return ps.executeUpdate();
         }
     }
-
+    /**
+     * Frees all OCCUPIED tables linked to a reservation.
+     * Used after payment / checkout.
+     *
+     * @param conn active database connection
+     * @param reservationId reservation identifier
+     * @return number of tables released
+     * @throws Exception on database error
+     */
     public static int freeOccupiedTablesForReservation(Connection conn, int reservationId) throws Exception {
         try (PreparedStatement ps = conn.prepareStatement("""
             UPDATE restaurant_table

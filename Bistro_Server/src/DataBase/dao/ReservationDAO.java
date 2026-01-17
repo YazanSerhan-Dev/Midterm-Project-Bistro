@@ -16,9 +16,27 @@ import java.util.UUID;
 
 import common.dto.MakeReservationRequestDTO;
 import common.dto.ReservationDTO;
-
+/**
+ * Data Access Object for reservation management.
+ * <p>
+ * Handles the full reservation lifecycle including:
+ * creation, capacity checks, arrival validation,
+ * table allocation, cancellation, and expiration logic.
+ * <p>
+ * This class is used by both customer-facing flows
+ * and terminal/staff operations.
+ */
 public class ReservationDAO {
-
+	/**
+	 * Inserts a new reservation record into the database.
+	 *
+	 * @param numOfCustomers number of guests
+	 * @param reservationTime reservation start time
+	 * @param expiryTime reservation expiry time
+	 * @param status initial reservation status
+	 * @param confirmationCode unique confirmation code
+	 * @throws Exception if database operation fails
+	 */
     public static void insertReservation(
             int numOfCustomers,
             Timestamp reservationTime,
@@ -80,6 +98,7 @@ public class ReservationDAO {
         return list;
     }
  // ADD inside ReservationDAO class
+    
     public static class CreateReservationResult {
         public final int reservationId;
         public final String confirmationCode;
@@ -92,6 +111,17 @@ public class ReservationDAO {
 
     // ADD inside ReservationDAO class
  // inside ReservationDAO class
+    /**
+     * Creates a reservation and its matching user_activity entry
+     * within a single transaction.
+     * <p>
+     * Performs capacity validation before insertion and
+     * generates a unique confirmation code.
+     *
+     * @param req reservation request data (subscriber or guest)
+     * @return created reservation id and confirmation code
+     * @throws Exception if capacity is exceeded or transaction fails
+     */
     public CreateReservationResult createReservationWithActivity(MakeReservationRequestDTO req) throws Exception {
 
         String status = "CONFIRMED";
@@ -177,6 +207,19 @@ public class ReservationDAO {
     
  // Counts total guests already booked in a time window.
  // We only count statuses that actually occupy capacity: CONFIRMED + ARRIVED.
+    /**
+     * Calculates the total number of guests already booked
+     * in a given time window.
+     * <p>
+     * Counts only reservations that occupy capacity
+     * (CONFIRMED or ARRIVED).
+     *
+     * @param conn active database connection
+     * @param start range start time
+     * @param end range end time
+     * @return total number of booked guests
+     * @throws Exception on query failure
+     */
  public static int getBookedCustomersInRange(Connection conn, Timestamp start, Timestamp end) throws Exception {
 
      String sql = """
@@ -255,6 +298,16 @@ public class ReservationDAO {
 
 
  // inside DataBase.dao.ReservationDAO
+    /**
+     * Marks a reservation as ARRIVED using its confirmation code.
+     * <p>
+     * Validates time window, allocates or occupies tables,
+     * creates visit records and updates reservation status.
+     *
+     * @param code reservation confirmation code
+     * @return main allocated table id
+     * @throws Exception if check-in is not allowed or fails
+     */
     public static String markArrivedByCodeReturnTableId(String code) throws Exception {
 
         String sqlGet = """
@@ -1083,10 +1136,14 @@ public class ReservationDAO {
     }
 
     /**
-     * Cancel reservation by confirmation code (Terminal flow).
-     * Allowed statuses: CONFIRMED, PENDING
-     * Not allowed: ARRIVED, CANCELED, EXPIRED, COMPLETED...
-     * Also releases RESERVED tables linked to this reservation.
+     * Cancels a reservation by confirmation code.
+     * <p>
+     * Allowed only for CONFIRMED or PENDING reservations.
+     * Also releases any reserved tables.
+     *
+     * @param confirmationCode reservation confirmation code
+     * @return result object with status and message
+     * @throws Exception on database failure
      */
     public static CancelByCodeResult cancelReservationByCode(String confirmationCode) throws Exception {
         if (confirmationCode == null || confirmationCode.trim().isEmpty()) {

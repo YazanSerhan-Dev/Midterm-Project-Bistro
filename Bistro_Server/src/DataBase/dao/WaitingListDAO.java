@@ -13,13 +13,27 @@ import DataBase.PooledConnection;
 import common.dto.SubscriberDTO;
 import common.dto.TerminalValidateResponseDTO;
 import common.dto.WaitingListDTO;
-
+/**
+ * Data Access Object for waiting list management.
+ * <p>
+ * Handles waiting-list lifecycle including creation, assignment,
+ * check-in, cancellation, and table reservation coordination.
+ * Used by dashboard, terminal, and background schedulers.
+ */
 public class WaitingListDAO {
 
     // =============================================================
     // 1. METHODS FROM HEAD (Your Dashboard Logic)
     // =============================================================
-
+	/**
+	 * Inserts a new waiting-list entry.
+	 *
+	 * @param numOfCustomers number of customers in the party
+	 * @param requestTime time the request was made
+	 * @param status initial status (WAITING / ASSIGNED)
+	 * @param confirmationCode unique confirmation code
+	 * @throws Exception on database error
+	 */
     public static void insertWaiting(
             int numOfCustomers,
             Timestamp requestTime,
@@ -46,7 +60,14 @@ public class WaitingListDAO {
             pool.releaseConnection(pc);
         }
     }
-    
+    /**
+     * Retrieves all active waiting-list entries.
+     * <p>
+     * Includes only WAITING and ASSIGNED statuses,
+     * ordered by request time for dashboard display.
+     *
+     * @return list of waiting-list DTOs
+     */
     public static List<WaitingListDTO> getAllWaitingList() {
         List<WaitingListDTO> list = new ArrayList<>();
 
@@ -81,7 +102,13 @@ public class WaitingListDAO {
     // =============================================================
     // 2. METHODS FROM MAIN (The Complex Logic)
     // =============================================================
-
+    /**
+     * Retrieves a waiting-list entry by confirmation code.
+     *
+     * @param code confirmation code
+     * @return WaitingListDTO or null if not found
+     * @throws Exception on database error
+     */
     public static WaitingListDTO getByCode(String code) throws Exception {
         String sql = """
             SELECT waiting_id, num_of_customers, request_time, status, confirmation_code
@@ -110,7 +137,14 @@ public class WaitingListDAO {
             pool.releaseConnection(pc);
         }
     }
-
+    /**
+     * Updates waiting-list status by confirmation code.
+     *
+     * @param code confirmation code
+     * @param newStatus new status value
+     * @return true if updated, false otherwise
+     * @throws Exception on database error
+     */
     public static boolean updateStatusByCode(String code, String newStatus) throws Exception {
         String sql = """
             UPDATE waiting_list
@@ -130,7 +164,14 @@ public class WaitingListDAO {
             pool.releaseConnection(pc);
         }
     }
-
+    /**
+     * Cancels ASSIGNED waiting-list entries older than 15 minutes.
+     * <p>
+     * Also releases any tables reserved for expired assignments.
+     *
+     * @return number of canceled entries
+     * @throws Exception on database error
+     */
     public static int cancelAssignedOver15Minutes() throws Exception {
         // 1) Cancel assigned waiting_list rows older than 15 minutes
         String cancelSql = """
@@ -221,7 +262,16 @@ public class WaitingListDAO {
             pool.releaseConnection(pc);
         }
     }
-
+    /**
+     * Inserts a waiting-list entry and returns its generated ID.
+     *
+     * @param numOfCustomers number of customers
+     * @param requestTime request timestamp
+     * @param status initial status
+     * @param confirmationCode confirmation code
+     * @return generated waiting_id or -1 if failed
+     * @throws Exception on database error
+     */
     public static int insertWaitingReturnId(
             int numOfCustomers,
             Timestamp requestTime,
@@ -253,7 +303,13 @@ public class WaitingListDAO {
             pool.releaseConnection(pc);
         }
     }
-
+    /**
+     * Cancels waiting-list entries that exceeded a given age.
+     *
+     * @param hours threshold in hours
+     * @return number of canceled entries
+     * @throws Exception on database error
+     */
     public static int cancelWaitingOlderThanHours(int hours) throws Exception {
         String sql = """
             UPDATE waiting_list
@@ -312,7 +368,16 @@ public class WaitingListDAO {
             return ps.executeUpdate() > 0;
         }
     }
-
+    /**
+     * Performs check-in for a waiting-list entry by confirmation code.
+     * <p>
+     * Validates status, occupies reserved tables, creates visits,
+     * and updates waiting-list status to ARRIVED.
+     *
+     * @param code confirmation code
+     * @return terminal validation response DTO
+     * @throws Exception on database error
+     */
     public static TerminalValidateResponseDTO checkInWaitingListByCode(String code) throws Exception {
 
         TerminalValidateResponseDTO dto = new TerminalValidateResponseDTO();
@@ -438,7 +503,15 @@ public class WaitingListDAO {
             pool.releaseConnection(pc);
         }
     }
-
+    /**
+     * Assigns the next suitable waiting-list entry by reserving tables.
+     * <p>
+     * Uses seat availability, future reservation protection,
+     * and best-fit table allocation logic.
+     *
+     * @return assigned WaitingListDTO or null if none fit
+     * @throws Exception on database error
+     */
     public static WaitingListDTO assignNextWaitingByReservingTable() throws Exception {
 
         final int RESERVATION_LOOKAHEAD_MINUTES = 120;
@@ -543,7 +616,15 @@ public class WaitingListDAO {
             pool.releaseConnection(pc);
         }
     }
-
+    /**
+     * Cancels a waiting-list entry by confirmation code.
+     * <p>
+     * Releases any tables reserved for the entry.
+     *
+     * @param code confirmation code
+     * @return true if canceled, false otherwise
+     * @throws Exception on database error
+     */
     public static boolean cancelAndReleaseTablesByCode(String code) throws Exception {
 
         if (code == null || code.isBlank()) return false;
@@ -627,7 +708,16 @@ public class WaitingListDAO {
  // =============================================================
     // 3. STAFF REMOVAL METHODS (Fixes "Remove / Cancel" button)
     // =============================================================
-
+    /**
+     * Cancels a waiting-list entry by ID (staff action).
+     * <p>
+     * Prevents cancellation if already ARRIVED or CANCELED,
+     * and releases any reserved tables.
+     *
+     * @param waitingId waiting-list ID
+     * @return true if canceled, false otherwise
+     * @throws Exception on database error
+     */
     public static boolean cancelWaitingById(int waitingId) throws Exception {
         MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
         PooledConnection pc = pool.getConnection();
@@ -691,7 +781,13 @@ public class WaitingListDAO {
             pool.releaseConnection(pc);
         }
     }
-    
+    /**
+     * Retrieves contact email for a waiting-list entry.
+     *
+     * @param waitingId waiting-list ID
+     * @return email or null if not found
+     * @throws Exception on database error
+     */
     public static String getEmailForWaitingId(int waitingId) throws Exception {
         String sql = """
             SELECT COALESCE(s.email, ua.guest_email) AS email
@@ -715,7 +811,13 @@ public class WaitingListDAO {
             pool.releaseConnection(pc);
         }
     }
-
+    /**
+     * Retrieves contact phone number for a waiting-list entry.
+     *
+     * @param waitingId waiting-list ID
+     * @return phone or null if not found
+     * @throws Exception on database error
+     */
     public static String getPhoneForWaitingId(int waitingId) throws Exception {
         String sql = """
             SELECT COALESCE(s.phone, ua.guest_phone) AS phone

@@ -9,7 +9,17 @@ import javafx.application.Platform;
 import javafx.fxml.FXML;
 import javafx.scene.control.*;
 import javafx.scene.layout.GridPane;
-
+/**
+ * JavaFX controller for the "Pay Bill" screen.
+ * <p>
+ * Allows a user to search for a bill by code, display bill summary details,
+ * and submit a payment request (cash or credit card). Communicates with the server
+ * using the shared {@link BistroClient} connection managed by {@link ClientSession}.
+ * </p>
+ * <p>
+ * Implements {@link ClientUI} to receive server responses related to bill lookup and payment.
+ * </p>
+ */
 public class PayBillController implements ClientUI {
 
     @FXML private TextField txtBillCode;
@@ -43,6 +53,11 @@ public class PayBillController implements ClientUI {
     private volatile boolean billLoaded = false;
     private volatile boolean alreadyPaid = false;
 
+    /**
+     * Initializes the controller after FXML loading.
+     * Configures the payment toggle group, sets initial UI state,
+     * and binds this controller as the active UI receiver for the shared session.
+     */
     @FXML
     private void initialize() {
         paymentGroup = new ToggleGroup();
@@ -62,7 +77,10 @@ public class PayBillController implements ClientUI {
         // register UI receiver
         ClientSession.bindUI(this);
     }
-
+    /**
+     * Updates the visibility and enabled state of credit card input fields
+     * based on the selected payment method.
+     */
     private void updateCardFieldsVisibility() {
         boolean show = rbCreditCard.isSelected();
         cardFieldsPane.setDisable(!show);
@@ -72,7 +90,10 @@ public class PayBillController implements ClientUI {
     // =========================
     // Actions
     // =========================
-
+    /**
+     * UI action: searches for a bill by the code entered by the user.
+     * Sends a bill-lookup request to the server and resets UI summary fields while loading.
+     */
     @FXML
     private void onFindBill() {
         if (lookupInFlight) return;
@@ -103,7 +124,11 @@ public class PayBillController implements ClientUI {
 
         sendToServer(OpCode.REQUEST_BILL_GET_BY_CODE, code);
     }
-
+    /**
+     * UI action: submits a payment request for the currently loaded bill.
+     * Performs minimal validation for credit card fields on the client side,
+     * then sends a payment request to the server.
+     */
     @FXML
     private void onPayNow() {
         if (payInFlight) return;
@@ -156,7 +181,10 @@ public class PayBillController implements ClientUI {
 
         sendToServer(OpCode.REQUEST_PAY_BILL, payload);
     }
-
+    /**
+     * UI action: clears the bill code, resets status flags, clears the summary,
+     * and restores the default payment method selection.
+     */
     @FXML
     private void onClear() {
         txtBillCode.clear();
@@ -179,7 +207,9 @@ public class PayBillController implements ClientUI {
         rbCreditCard.setSelected(true);
         updateCardFieldsVisibility();
     }
-
+    /**
+     * Clears the bill summary labels and resets them to default placeholder values.
+     */
     private void clearSummary() {
         lblSubscriberBadge.setText("");
         lblBillCustomerName.setText("-");
@@ -189,7 +219,11 @@ public class PayBillController implements ClientUI {
         lblBillTotal.setText("-");
         lblBillDueDate.setText("-");
     }
-
+    /**
+     * Applies the given bill data to the UI summary section.
+     *
+     * @param b bill DTO returned from the server (may be null)
+     */
     private void applyBillToUI(BillDTO b) {
         if (b == null) {
             clearSummary();
@@ -209,20 +243,37 @@ public class PayBillController implements ClientUI {
     // ClientUI
     // =========================
 
+    /**
+     * Connection callback: not used for this screen.
+     */
     @Override public void onConnected() {}
+    /**
+     * Connection callback: resets in-flight flags when disconnected.
+     */
     @Override public void onDisconnected() {
         Platform.runLater(() -> {
             lookupInFlight = false;
             payInFlight = false;
         });
     }
+
+    /**
+     * Connection callback: resets in-flight flags when a connection error occurs.
+     *
+     * @param e the exception describing the connection error
+     */
     @Override public void onConnectionError(Exception e) {
         Platform.runLater(() -> {
             lookupInFlight = false;
             payInFlight = false;
         });
     }
-
+    /**
+     * Handles server responses related to bill lookup and bill payment
+     * and updates the UI accordingly.
+     *
+     * @param message raw message object received from the server
+     */
     @Override
     public void handleServerMessage(Object message) {
         Platform.runLater(() -> {
@@ -305,7 +356,12 @@ public class PayBillController implements ClientUI {
     // =========================
     // Envelope helpers (simple)
     // =========================
-
+    /**
+     * Sends a request envelope to the server using the shared client connection.
+     *
+     * @param op operation code indicating the request type
+     * @param payload request payload (may be a string or an object array depending on request)
+     */
     private void sendToServer(OpCode op, Object payload) {
         try {
             var client = ClientSession.getClient();
@@ -317,7 +373,12 @@ public class PayBillController implements ClientUI {
             lblPaymentResult.setText("Send failed: " + e.getMessage());
         }
     }
-
+    /**
+     * Attempts to decode a raw server message into an {@link Envelope}.
+     *
+     * @param msg raw message received from the server
+     * @return decoded envelope or null if the message is not supported/decoding fails
+     */
     private Envelope unwrapEnvelope(Object msg) {
         try {
             if (msg instanceof Envelope e) return e;
@@ -328,7 +389,11 @@ public class PayBillController implements ClientUI {
         } catch (Exception ignored) {}
         return null;
     }
-
+    /**
+     * Checks whether the shared client connection is currently active.
+     *
+     * @return true if the client exists and is connected, otherwise false
+     */
     private boolean isConnected() {
         try {
             var c = ClientSession.getClient();
@@ -337,25 +402,52 @@ public class PayBillController implements ClientUI {
             return false;
         }
     }
-
+    /**
+     * Trims a string safely (null becomes empty string).
+     *
+     * @param s input string
+     * @return trimmed string or empty string if null
+     */
     private static String safeTrim(String s) { return s == null ? "" : s.trim(); }
+    /**
+     * Returns a fallback value when a string is null or blank.
+     *
+     * @param s input string
+     * @param fallback fallback value
+     * @return s if non-blank, otherwise fallback
+     */
     private static String nz(String s, String fallback) { return (s == null || s.isBlank()) ? fallback : s; }
     
  // =========================
  // Payment validation (Level 1 - looks valid)
  // =========================
-
+    /**
+     * Normalizes a card number input by removing spaces and dashes.
+     *
+     * @param input raw card number input
+     * @return normalized digits-only string (may be empty)
+     */
 	 private static String normalizeCardNumber(String input) {
 	     if (input == null) return "";
 	     return input.replaceAll("[\\s-]", "");
 	 }
-	
+	    /**
+	     * Validates card number format and performs a Luhn check.
+	     *
+	     * @param input raw card number input
+	     * @return true if the number length is valid and passes the Luhn algorithm
+	     */
 	 private static boolean isValidCardNumber(String input) {
 	     String n = normalizeCardNumber(input);
 	     if (!n.matches("^\\d{13,19}$")) return false;
 	     return passesLuhn(n);
 	 }
-	
+	    /**
+	     * Performs the Luhn algorithm checksum validation.
+	     *
+	     * @param digits card number digits (no spaces/dashes)
+	     * @return true if checksum is valid, otherwise false
+	     */
 	 private static boolean passesLuhn(String digits) {
 	     int sum = 0;
 	     boolean doubleDigit = false;
@@ -373,7 +465,12 @@ public class PayBillController implements ClientUI {
 	     }
 	     return sum % 10 == 0;
 	 }
-	
+	    /**
+	     * Validates expiry date format (MM/YY or MM/YYYY) and checks it is not expired.
+	     *
+	     * @param expiry expiry string
+	     * @return true if the format is valid and the date is not in the past
+	     */
 	 private static boolean isValidExpiry(String expiry) {
 	     if (expiry == null) return false;
 	     String e = expiry.trim();
@@ -392,7 +489,12 @@ public class PayBillController implements ClientUI {
 	
 	     return !exp.isBefore(now);
 	 }
-	
+	    /**
+	     * Validates CVV format (3 or 4 digits).
+	     *
+	     * @param cvv cvv input string
+	     * @return true if CVV is numeric and has 3-4 digits
+	     */
 	 private static boolean isValidCvv(String cvv) {
 	     if (cvv == null) return false;
 	     return cvv.trim().matches("^\\d{3,4}$");
@@ -400,6 +502,13 @@ public class PayBillController implements ClientUI {
 	
 
     // Navigation (keep your current behavior)
+
+    /**
+	* UI action: navigates back to the previous screen.
+	*/
     @FXML private void onBack()         { SceneManager.goBack(); }
+    /**
+     * UI action: logs out and returns to the login screen.
+     */
     @FXML private void onLogout()       { SceneManager.showLogin(); }
 }

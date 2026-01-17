@@ -17,12 +17,29 @@ import java.util.Locale;
 import DataBase.MySQLConnectionPool;
 import DataBase.PooledConnection;
 import common.dto.OpeningHoursDTO;
-
+/**
+ * Data Access Object for managing restaurant opening hours.
+ * <p>
+ * Handles weekly opening hours, special dates, and provides
+ * logic utilities for reservation availability and time slots.
+ */
 public class OpeningHoursDAO {
 
     // =============================================================
     // 1. INSERT RAW (Used by Importer)
     // =============================================================
+	/**
+	 * Inserts a raw opening-hours record into the database.
+	 * <p>
+	 * Used mainly by data importers or initial system setup.
+	 *
+	 * @param dayOfWeek   day name (e.g. "Sunday")
+	 * @param openTime    opening time
+	 * @param closeTime   closing time
+	 * @param isSpecial   "YES" if special date, otherwise "NO"
+	 * @param specialDate specific date for special hours, or null
+	 * @throws Exception if a database error occurs
+	 */
     public static void insertOpeningHours(
             String dayOfWeek,
             Time openTime,
@@ -61,7 +78,17 @@ public class OpeningHoursDAO {
     // =============================================================
     // 2. MANAGEMENT METHODS (From YOUR Branch - For Staff UI)
     // =============================================================
-
+    /**
+     * Inserts a special opening-hours entry for a specific calendar date.
+     * <p>
+     * Overrides regular weekly hours for the given date.
+     *
+     * @param dateStr ISO date string (YYYY-MM-DD)
+     * @param dayOfWeekIgnored ignored parameter (kept for compatibility)
+     * @param open opening time (HH:mm)
+     * @param close closing time (HH:mm)
+     * @throws Exception if a database error occurs
+     */
     public static void insertSpecialHour(String dateStr, String dayOfWeekIgnored, String open, String close) throws Exception {
         LocalDate date = LocalDate.parse(dateStr);
         String realDayName = date.getDayOfWeek().name();
@@ -83,7 +110,15 @@ public class OpeningHoursDAO {
             pool.releaseConnection(pc);
         }
     }
-
+    /**
+     * Retrieves all opening-hours entries.
+     * <p>
+     * Includes both regular weekly hours and special dates,
+     * ordered for management display.
+     *
+     * @return list of opening-hours DTOs
+     * @throws Exception if a database error occurs
+     */
     public static List<OpeningHoursDTO> getAllOpeningHours() throws Exception {
         List<OpeningHoursDTO> list = new ArrayList<>();
         String sql = "SELECT * FROM opening_hours ORDER BY is_special ASC, special_date ASC, hours_id ASC";
@@ -112,7 +147,15 @@ public class OpeningHoursDAO {
         }
         return list;
     }
-
+    /**
+     * Updates opening and closing times of an existing entry.
+     *
+     * @param id    opening-hours record ID
+     * @param open  new opening time
+     * @param close new closing time
+     * @return true if update succeeded
+     * @throws Exception if a database error occurs
+     */
     public static boolean updateOpeningHour(int id, String open, String close) throws Exception {
         String sql = "UPDATE opening_hours SET open_time=?, close_time=? WHERE hours_id=?";
         MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
@@ -127,7 +170,13 @@ public class OpeningHoursDAO {
             pool.releaseConnection(pc);
         }
     }
-
+    /**
+     * Deletes an opening-hours entry by ID.
+     *
+     * @param id record identifier
+     * @return true if deletion succeeded
+     * @throws Exception if a database error occurs
+     */
     public static boolean deleteOpeningHour(int id) throws Exception {
         String sql = "DELETE FROM opening_hours WHERE hours_id=?";
         MySQLConnectionPool pool = MySQLConnectionPool.getInstance();
@@ -183,6 +232,16 @@ public class OpeningHoursDAO {
     // =============================================================
     // 3. LOGIC METHODS (From MAIN Branch - For Reservation Logic)
     // =============================================================
+    /**
+     * Checks whether a reservation can be scheduled at the given time.
+     * <p>
+     * Ensures the reservation fits entirely within opening hours.
+     *
+     * @param startTs        requested start time
+     * @param diningMinutes duration of the visit
+     * @return true if reservation is allowed
+     * @throws Exception if a database error occurs
+     */
 
     public static boolean isOpenForReservation(Timestamp startTs, int diningMinutes) throws Exception {
         if (startTs == null) return false;
@@ -248,7 +307,18 @@ public class OpeningHoursDAO {
             pool.releaseConnection(pc);
         }
     }
-
+    /**
+     * Calculates available reservation time slots for a given date.
+     * <p>
+     * Considers opening hours, slot length, dining duration,
+     * and same-day time restrictions.
+     *
+     * @param date           reservation date
+     * @param slotMinutes    interval between slots
+     * @param diningMinutes  duration of visit
+     * @return list of available time slots (HH:mm)
+     * @throws Exception if a database error occurs
+     */
     public static List<String> getAvailableTimeSlots(LocalDate date, int slotMinutes, int diningMinutes) throws Exception {
         List<String> out = new ArrayList<>();
         if (date == null) return out;

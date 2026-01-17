@@ -10,7 +10,18 @@ import jakarta.mail.Session;
 import jakarta.mail.Transport;
 import jakarta.mail.internet.InternetAddress;
 import jakarta.mail.internet.MimeMessage;
-
+/**
+ * Utility service for sending system emails (reservation confirmations, reminders, waiting-list updates).
+ * <p>
+ * Reads SMTP configuration from an external {@code email.properties} file and sends plain-text emails
+ * using Jakarta Mail (SMTP + STARTTLS).
+ * <p>
+ * Notes:
+ * <ul>
+ *   <li>This class is server-side only.</li>
+ *   <li>Configuration path is currently absolute and should match the server machine.</li>
+ * </ul>
+ */
 public class EmailService {
 
     // ✅ Option 2: absolute path on YOUR PC
@@ -22,6 +33,11 @@ public class EmailService {
     // smtp.port=587
     // email.from=your_project_gmail@gmail.com
     // email.password=YOUR_APP_PASSWORD
+    /**
+     * Loads SMTP/email configuration from {@link #CONFIG_PATH}.
+     *
+     * @return loaded {@link Properties} or {@code null} if the file cannot be loaded.
+     */
     private static Properties loadCfg() {
         Properties cfg = new Properties();
         try (FileInputStream in = new FileInputStream(CONFIG_PATH)) {
@@ -34,7 +50,14 @@ public class EmailService {
     }
 
     /**
-     * Internal helper used by ALL email types (confirmation / reminder / etc.)
+     * Low-level internal sender used by all public email methods.
+     * <p>
+     * Validates required properties, opens an SMTP session (auth + STARTTLS),
+     * builds a plain-text email message and sends it.
+     *
+     * @param toEmail recipient email address
+     * @param subject email subject
+     * @param body plain-text body
      */
     private static void sendEmail(String toEmail, String subject, String body) {
         Properties cfg = loadCfg();
@@ -83,7 +106,12 @@ public class EmailService {
             System.out.println("[EMAIL] Failed to send to " + toEmail + " : " + e.getMessage());
         }
     }
-
+    /**
+     * Sends a reservation confirmation email containing a confirmation code.
+     *
+     * @param toEmail recipient email
+     * @param confirmationCode reservation confirmation code
+     */
     public static void sendReservationConfirmation(String toEmail, String confirmationCode) {
         String subject = "Bistro Reservation Confirmation";
         String body = "Your reservation has been created successfully!\n\n"
@@ -94,7 +122,11 @@ public class EmailService {
     }
 
     /**
-     * 2-hours reminder email.
+     * Sends a reminder email 2 hours before a reservation time.
+     *
+     * @param toEmail recipient email
+     * @param confirmationCode reservation confirmation code
+     * @param timeStr reservation time as display string (e.g. "18:30")
      */
     public static void sendReservationReminder(String toEmail, String confirmationCode, String timeStr) {
         String subject = "Bistro Reminder - Reservation in 2 hours";
@@ -108,7 +140,14 @@ public class EmailService {
 
         sendEmail(toEmail, subject, body);
     }
-    
+
+    /**
+     * Sends an email notifying a waiting-list guest that a table is ready.
+     * The guest is expected to check-in within the hold window (e.g. 15 minutes).
+     *
+     * @param toEmail recipient email
+     * @param waitingCode waiting-list confirmation code
+     */
     public static void sendWaitingTableReady(String toEmail, String waitingCode) {
         String subject = "Bistro - Your table is ready!";
         String body =
@@ -122,6 +161,12 @@ public class EmailService {
         sendEmail(toEmail, subject, body);
     }
 
+    /**
+     * Sends a payment reminder (bill reminder) email with the confirmation code.
+     *
+     * @param toEmail recipient email
+     * @param confirmationCode code used to identify the visit/payment
+     */
     public static void sendBillReminder(String toEmail, String confirmationCode) {
         String subject = "Reminder: Please complete your payment";
         String body = """
@@ -138,7 +183,12 @@ public class EmailService {
 
         sendEmail(toEmail, subject, body); // use your existing internal sendEmail()
     }
-
+    /**
+     * Sends an email notifying a reservation guest that the assigned table is ready.
+     *
+     * @param toEmail recipient email
+     * @param tableId assigned table identifier (e.g. "T12")
+     */
     public static void sendReservationTableReady(String toEmail, String tableId) {
         if (toEmail == null || toEmail.isBlank()) return;
 
@@ -158,7 +208,12 @@ public class EmailService {
             e.printStackTrace();
         }
     }
-    
+    /**
+     * Temporary SMS stub for testing/logging (no real SMS integration).
+     *
+     * @param phone phone number
+     * @param msg message text
+     */
     public static void smsStub(String phone, String msg) {
         if (phone == null || phone.isBlank()) return;
         System.out.println("[SMS] phone=" + phone + " | " + msg);
