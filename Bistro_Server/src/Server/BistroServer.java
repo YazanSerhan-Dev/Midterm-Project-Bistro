@@ -61,6 +61,10 @@ public class BistroServer extends AbstractServer {
     private final ReservationDAO reservationDAO = new ReservationDAO();
     /** DAO for subscriber operations (kept for future/consistency). */
     private final SubscriberDAO subscriberDAO = new SubscriberDAO();
+    
+    private QueueHttpBridge queueBridge;
+    private static final int QUEUE_BRIDGE_PORT_OFFSET = 1; // 5555 -> 5556
+
     /**
      * Creates a new server instance.
      *
@@ -107,7 +111,38 @@ public class BistroServer extends AbstractServer {
         log("Server started on port " + getPort());
         if (controller != null) controller.onServerStarted(getPort());
         BackgroundJobs.start();
+
+        // ✅ Start HTTP bridge on a DIFFERENT port (5556)
+        try {
+            int httpPort = getPort() + QUEUE_BRIDGE_PORT_OFFSET;
+
+            queueBridge = new QueueHttpBridge(httpPort, new QueueHttpBridge.QueueStatsProvider() {
+                @Override public int getWaiting() {
+                    try { return ReservationDAO.countReservationsMadeToday(); }
+                    catch (Exception e) { return -1; }
+                }
+
+                @Override public int getArrived() {
+                    try { 
+                        return VisitDAO.countReservationsServedToday();
+                    } catch (Exception e) {
+                        System.out.println("[QueueBridge] getArrived error: " + e.getMessage());
+                        return 0; // ✅ never send -1 to LCD
+                    }
+                }
+
+
+                @Override public int getCompleted() {
+                    return 0; // not used now
+                }
+            });
+            queueBridge.start();
+            log("Queue bridge started on port " + httpPort);
+        } catch (Exception e) {
+            log("Queue bridge failed to start: " + e.getMessage());
+        }
     }
+
     /**
      * Called by OCSF when server is stopped.
      * Stops background jobs and updates UI.
@@ -117,7 +152,14 @@ public class BistroServer extends AbstractServer {
         log("Server stopped.");
         if (controller != null) controller.onServerStopped();
         BackgroundJobs.stop();
+
+        // ✅ Stop HTTP bridge
+        try {
+            if (queueBridge != null) queueBridge.stop();
+            queueBridge = null;
+        } catch (Exception ignored) {}
     }
+
     /**
      * Called when a client connects.
      * Stores host/ip as client info and updates UI.

@@ -1412,5 +1412,26 @@ public class ReservationDAO {
         }
     }
 
+    public static int countReservationsMadeToday() throws Exception {
+        String sql = """
+			SELECT COUNT(*)
+			FROM reservation
+			WHERE DATE(reservation_time) = CURDATE()
+			  AND status IN ('PENDING','CONFIRMED','ARRIVED');
+        """;
+
+        var pool = MySQLConnectionPool.getInstance();
+        var pc = pool.getConnection();
+        var conn = pc.getConnection();
+
+        try (var ps = conn.prepareStatement(sql);
+             var rs = ps.executeQuery()) {
+            rs.next();
+            return rs.getInt(1);
+        } finally {
+            pool.releaseConnection(pc);
+        }
+    }
+
 
 }

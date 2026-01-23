@@ -298,4 +298,28 @@ public class VisitDAO {
         }
         return list;
     }
+    
+    public static int countReservationsServedToday() throws Exception {
+        String sql = """
+            SELECT COUNT(DISTINCT ua.reservation_id)
+            FROM visit v
+            JOIN user_activity ua ON ua.activity_id = v.activity_id
+            WHERE v.actual_start_time IS NOT NULL
+              AND DATE(v.actual_start_time) = CURDATE()
+              AND ua.reservation_id IS NOT NULL
+        """;
+
+        var pool = MySQLConnectionPool.getInstance();
+        var pc = pool.getConnection();
+        var conn = pc.getConnection();
+
+        try (var ps = conn.prepareStatement(sql);
+             var rs = ps.executeQuery()) {
+            rs.next();
+            return rs.getInt(1);
+        } finally {
+            pool.releaseConnection(pc);
+        }
+    }
+
 }
