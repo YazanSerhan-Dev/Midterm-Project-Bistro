@@ -64,6 +64,12 @@ public class BistroServer extends AbstractServer {
     
     private QueueHttpBridge queueBridge;
     private static final int QUEUE_BRIDGE_PORT_OFFSET = 1; // 5555 -> 5556
+    
+    private MqttBridge mqtt;
+    private static final String MQTT_TOPIC = "bistro/reservations/today";
+    private ReservationStatsMqttPublisher mqttPublisher;
+
+
 
     /**
      * Creates a new server instance.
@@ -112,35 +118,20 @@ public class BistroServer extends AbstractServer {
         if (controller != null) controller.onServerStarted(getPort());
         BackgroundJobs.start();
 
-        // ✅ Start HTTP bridge on a DIFFERENT port (5556)
         try {
-            int httpPort = getPort() + QUEUE_BRIDGE_PORT_OFFSET;
+            mqtt = new MqttBridge("tcp://localhost:1883", "bistro-server");
+            mqtt.connect();
 
-            queueBridge = new QueueHttpBridge(httpPort, new QueueHttpBridge.QueueStatsProvider() {
-                @Override public int getWaiting() {
-                    try { return ReservationDAO.countReservationsMadeToday(); }
-                    catch (Exception e) { return -1; }
-                }
+            mqttPublisher = new ReservationStatsMqttPublisher(mqtt, MQTT_TOPIC, 2000);
+            mqttPublisher.start();
 
-                @Override public int getArrived() {
-                    try { 
-                        return VisitDAO.countReservationsServedToday();
-                    } catch (Exception e) {
-                        System.out.println("[QueueBridge] getArrived error: " + e.getMessage());
-                        return 0; // ✅ never send -1 to LCD
-                    }
-                }
-
-
-                @Override public int getCompleted() {
-                    return 0; // not used now
-                }
-            });
-            queueBridge.start();
-            log("Queue bridge started on port " + httpPort);
+            System.out.println("[MQTT] Stats publisher started");
         } catch (Exception e) {
-            log("Queue bridge failed to start: " + e.getMessage());
+            System.out.println("[MQTT] ERROR: " + e.getMessage());
         }
+
+
+
     }
 
     /**
@@ -153,11 +144,10 @@ public class BistroServer extends AbstractServer {
         if (controller != null) controller.onServerStopped();
         BackgroundJobs.stop();
 
-        // ✅ Stop HTTP bridge
         try {
-            if (queueBridge != null) queueBridge.stop();
-            queueBridge = null;
+            if (mqttPublisher != null) mqttPublisher.stop();
         } catch (Exception ignored) {}
+
     }
 
     /**
