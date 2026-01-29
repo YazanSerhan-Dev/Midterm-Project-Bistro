@@ -39,7 +39,7 @@ This project was developed as part of a **Software Engineering degree**, emphasi
 
 ## 🛠️ Technologies Used
 
-- **Java 21**
+- **Java 25**
 - **JavaFX**
 - **MySQL 8**
 - **OCSF (Object Client–Server Framework)**
