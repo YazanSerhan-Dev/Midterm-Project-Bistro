@@ -43,8 +43,6 @@ public class ReservationStatsMqttPublisher {
                     if (today < 0) today = 0;
                     if (served < 0) served = 0;
 
-                    // publish only if changed (optional)
-                    if (today != lastToday || served != lastServed) {
                         lastToday = today;
                         lastServed = served;
 
@@ -52,7 +50,7 @@ public class ReservationStatsMqttPublisher {
                         mqtt.publishRetained(topic, payload);
 
                         System.out.println("[MQTT] Published: " + payload + " -> " + topic);
-                    }
+
 
                 } catch (Exception e) {
                     System.out.println("[MQTT] Publisher error: " + e.getMessage());

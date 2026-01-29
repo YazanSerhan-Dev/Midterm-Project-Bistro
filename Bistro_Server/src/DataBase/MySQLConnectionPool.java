@@ -16,10 +16,37 @@ import java.util.concurrent.TimeUnit;
  */
 public class MySQLConnectionPool {
 
-    // ---------- DB CONFIG
-    private static final String URL = "jdbc:mysql://localhost:3306/Bistro";
-    private static final String USER = "root";
-    private static final String PASSWORD = "Yazan12@"; 
+	// -------- DB CONFIG (loaded from server.properties if present) --------
+	private static final String DEFAULT_HOST = "localhost";
+	private static final String DEFAULT_PORT = "3306";
+	private static final String DEFAULT_DB   = "Bistro";
+	private static final String DEFAULT_USER = "bistro";
+	private static final String DEFAULT_PASS = "bistro123";
+
+	private static final String URL;
+	private static final String USER;
+	private static final String PASSWORD;
+
+	static {
+	    java.util.Properties p = new java.util.Properties();
+
+	    // Try to load server.properties from the current working directory (where you run the jar)
+	    try (java.io.InputStream in = new java.io.FileInputStream("server.properties")) {
+	        p.load(in);
+	    } catch (Exception ignored) {
+	        // No file? fine. We'll use defaults.
+	    }
+
+	    String host = p.getProperty("db.host", DEFAULT_HOST);
+	    String port = p.getProperty("db.port", DEFAULT_PORT);
+	    String db   = p.getProperty("db.name", DEFAULT_DB);
+
+	    USER = p.getProperty("db.user", DEFAULT_USER);
+	    PASSWORD = p.getProperty("db.password", DEFAULT_PASS);
+
+	    URL = "jdbc:mysql://" + host + ":" + port + "/" + db
+	        + "?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC";
+	}
 
     // ---------- POOL CONFIG ----------
     /** Maximum number of pooled connections that can be cached. */
