@@ -20,8 +20,8 @@ public class MySQLConnectionPool {
 	private static final String DEFAULT_HOST = "localhost";
 	private static final String DEFAULT_PORT = "3306";
 	private static final String DEFAULT_DB   = "Bistro";
-	private static final String DEFAULT_USER = "bistro";
-	private static final String DEFAULT_PASS = "bistro123";
+	private static final String DEFAULT_USER = "CHANGE_ME";
+	private static final String DEFAULT_PASS = "CHANGE_ME";
 
 	private static final String URL;
 	private static final String USER;
