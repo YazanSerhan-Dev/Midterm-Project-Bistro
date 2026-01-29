@@ -61,6 +61,16 @@ public class BistroServer extends AbstractServer {
     private final ReservationDAO reservationDAO = new ReservationDAO();
     /** DAO for subscriber operations (kept for future/consistency). */
     private final SubscriberDAO subscriberDAO = new SubscriberDAO();
+    
+    private QueueHttpBridge queueBridge;
+    private static final int QUEUE_BRIDGE_PORT_OFFSET = 1; // 5555 -> 5556
+    
+    private MqttBridge mqtt;
+    private static final String MQTT_TOPIC = "bistro/reservations/today";
+    private ReservationStatsMqttPublisher mqttPublisher;
+
+
+
     /**
      * Creates a new server instance.
      *
@@ -107,7 +117,23 @@ public class BistroServer extends AbstractServer {
         log("Server started on port " + getPort());
         if (controller != null) controller.onServerStarted(getPort());
         BackgroundJobs.start();
+
+        try {
+            mqtt = new MqttBridge("tcp://localhost:1883", "bistro-server");
+            mqtt.connect();
+
+            mqttPublisher = new ReservationStatsMqttPublisher(mqtt, MQTT_TOPIC, 2000);
+            mqttPublisher.start();
+
+            System.out.println("[MQTT] Stats publisher started");
+        } catch (Exception e) {
+            System.out.println("[MQTT] ERROR: " + e.getMessage());
+        }
+
+
+
     }
+
     /**
      * Called by OCSF when server is stopped.
      * Stops background jobs and updates UI.
@@ -117,7 +143,13 @@ public class BistroServer extends AbstractServer {
         log("Server stopped.");
         if (controller != null) controller.onServerStopped();
         BackgroundJobs.stop();
+
+        try {
+            if (mqttPublisher != null) mqttPublisher.stop();
+        } catch (Exception ignored) {}
+
     }
+
     /**
      * Called when a client connects.
      * Stores host/ip as client info and updates UI.

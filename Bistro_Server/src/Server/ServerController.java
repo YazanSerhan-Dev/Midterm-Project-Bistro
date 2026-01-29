@@ -81,11 +81,10 @@ public class ServerController {
         }
 
         try {
-            server = new BistroServer(DEFAULT_PORT, this);
-            server.listen();
+        	server = ServerLauncher.start(DEFAULT_PORT, this);
             setServerStartedUI(DEFAULT_PORT);
             appendLogFromServer("Server started on port " + DEFAULT_PORT);
-        } catch (IOException e) {
+        } catch (Exception e) {
             appendLogFromServer("Failed to start server: " + e.getMessage());
         }
     }
