@@ -91,3 +91,27 @@ This project was developed as part of a **Software Engineering degree**, emphasi
 
 ## 📁 Project Structure (High-Level)
 
+## Deployment & Infrastructure (Personal Extension)
+
+In addition to the academic requirements of the project, I personally extended
+the system to explore production-like deployment and real-time communication
+concepts.
+
+These extensions were developed as part of a **personal initiative** and were
+not required by the course.
+
+The extended features include:
+- Deploying the backend server on **Linux in headless mode**
+- Running the server as a **systemd service**, enabling:
+  - automatic startup on boot
+  - automatic restart on failure
+- Externalizing runtime configuration (e.g. database credentials) and keeping
+  sensitive data out of version control
+- Publishing real-time system statistics using **MQTT** to support external
+  IoT devices (Smart Queue Display)
+
+Detailed documentation for these extensions can be found here:
+
+- 📁 `deployment/linux` – Headless Linux deployment using systemd  
+- 📁 `deployment/mqtt` – MQTT setup, topics, and broker configuration
+
