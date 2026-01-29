@@ -1,0 +1,10 @@
+# Database config (example)
+db.host=127.0.0.1
+db.port=3306
+db.name=Bistro
+db.user=bistro
+db.password=CHANGE_ME
+
+# Optional: other runtime configs if you have them
+# mqtt.host=127.0.0.1
+# mqtt.port=1883
