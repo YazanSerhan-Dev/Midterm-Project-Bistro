@@ -45,7 +45,7 @@ public class MySQLConnectionPool {
 	    PASSWORD = p.getProperty("db.password", DEFAULT_PASS);
 
 	    URL = "jdbc:mysql://" + host + ":" + port + "/" + db
-	        + "?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC";
+	        + "?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Jerusalem";
 	}
 
     // ---------- POOL CONFIG ----------

@@ -1,0 +1,14 @@
+[Unit]
+Description=Bistro Headless Server
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/bistro
+ExecStart=/usr/bin/java -jar /opt/bistro/ServerHeadless.jar
+Restart=always
+RestartSec=3
+User=bistro
+
+[Install]
+WantedBy=multi-user.target

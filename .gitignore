@@ -2,3 +2,9 @@
 /bin1/
 **/bin/
 **/*.class
+
+# secrets / local runtime config
+server.properties
+*.env
+secrets.h
+wifi.h
